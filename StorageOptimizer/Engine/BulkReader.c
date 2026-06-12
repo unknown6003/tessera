@@ -15,7 +15,7 @@ static inline int32_t  ri32(const void *p) { int32_t  v; memcpy(&v, p, 4); retur
 static inline int64_t  ri64(const void *p) { int64_t  v; memcpy(&v, p, 8); return v; }
 
 int br_scan_directory(const char *path, BREntry *out, int maxEntries) {
-    int fd = open(path, O_RDONLY | O_DIRECTORY);
+    int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     if (fd < 0) return -1;
 
     struct attrlist alist;
@@ -24,9 +24,10 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries) {
     // Request returned-attrs first so we can defensively check which fields are present
     alist.commonattr = (attrgroup_t)(ATTR_CMN_RETURNED_ATTRS |
                                      ATTR_CMN_NAME           |
+                                     ATTR_CMN_DEVID          |
                                      ATTR_CMN_OBJTYPE        |
                                      ATTR_CMN_FILEID);
-    alist.fileattr = (attrgroup_t)(ATTR_FILE_ALLOCSIZE);
+    alist.fileattr = (attrgroup_t)(ATTR_FILE_LINKCOUNT | ATTR_FILE_ALLOCSIZE);
 
     char *buf = (char *)malloc(BUFFER_SIZE);
     if (!buf) { close(fd); return -1; }
@@ -45,7 +46,7 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries) {
             // Record layout:
             //  [0]  uint32_t length
             //  [4]  attribute_set_t returned = { commonattr, volattr, dirattr, fileattr, forkattr } (5 × uint32 = 20 bytes)
-            //  [24] attributes in bitmap order (no insertion of padding between fields; all 4-byte aligned per HFS/APFS ABI)
+            //  [24] attributes in bitmap order (4-byte aligned per HFS/APFS ABI)
             uint32_t ret_common = r32(ptr + 4);
             uint32_t ret_file   = r32(ptr + 16); // fileattr word of attribute_set_t
 
@@ -68,6 +69,12 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries) {
                 field += 8;
             }
 
+            // ATTR_CMN_DEVID: dev_t (4 bytes)
+            if (ret_common & ATTR_CMN_DEVID) {
+                e.devid = r32(field);
+                field += 4;
+            }
+
             // ATTR_CMN_OBJTYPE: uint32_t
             if (ret_common & ATTR_CMN_OBJTYPE) {
                 e.type = r32(field);
@@ -80,8 +87,14 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries) {
                 field += 8;
             }
 
-            // ATTR_FILE_ALLOCSIZE: int64_t (file attr section; not present for dirs)
-            if ((ret_file & ATTR_FILE_ALLOCSIZE) && e.type != VDIR) {
+            // ATTR_FILE_LINKCOUNT: uint32_t (file attr section; not present for dirs)
+            if (ret_file & ATTR_FILE_LINKCOUNT) {
+                e.nlink = r32(field);
+                field += 4;
+            }
+
+            // ATTR_FILE_ALLOCSIZE: int64_t
+            if (ret_file & ATTR_FILE_ALLOCSIZE) {
                 e.alloc_size = ri64(field);
             }
 

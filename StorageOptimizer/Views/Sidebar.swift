@@ -104,10 +104,6 @@ struct Sidebar: View {
     private var formattedProgress: String {
         let files = vm.progress.filesScanned
         let found = ByteCountFormatter.string(fromByteCount: vm.progress.bytesFound, countStyle: .file)
-        if vm.progress.totalBytes > 0 {
-            let total = ByteCountFormatter.string(fromByteCount: vm.progress.totalBytes, countStyle: .file)
-            return "\(files) items · \(found) / \(total)"
-        }
         return "\(files) items · \(found)"
     }
 

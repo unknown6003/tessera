@@ -2,31 +2,50 @@ import Foundation
 
 // MARK: - Progress
 
+/// Progress derived from directories scanned vs. directories discovered.
+/// Unlike a bytes-vs-volume-used model, this ratio is guaranteed to reach 1.0:
+/// every discovered directory is eventually scanned, so the bar can never
+/// plateau on unreachable bytes (snapshots, purgeable space, protected files).
 struct ScanProgress: Sendable {
-    var filesScanned: Int
-    var bytesFound: Int64
-    /// Non-zero when scanning a whole volume; zero = indeterminate (folder subtree).
-    var totalBytes: Int64
-    var currentPath: String
+    var filesScanned: Int = 0
+    var bytesFound: Int64 = 0
+    var dirsScanned: Int = 0
+    var dirsDiscovered: Int = 1
+    var currentPath: String = ""
 
-    /// 0…1 fraction of completion, or nil when the denominator is unknown.
+    /// 0…1 fraction of completion, or nil while the estimate is still too noisy.
     var fraction: Double? {
-        guard totalBytes > 0 else { return nil }
-        return min(1.0, Double(bytesFound) / Double(totalBytes))
+        guard dirsDiscovered >= 64 else { return nil }
+        return min(1.0, Double(dirsScanned) / Double(dirsDiscovered))
     }
-}
-
-// MARK: - Internal per-directory result
-
-private struct DirResult {
-    let url: URL
-    let fileChildren: [FileNode]
-    let subdirURLs: [URL]
 }
 
 // MARK: - FileScanner
 
+/// Parallel breadth-first directory scanner.
+///
+/// Correctness properties:
+///  - never crosses filesystem/mount boundaries (kills network-mount hangs),
+///    except the root→data firmlink pair when scanning "/"
+///  - skips `/Volumes`, `/System/Volumes`, `/dev`, `/Network` so the data volume
+///    is not scanned twice through firmlinks
+///  - counts each hard-linked file once (per-link-count, so the dedup set stays tiny)
+///  - cooperatively cancellable at directory granularity
+///  - adds a synthetic "hidden space" node for bytes the scan cannot see
 struct FileScanner: Sendable {
+
+    // MARK: Tuning
+
+    private static let progressInterval: Duration = .milliseconds(80)
+    private static let hiddenSpaceThreshold: Int64 = 1 << 30  // 1 GiB
+
+    /// Absolute paths never descended into (unless they are the scan root itself).
+    private static let skippedPaths: Set<String> = [
+        "/Volumes",         // other mounted volumes (incl. network mounts that can block forever)
+        "/System/Volumes",  // data volume already reachable through firmlinks; VM/Preboot are hidden space
+        "/dev",
+        "/Network",
+    ]
 
     // MARK: Public API
 
@@ -34,93 +53,186 @@ struct FileScanner: Sendable {
         url: URL,
         onProgress: @Sendable @escaping (ScanProgress) -> Void
     ) async throws -> FileNode {
-        let totalBytes = volumeUsedBytes(for: url)
-        return try await Task.detached(priority: .userInitiated) {
-            scanSync(rootURL: url, totalBytes: totalBytes, onProgress: onProgress)
-        }.value
+        let rootPath = url.path
+        let allowedDevices = Self.allowedDevices(forRoot: rootPath)
+        let volumeUsed = volumeUsedBytes(for: url)
+        let isVolumeRoot = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume ?? (rootPath == "/")
+
+        let rootName = url.lastPathComponent.isEmpty ? rootPath : url.lastPathComponent
+        let rootNode = FileNode(url: url, name: rootName, isDirectory: true, size: 0)
+
+        var progress = ScanProgress(currentPath: rootPath)
+        var seenInodes = Set<UInt64>()
+        var level: [DirWork] = [DirWork(path: rootPath, node: rootNode)]
+        let clock = ContinuousClock()
+        var lastReport = clock.now
+
+        while !level.isEmpty {
+            try Task.checkCancellation()
+
+            let chunks = chunked(level)
+            var next: [DirWork] = []
+
+            try await withThrowingTaskGroup(of: ChunkResult.self) { group in
+                for chunk in chunks {
+                    group.addTask(priority: .userInitiated) {
+                        scanChunk(chunk, allowedDevices: allowedDevices)
+                    }
+                }
+                for try await result in group {
+                    try Task.checkCancellation()
+
+                    progress.filesScanned += result.fileCount
+                    progress.bytesFound += result.bytes
+                    progress.dirsScanned += result.dirsScanned
+                    progress.dirsDiscovered += result.nextDirs.count
+                    progress.currentPath = result.lastPath
+
+                    // Hard-link dedup: only files with linkCount > 1 reach this list,
+                    // and the merge runs single-threaded, so a plain Set suffices.
+                    for candidate in result.hardlinks {
+                        if !seenInodes.insert(candidate.inode).inserted {
+                            progress.bytesFound -= candidate.node.size
+                            candidate.node.overrideSize(0)
+                        }
+                    }
+
+                    next.append(contentsOf: result.nextDirs)
+
+                    let now = clock.now
+                    if now - lastReport >= progressInterval {
+                        lastReport = now
+                        onProgress(progress)
+                    }
+                }
+            }
+            level = next
+        }
+
+        rootNode.recomputeDirectorySizes()
+        attachHiddenSpace(to: rootNode, volumeUsed: volumeUsed, isVolumeRoot: isVolumeRoot)
+
+        progress.dirsScanned = progress.dirsDiscovered
+        onProgress(progress)
+        return rootNode
     }
 
-    // MARK: Single-threaded BFS scan
+    // MARK: Work units
 
-    private static func scanSync(
-        rootURL: URL,
-        totalBytes: Int64,
-        onProgress: @Sendable (ScanProgress) -> Void
-    ) -> FileNode {
-        var queue: [URL] = [rootURL]
-        var results: [String: DirResult] = [:]
-        var seenInodes = Set<UInt64>()
-        var progress = ScanProgress(
-            filesScanned: 0, bytesFound: 0,
-            totalBytes: totalBytes, currentPath: rootURL.path
-        )
-        var dirCount = 0
+    private struct DirWork: Sendable {
+        let path: String
+        let node: FileNode
+    }
 
-        while !queue.isEmpty {
-            let dirURL = queue.removeFirst()
-            let entries = BulkDirScanner.entries(in: dirURL)
-            var fileChildren: [FileNode] = []
-            var subdirURLs: [URL] = []
+    private struct HardlinkCandidate: Sendable {
+        let inode: UInt64
+        let node: FileNode
+    }
+
+    private struct ChunkResult: Sendable {
+        var fileCount = 0
+        var bytes: Int64 = 0
+        var dirsScanned = 0
+        var nextDirs: [DirWork] = []
+        var hardlinks: [HardlinkCandidate] = []
+        var lastPath = ""
+    }
+
+    /// Split a BFS level into chunks sized to keep all cores busy without
+    /// flooding the task group near the root (where levels are tiny).
+    private static func chunked(_ level: [DirWork]) -> [[DirWork]] {
+        let workers = max(2, ProcessInfo.processInfo.activeProcessorCount)
+        let chunkSize = max(1, min(128, level.count / (workers * 4) + 1))
+        return stride(from: 0, to: level.count, by: chunkSize).map {
+            Array(level[$0 ..< min($0 + chunkSize, level.count)])
+        }
+    }
+
+    // MARK: Per-chunk scan (runs on a worker; touches only its own nodes)
+
+    private static func scanChunk(_ chunk: [DirWork], allowedDevices: Set<UInt32>) -> ChunkResult {
+        var result = ChunkResult()
+
+        for work in chunk {
+            if Task.isCancelled { break }
+
+            let entries = BulkDirScanner.entries(atPath: work.path)
+            var children: [FileNode] = []
+            children.reserveCapacity(entries.count)
 
             for entry in entries {
                 switch entry.type {
                 case .symlink, .other:
                     continue
+
                 case .directory:
-                    subdirURLs.append(dirURL.appendingPathComponent(entry.name, isDirectory: true))
+                    let childPath = work.path.hasSuffix("/")
+                        ? work.path + entry.name
+                        : work.path + "/" + entry.name
+                    // Stop at mount-point boundaries and hazardous well-known paths.
+                    guard allowedDevices.contains(entry.device),
+                          !skippedPaths.contains(childPath) else { continue }
+                    let childURL = URL(fileURLWithPath: childPath, isDirectory: true)
+                    let kind: FileNode.Kind = BulkDirScanner.isPackageName(entry.name) ? .package : .regular
+                    let childNode = FileNode(url: childURL, name: entry.name,
+                                             isDirectory: true, size: 0, kind: kind)
+                    children.append(childNode)
+                    result.nextDirs.append(DirWork(path: childPath, node: childNode))
+
                 case .file:
-                    var size = entry.allocatedSize
-                    if entry.inode > 0 {
-                        if seenInodes.contains(entry.inode) {
-                            size = 0
-                        } else {
-                            seenInodes.insert(entry.inode)
-                        }
+                    let childURL = URL(fileURLWithPath: work.path).appendingPathComponent(entry.name)
+                    let childNode = FileNode(url: childURL, name: entry.name,
+                                             isDirectory: false, size: entry.allocatedSize)
+                    children.append(childNode)
+                    if entry.linkCount > 1, entry.inode > 0 {
+                        result.hardlinks.append(HardlinkCandidate(inode: entry.inode, node: childNode))
                     }
-                    let childURL = dirURL.appendingPathComponent(entry.name)
-                    fileChildren.append(FileNode(url: childURL, name: entry.name, isDirectory: false, size: size))
-                    progress.filesScanned += 1
-                    progress.bytesFound += size
+                    result.fileCount += 1
+                    result.bytes += entry.allocatedSize
                 }
             }
 
-            queue.append(contentsOf: subdirURLs)
-            results[dirURL.path] = DirResult(url: dirURL, fileChildren: fileChildren, subdirURLs: subdirURLs)
-            progress.currentPath = dirURL.path
-            dirCount += 1
-
-            if dirCount % 200 == 0 {
-                onProgress(progress)
-            }
+            work.node.setChildren(children)
+            result.dirsScanned += 1
+            result.lastPath = work.path
         }
 
-        onProgress(progress)
-        return assembleTree(rootURL: rootURL, results: results)
+        return result
     }
 
-    // MARK: Tree assembly (post-order DFS — children sized before parent)
+    // MARK: Device boundaries
 
-    private static func assembleTree(rootURL: URL, results: [String: DirResult]) -> FileNode {
-        func assemble(url: URL, name: String, parent: FileNode?) -> FileNode {
-            guard let result = results[url.path] else {
-                return FileNode(url: url, name: name, isDirectory: false, size: 0)
-            }
-
-            let node = FileNode(url: url, name: name, isDirectory: true, size: 0)
-            node.parent = parent
-
-            var children: [FileNode] = result.fileChildren
-            for childURL in result.subdirURLs {
-                let childNode = assemble(url: childURL, name: childURL.lastPathComponent, parent: node)
-                children.append(childNode)
-            }
-            for child in children { child.parent = node }
-            node.setChildren(children)
-
-            return node
+    /// The devices a scan may traverse: the root's own device, plus — when scanning
+    /// "/" — the data volume's device, because firmlinks (/Users, /Applications, …)
+    /// legitimately cross onto it.
+    private static func allowedDevices(forRoot rootPath: String) -> Set<UInt32> {
+        var devices = Set<UInt32>()
+        var sb = Darwin.stat()
+        if Darwin.lstat(rootPath, &sb) == 0 {
+            devices.insert(UInt32(bitPattern: sb.st_dev))
         }
+        if rootPath == "/" {
+            var dataSB = Darwin.stat()
+            if Darwin.lstat("/System/Volumes/Data", &dataSB) == 0 {
+                devices.insert(UInt32(bitPattern: dataSB.st_dev))
+            }
+        }
+        return devices
+    }
 
-        return assemble(url: rootURL, name: rootURL.lastPathComponent, parent: nil)
+    // MARK: Hidden space
+
+    /// Bytes the scan could not observe (APFS local snapshots, purgeable space,
+    /// protected files). Shown as a dimmed, non-deletable wedge so the chart total
+    /// matches what the Finder reports for the volume.
+    private static func attachHiddenSpace(to root: FileNode, volumeUsed: Int64, isVolumeRoot: Bool) {
+        guard isVolumeRoot, volumeUsed > 0 else { return }
+        let hidden = volumeUsed - root.size
+        guard hidden > hiddenSpaceThreshold else { return }
+        let node = FileNode(url: root.url, name: "Hidden Space",
+                            isDirectory: false, size: hidden, kind: .hiddenSpace)
+        root.setChildren(root.children + [node])
+        root.overrideSize(root.size + hidden)
     }
 
     // MARK: Volume used bytes

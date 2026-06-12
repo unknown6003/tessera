@@ -6,6 +6,8 @@ struct EntryInfo {
     var name: String
     var type: EntryType
     var inode: UInt64
+    var device: UInt32
+    var linkCount: UInt32
     var allocatedSize: Int64
 
     enum EntryType { case file, directory, symlink, other }
@@ -23,24 +25,31 @@ private let packageExtensions: Set<String> = [
 // MARK: - BulkDirScanner
 
 enum BulkDirScanner {
-    private static let maxEntriesPerDir = 16_384
+    private static let maxEntriesPerDir = 32_768
 
-    static func entries(in dirURL: URL) -> [EntryInfo] {
-        let path = dirURL.withUnsafeFileSystemRepresentation { ptr -> String? in
-            ptr.map { String(cString: $0) }
-        } ?? dirURL.path
+    /// Treat package directories (.app, .framework, …) as leaf "directories the user
+    /// thinks of as files" only at presentation level; the scanner must still descend
+    /// into them to measure their size, so they are reported as `.directory` here and
+    /// flagged via `isPackageName`.
+    static func isPackageName(_ name: String) -> Bool {
+        packageExtensions.contains((name as NSString).pathExtension.lowercased())
+    }
 
+    static func entries(atPath path: String) -> [EntryInfo] {
         // Try getattrlistbulk via C bridge
         var cEntries = [BREntry](repeating: BREntry(), count: maxEntriesPerDir)
         let count = br_scan_directory(path, &cEntries, Int32(maxEntriesPerDir))
         if count >= 0 {
-            return (0 ..< Int(count)).compactMap { i in
-                swiftEntry(from: cEntries[i])
+            // A completely full buffer may mean the directory was truncated;
+            // re-read with the unbounded fallback to avoid silently dropping entries.
+            if Int(count) == maxEntriesPerDir {
+                return fallbackEntries(atPath: path)
             }
+            return (0 ..< Int(count)).compactMap { swiftEntry(from: cEntries[$0]) }
         }
 
         // Fallback: readdir via FileManager + lstat
-        return fallbackEntries(in: dirURL)
+        return fallbackEntries(atPath: path)
     }
 
     // MARK: - BREntry → EntryInfo
@@ -55,9 +64,7 @@ enum BulkDirScanner {
 
         let entryType: EntryInfo.EntryType
         switch c.type {
-        case UInt32(BR_TYPE_DIR):
-            let ext = (name as NSString).pathExtension.lowercased()
-            entryType = packageExtensions.contains(ext) ? .file : .directory
+        case UInt32(BR_TYPE_DIR): entryType = .directory
         case UInt32(BR_TYPE_LNK): entryType = .symlink
         case UInt32(BR_TYPE_REG): entryType = .file
         default: entryType = .other
@@ -67,29 +74,27 @@ enum BulkDirScanner {
             name: name,
             type: entryType,
             inode: c.inode,
+            device: c.devid,
+            linkCount: c.nlink,
             allocatedSize: c.alloc_size
         )
     }
 
     // MARK: - Fallback
 
-    private static func fallbackEntries(in dirURL: URL) -> [EntryInfo] {
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: dirURL, includingPropertiesForKeys: nil, options: []
-        )) ?? []
+    private static func fallbackEntries(atPath path: String) -> [EntryInfo] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
 
-        return urls.compactMap { url -> EntryInfo? in
+        return names.compactMap { name -> EntryInfo? in
             var sb = Darwin.stat()
-            guard Darwin.lstat(url.path, &sb) == 0 else { return nil }
+            guard Darwin.lstat(path + "/" + name, &sb) == 0 else { return nil }
             let mode = sb.st_mode & S_IFMT
-            let name = url.lastPathComponent
-            let ext  = url.pathExtension.lowercased()
 
             let entryType: EntryInfo.EntryType
             if mode == S_IFLNK {
                 entryType = .symlink
             } else if mode == S_IFDIR {
-                entryType = packageExtensions.contains(ext) ? .file : .directory
+                entryType = .directory
             } else if mode == S_IFREG {
                 entryType = .file
             } else {
@@ -100,6 +105,8 @@ enum BulkDirScanner {
                 name: name,
                 type: entryType,
                 inode: UInt64(sb.st_ino),
+                device: UInt32(bitPattern: sb.st_dev),
+                linkCount: UInt32(sb.st_nlink),
                 allocatedSize: Int64(sb.st_blocks) * 512
             )
         }

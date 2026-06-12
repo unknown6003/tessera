@@ -10,7 +10,7 @@ final class ScanViewModel: ObservableObject {
     @Published var selectedNode: FileNode?
     @Published var collector: [FileNode] = []
     @Published var isScanning = false
-    @Published var progress = ScanProgress(filesScanned: 0, bytesFound: 0, totalBytes: 0, currentPath: "")
+    @Published var progress = ScanProgress()
     @Published var errorMessage: String?
     @Published var needsFullDiskAccess = false
 
@@ -32,7 +32,7 @@ final class ScanViewModel: ObservableObject {
         errorMessage = nil
         needsFullDiskAccess = false
         isScanning = true
-        progress = ScanProgress(filesScanned: 0, bytesFound: 0, totalBytes: 0, currentPath: volumeURL.path)
+        progress = ScanProgress(currentPath: volumeURL.path)
 
         scanTask = Task {
             do {
@@ -46,6 +46,8 @@ final class ScanViewModel: ObservableObject {
                 }
                 self.rootNode = node
                 self.currentRoot = node
+            } catch is CancellationError {
+                // User stopped the scan — not an error.
             } catch {
                 self.errorMessage = error.localizedDescription
             }
@@ -55,7 +57,6 @@ final class ScanViewModel: ObservableObject {
 
     func cancelScan() {
         scanTask?.cancel()
-        isScanning = false
     }
 
     // MARK: - Chart navigation
@@ -83,6 +84,7 @@ final class ScanViewModel: ObservableObject {
     // MARK: - Collector
 
     func addToCollector(_ node: FileNode) {
+        guard !node.isSynthetic else { return }
         guard !collector.contains(where: { $0.id == node.id }) else { return }
         // Don't add ancestors/descendants of things already in the list
         collector.append(node)
