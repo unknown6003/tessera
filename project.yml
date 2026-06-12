@@ -1,0 +1,38 @@
+name: StorageOptimizer
+options:
+  bundleIdPrefix: com.abdwy
+  deploymentTarget:
+    macOS: "26.0"
+  xcodeVersion: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  SWIFT_VERSION: "6.0"
+
+targets:
+  StorageOptimizer:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - StorageOptimizer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.abdwy.StorageOptimizer
+        INFOPLIST_FILE: StorageOptimizer/Info.plist
+        CODE_SIGN_ENTITLEMENTS: StorageOptimizer/StorageOptimizer.entitlements
+        ENABLE_APP_SANDBOX: NO
+        SWIFT_VERSION: "6.0"
+        SWIFT_OBJC_BRIDGING_HEADER: StorageOptimizer/StorageOptimizer-Bridging-Header.h
+        GCC_OPTIMIZATION_LEVEL: "3"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: YES
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+          DEBUG_INFORMATION_FORMAT: dwarf
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
