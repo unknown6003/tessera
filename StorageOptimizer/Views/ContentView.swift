@@ -84,28 +84,27 @@ struct ContentView: View {
 
     @ViewBuilder
     private var chartContent: some View {
-        ZStack {
-            SunburstChart(
-                root: vm.currentRoot,
-                hoveredNode: vm.hoveredNode,
-                selectedNode: vm.selectedNode,
-                onHover: { vm.hoveredNode = $0 },
-                onSelect: { vm.selectedNode = $0 },
-                onZoomIn: { vm.zoomIn(to: $0) },
-                onZoomOut: { vm.zoomOut() },
-                onAddToCollector: { vm.addToCollector($0) },
-                onRevealInFinder: { node in
-                    NSWorkspace.shared.activateFileViewerSelecting([node.url])
-                }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
+        SunburstChart(
+            root: vm.currentRoot,
+            hoveredNode: vm.hoveredNode,
+            selectedNode: vm.selectedNode,
+            onHover: { vm.hoveredNode = $0 },
+            onSelect: { vm.selectedNode = $0 },
+            onZoomIn: { vm.zoomIn(to: $0) },
+            onZoomOut: { vm.zoomOut() },
+            onAddToCollector: { vm.addToCollector($0) },
+            onRevealInFinder: { node in
+                NSWorkspace.shared.activateFileViewerSelecting([node.url])
+            }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Breadcrumb floats over the TOP edge only. Previously it was a
+        // full-height `VStack { breadcrumb; Spacer() }` overlay, which sat above
+        // the whole chart and swallowed every hover/click meant for the wedges.
+        .overlay(alignment: .top) {
             if let current = vm.currentRoot {
-                VStack {
-                    breadcrumb(for: current)
-                        .padding(.top, 4)
-                    Spacer()
-                }
+                breadcrumb(for: current)
+                    .padding(.top, 4)
             }
         }
     }

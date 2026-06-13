@@ -50,6 +50,9 @@ struct SunburstChart: View {
 
             ZStack {
                 canvas(center: center, chartRadius: chartRadius, hubRadius: hubRadius)
+                    // Make the entire chart frame hit-testable, including the
+                    // transparent gaps between wedges, so hover and taps always land.
+                    .contentShape(Rectangle())
                     .onContinuousHover { phase in
                         switch phase {
                         case .active(let p):
@@ -62,8 +65,10 @@ struct SunburstChart: View {
                             onHover(nil)
                         }
                     }
-                    .gesture(clickGesture(center: center, chartRadius: chartRadius,
-                                          hubRadius: hubRadius))
+                    .onTapGesture(coordinateSpace: .local) { location in
+                        handleTap(at: location, center: center,
+                                  chartRadius: chartRadius, hubRadius: hubRadius)
+                    }
                     .contextMenu { contextMenuItems(center: center, chartRadius: chartRadius,
                                                     hubRadius: hubRadius) }
 
@@ -121,8 +126,9 @@ struct SunburstChart: View {
                                      inner: inner, outer: outer,
                                      start: start, end: end)
 
-                // Glassy body fill (specular → body → translucent shadow).
-                ctx.fill(path, with: .style(fill(for: wedge)))
+                // Glassy body fill, lit radially from the hub for coherent depth.
+                ctx.fill(path, with: wedgeShading(for: wedge, center: center,
+                                                  chartRadius: chartRadius, hubRadius: hubRadius))
 
                 // Bright inner specular rim along the inner arc — the refracting
                 // "lip" of glass. Drawn for real (non-synthetic) wedges only.
@@ -170,13 +176,22 @@ struct SunburstChart: View {
                    style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
     }
 
-    private func fill(for wedge: Wedge) -> AnyShapeStyle {
+    /// Shading for a wedge. Real wedges use a radial gradient centred on the hub
+    /// so the whole chart is lit from one point (glossy inner edge → rich rim),
+    /// keeping every ring's lighting coherent. Synthetic wedges stay flat.
+    private func wedgeShading(for wedge: Wedge, center: CGPoint,
+                              chartRadius: CGFloat, hubRadius: CGFloat) -> GraphicsContext.Shading {
         switch wedge.node.kind {
-        case .hiddenSpace: return AnyShapeStyle(Theme.hiddenSpaceColor)
-        case .aggregate:   return AnyShapeStyle(Theme.aggregateColor)
-        case .cloudOnlyStorage: return AnyShapeStyle(Theme.cloudColor)
+        case .hiddenSpace:      return .color(Theme.hiddenSpaceColor)
+        case .aggregate:        return .color(Theme.aggregateColor)
+        case .cloudOnlyStorage: return .color(Theme.cloudColor)
         case .regular, .package:
-            return Theme.wedgeGradient(hue: wedge.hue, depth: wedge.depth)
+            return .radialGradient(
+                Theme.wedgeRadialGradient(hue: wedge.hue),
+                center: center,
+                startRadius: hubRadius * 0.5,
+                endRadius: chartRadius
+            )
         }
     }
 
@@ -285,22 +300,22 @@ struct SunburstChart: View {
 
     // MARK: - Interaction
 
-    private func clickGesture(center: CGPoint, chartRadius: CGFloat,
-                              hubRadius: CGFloat) -> some Gesture {
-        SpatialTapGesture().onEnded { value in
-            guard let wedge = hitTest(at: value.location, center: center,
-                                      chartRadius: chartRadius, hubRadius: hubRadius) else {
-                onSelect(nil); return
-            }
-            if wedge.node.isSynthetic {
-                // Synthetic wedges ("Other" / hidden space) aren't real files;
-                // tapping them is a no-op selection.
-                onSelect(nil)
-            } else if wedge.node.isDirectory {
-                onZoomIn(wedge.node)
-            } else {
-                onSelect(wedge.node)
-            }
+    /// Handle a left click on the chart: zoom into a directory, select a file, or
+    /// clear the selection when the click misses every real wedge.
+    private func handleTap(at location: CGPoint, center: CGPoint,
+                           chartRadius: CGFloat, hubRadius: CGFloat) {
+        guard let wedge = hitTest(at: location, center: center,
+                                  chartRadius: chartRadius, hubRadius: hubRadius) else {
+            onSelect(nil); return
+        }
+        if wedge.node.isSynthetic {
+            // Synthetic wedges ("Other" / hidden space) aren't real files;
+            // tapping them is a no-op selection.
+            onSelect(nil)
+        } else if wedge.node.isDirectory {
+            onZoomIn(wedge.node)
+        } else {
+            onSelect(wedge.node)
         }
     }
 

@@ -121,8 +121,10 @@ struct Sidebar: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.tint)
                 .frame(width: 34, height: 34)
-                .glassEffect(.regular.interactive(), in: Circle())
-                .liquidGlassDepth(Circle(), highlight: 0.7, shadowRadius: 8, shadowY: 3)
+                // A tinted disc, NOT nested glass — glass-on-glass double-blurs
+                // into an unreadable smear. The panel itself supplies the glass.
+                .background(Circle().fill(.tint.opacity(0.16)))
+                .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 1))
             VStack(alignment: .leading, spacing: 1) {
                 Text("Storage Optimizer")
                     .font(.headline.smallCaps())
@@ -278,17 +280,14 @@ private struct VolumeCard: View {
         .padding(.vertical, 10)
         .background {
             let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+            // Selection is a tinted fill + accent border, NOT a nested glass
+            // surface. The sidebar panel is already glass; layering glass on glass
+            // double-blurs the card into the unreadable pink smear seen before.
             if isSelected {
-                // Selection = brighter, tinted glass (not an opaque fill).
-                Color.clear
-                    .glassEffect(.regular.interactive().tint(Theme.selectionTint),
-                                 in: shape)
-                    .overlay(
-                        shape.strokeBorder(Theme.glassHighlightStroke, lineWidth: 1)
-                            .blendMode(.plusLighter)
-                    )
+                shape.fill(Theme.selectionTint)
+                    .overlay(shape.strokeBorder(.tint.opacity(0.55), lineWidth: 1))
             } else {
-                shape.fill(.white.opacity(0.04))
+                shape.fill(.white.opacity(0.05))
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))

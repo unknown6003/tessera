@@ -5,12 +5,25 @@ enum Theme {
 
     // MARK: - Hues
 
-    /// 12 vivid hues evenly spaced starting from red-orange (DaisyDisk-style).
-    /// Adjacent entries are ~30° apart on the colour wheel for clear contrast.
-    static let topHues: [Double] = (0..<12).map { i in
-        // Start at 0.02 (red-orange) and step 1/12 (~0.0833) each time.
-        (0.02 + Double(i) * (1.0 / 12.0)).truncatingRemainder(dividingBy: 1.0)
-    }
+    /// Curated jewel-tone palette for the top ring. A flat 12-step rainbow ran
+    /// through a harsh neon yellow-green/lime band (hues ~0.20–0.40) that looked
+    /// garish against the dark glass; this set skips that band and leans on rich
+    /// reds, ambers, teals, blues, violets and magentas instead. Entries are
+    /// interleaved warm/cool so adjacent sibling wedges always contrast.
+    static let topHues: [Double] = [
+        0.00,  // red
+        0.55,  // azure
+        0.09,  // orange
+        0.70,  // violet
+        0.13,  // gold
+        0.60,  // blue
+        0.92,  // magenta
+        0.48,  // teal
+        0.04,  // vermilion
+        0.80,  // purple
+        0.52,  // cyan
+        0.16,  // warm amber
+    ]
 
     // MARK: - Wedge colours
 
@@ -21,32 +34,19 @@ enum Theme {
         return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 
-    /// Glassy gradient fill for a wedge — a bright specular inner edge bleeding
-    /// into a translucent, slightly desaturated body so the luminous backdrop
-    /// refracts through the ring. Outer rings read as thinner, cooler glass.
-    static func wedgeGradient(hue: Double, depth: Int) -> AnyShapeStyle {
-        // Bright specular highlight near the inner edge (top-leading).
-        let specular = Color(hue: hue,
-                             saturation: max(0.18, 0.55 - Double(depth) * 0.07),
-                             brightness: min(1.0,  1.02 - Double(depth) * 0.03))
-        // Saturated body.
-        let body = wedgeColor(hue: hue, depth: depth)
-        // Cooler, more translucent shadow side so depth reads through the glass.
-        let shadow = Color(hue: hue,
-                           saturation: min(1.0, 0.92 - Double(depth) * 0.05),
-                           brightness: max(0.40, 0.66 - Double(depth) * 0.05))
-            .opacity(0.92)
-        return AnyShapeStyle(
-            LinearGradient(
-                stops: [
-                    .init(color: specular.opacity(0.96), location: 0.00),
-                    .init(color: body,                    location: 0.42),
-                    .init(color: shadow,                  location: 1.00),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+    /// Coherent radial palette for a wedge, lit from the chart centre: glossy and
+    /// bright on the inner edge, deepening richly toward the rim. Paired with a
+    /// `GraphicsContext` radial shading centred on the hub so every ring shares
+    /// ONE light direction. This replaces the old per-wedge bounding-box
+    /// `LinearGradient`, which lit each wedge from its own corner — producing the
+    /// inconsistent, muddy, neon look. Saturation rises slightly outward so deep
+    /// rings stay vivid instead of greying out.
+    static func wedgeRadialGradient(hue: Double) -> Gradient {
+        Gradient(stops: [
+            .init(color: Color(hue: hue, saturation: 0.70, brightness: 1.00), location: 0.00),
+            .init(color: Color(hue: hue, saturation: 0.82, brightness: 0.88), location: 0.45),
+            .init(color: Color(hue: hue, saturation: 0.92, brightness: 0.60), location: 1.00),
+        ])
     }
 
     /// A thin bright "rim light" colour for a wedge's inner specular edge,
