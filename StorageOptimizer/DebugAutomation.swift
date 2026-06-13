@@ -18,6 +18,7 @@ enum DebugAutomation {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(800))
             log("starting scan; windows=\(NSApp.windows.map { "\($0.title):visible=\($0.isVisible)" })")
+            let scanStart = Date()
             vm.startScan(volumeURL: URL(fileURLWithPath: scanPath))
 
             try? await Task.sleep(for: .milliseconds(700))
@@ -35,8 +36,11 @@ enum DebugAutomation {
                 }
             }
             let p = vm.progress
+            let elapsed = Date().timeIntervalSince(scanStart)
+            let rate = elapsed > 0 ? Int(Double(p.dirsScanned) / elapsed) : 0
             log("scan finished: root=\(vm.rootNode?.size ?? -1) error=\(vm.errorMessage ?? "none") " +
-                "cancelled=\(vm.scanTaskWasCancelled) dirs \(p.dirsScanned)/\(p.dirsDiscovered)")
+                "cancelled=\(vm.scanTaskWasCancelled) dirs \(p.dirsScanned)/\(p.dirsDiscovered) " +
+                "elapsed=\(String(format: "%.2f", elapsed))s rate=\(rate) dirs/s")
             // Let the wedge sweep-in animation settle
             try? await Task.sleep(for: .milliseconds(1200))
             if let dir = snapshotDir {

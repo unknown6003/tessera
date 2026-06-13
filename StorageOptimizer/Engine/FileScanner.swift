@@ -12,11 +12,28 @@ struct ScanProgress: Sendable {
     var dirsScanned: Int = 0
     var dirsDiscovered: Int = 1
     var currentPath: String = ""
+    /// The volume's used-bytes figure, when scanning a whole volume (0 otherwise).
+    /// Used as the denominator for an honest, bytes-based progress fraction.
+    var volumeUsedTotal: Int64 = 0
+    /// Set on the final tick so the bar reads exactly 100% regardless of metric.
+    var isComplete: Bool = false
 
     /// 0…1 fraction of completion, or nil while the estimate is still too noisy.
     var fraction: Double? {
-        // Always show 100% once everything discovered has been scanned, so small
-        // scans (few directories) don't get stuck below 1.0.
+        if isComplete { return 1.0 }
+
+        // Whole-volume scan: report bytes found against the volume's used bytes.
+        // This is what the user compares against ("550 GB of 900 GB"), and unlike
+        // a directory-count ratio it can never race ahead of the data actually
+        // discovered. Capped just under 1.0 until the final tick, because a little
+        // used space is unreachable (snapshots, purgeable, protected files) and is
+        // reconciled as "Hidden Space" at the end.
+        if volumeUsedTotal > 0 {
+            return min(0.99, Double(bytesFound) / Double(volumeUsedTotal))
+        }
+
+        // Folder scan: no known byte total, so fall back to directories scanned
+        // vs. discovered (guaranteed to reach 1.0 — every dir is eventually seen).
         if dirsScanned >= dirsDiscovered && dirsScanned > 0 { return 1.0 }
         guard dirsDiscovered >= 16 else { return nil }
         return min(1.0, Double(dirsScanned) / Double(dirsDiscovered))
@@ -50,6 +67,18 @@ struct FileScanner: Sendable {
         "/Network",
     ]
 
+    /// A cloud-provider container whose subtree is online-only (dataless) content:
+    /// iCloud Drive ("~/Library/Mobile Documents") and third-party FileProviders
+    /// ("~/Library/CloudStorage"). Descending is the single biggest scan-time sink —
+    /// every directory inside forces a slow first-touch provider enumeration — while
+    /// the files are dataless and occupy ~0 local disk. We stop AT the container and
+    /// represent it as one `.cloudOnlyStorage` boundary node instead of crawling it.
+    /// (When such a container is itself the explicit scan root, we still descend, so
+    /// a user can deliberately inspect it.)
+    private static func isCloudBoundary(_ path: String) -> Bool {
+        path.hasSuffix("/Library/Mobile Documents") || path.hasSuffix("/Library/CloudStorage")
+    }
+
     // MARK: Public API
 
     static func scan(
@@ -65,6 +94,9 @@ struct FileScanner: Sendable {
         let rootNode = FileNode(url: url, name: rootName, isDirectory: true, size: 0)
 
         var progress = ScanProgress(currentPath: rootPath)
+        // Only use the volume-bytes denominator for a true volume scan; for a
+        // folder we don't know its byte total up front, so leave it 0.
+        progress.volumeUsedTotal = isVolumeRoot ? volumeUsed : 0
         var seenInodes = Set<DevIno>()
         var level: [DirWork] = [DirWork(path: rootPath, parentPath: "", node: rootNode)]
         let timeouts = TimeoutTracker()
@@ -118,6 +150,7 @@ struct FileScanner: Sendable {
         attachHiddenSpace(to: rootNode, volumeUsed: volumeUsed, isVolumeRoot: isVolumeRoot)
 
         progress.dirsScanned = progress.dirsDiscovered
+        progress.isComplete = true
         onProgress(progress)
         return rootNode
     }
@@ -224,6 +257,17 @@ struct FileScanner: Sendable {
                     guard allowedDevices.contains(entry.device),
                           !skippedPaths.contains(childPath) else { continue }
                     let childURL = URL(fileURLWithPath: childPath, isDirectory: true)
+
+                    // Cloud-provider container: record a boundary node and do NOT
+                    // descend. Its online-only contents use ~0 local disk, and
+                    // crawling them is the dominant scan-time sink.
+                    if isCloudBoundary(childPath) {
+                        let cloudNode = FileNode(url: childURL, name: entry.name,
+                                                 isDirectory: true, size: 0, kind: .cloudOnlyStorage)
+                        children.append(cloudNode)
+                        continue
+                    }
+
                     let kind: FileNode.Kind = BulkDirScanner.isPackageName(entry.name) ? .package : .regular
                     let childNode = FileNode(url: childURL, name: entry.name,
                                              isDirectory: true, size: 0, kind: kind)

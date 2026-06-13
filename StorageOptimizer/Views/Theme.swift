@@ -48,6 +48,9 @@ enum Theme {
         NSColor(calibratedWhite: 0.45, alpha: 0.45)
     )
 
+    /// Soft cyan for online-only cloud-storage boundary nodes.
+    static let cloudColor: Color = Color(hue: 0.55, saturation: 0.45, brightness: 0.85)
+
     // MARK: - Background
 
     /// Deep slate→indigo radial gradient backdrop — the canvas the glass panels float on.
@@ -80,6 +83,7 @@ enum Theme {
         switch node.kind {
         case .hiddenSpace: return "eye.slash.fill"
         case .aggregate:   return "ellipsis.circle.fill"
+        case .cloudOnlyStorage: return "icloud.fill"
         case .package:
             let ext = node.url.pathExtension.lowercased()
             switch ext {

@@ -42,8 +42,12 @@ final class ScanViewModel: ObservableObject {
                 let node = try await FileScanner.scan(url: volumeURL) { [weak self] prog in
                     Task { @MainActor [weak self] in
                         guard let self else { return }
-                        // Monotonicity guard: discard stale ticks that arrive out of order.
-                        if prog.dirsScanned >= self.progress.dirsScanned
+                        // Monotonicity guard: discard stale ticks that arrive out of
+                        // order (the @MainActor hop can reorder them). Accept the
+                        // final tick, or any tick that advances a monotonic counter.
+                        if prog.isComplete
+                            || prog.bytesFound >= self.progress.bytesFound
+                            || prog.dirsScanned >= self.progress.dirsScanned
                             || prog.dirsDiscovered > self.progress.dirsDiscovered {
                             self.progress = prog
                         }

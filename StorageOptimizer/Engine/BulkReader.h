@@ -7,7 +7,7 @@
 #define BR_TYPE_LNK  5  // symbolic link
 
 typedef struct {
-    char     name[1024];    // entry name, NUL-terminated (overlong names are truncated to fit)
+    char     name[256];     // entry name, NUL-terminated (NAME_MAX is 255 on APFS/HFS+; overlong names clamp to fit)
     uint32_t type;          // BR_TYPE_REG / BR_TYPE_DIR / BR_TYPE_LNK / 0
     uint32_t devid;         // device id (dev_t) — used to detect mount-point crossings
     uint32_t nlink;         // hard-link count (files only; 0 when unavailable)

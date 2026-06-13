@@ -49,8 +49,10 @@ struct Sidebar: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Glass panel container
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            // Glass panel container. Use Color.clear as the carrier — a bare Shape
+            // used as a View fills opaquely with the foreground style *before* the
+            // glass material is applied, which is what made the panel look flat.
+            Color.clear
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
             VStack(spacing: 0) {
@@ -270,7 +272,7 @@ private struct VolumeCard: View {
         .padding(.vertical, 9)
         .background {
             if isSelected {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                Color.clear
                     .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)

@@ -40,49 +40,60 @@ enum BulkDirScanner {
     /// When set, `timedEntries` uses this timeout instead of its default.
     nonisolated(unsafe) static var _timeoutSecondsOverride: Double? = nil
 
-    /// Resume-once latch so whichever of {result, deadline} fires first wins.
-    private final class OnceFlag: @unchecked Sendable {
+    /// Holds the syscall result across the sacrificial-thread / waiter boundary.
+    /// The DispatchSemaphore signal/wait pair establishes the happens-before, but
+    /// the lock keeps it free of data-race diagnostics and safe if abandoned.
+    private final class ResultBox: @unchecked Sendable {
         private let lock = NSLock()
-        private var fired = false
-        func tryFire() -> Bool {
-            lock.lock(); defer { lock.unlock() }
-            if fired { return false }
-            fired = true
-            return true
+        private var stored: [EntryInfo]?
+        var value: [EntryInfo]? {
+            get { lock.lock(); defer { lock.unlock() }; return stored }
+            set { lock.lock(); stored = newValue; lock.unlock() }
         }
     }
 
-    /// Enumerate a directory with a hard deadline.
+    /// Directories under a cloud-sync provider are the *only* ones whose
+    /// `getattrlistbulk` can block uninterruptibly in the kernel — iCloud Drive
+    /// ("Mobile Documents") and third-party FileProvider services mounted under
+    /// "~/Library/CloudStorage". Local APFS directories never hang (and other
+    /// devices are excluded by the scanner's mount-boundary gate), so they must
+    /// not pay for the sacrificial-thread guard — that overhead, multiplied over
+    /// millions of directories, is what made full-disk scans crawl.
+    private static func isHangProne(_ path: String) -> Bool {
+        path.contains("/Mobile Documents") || path.contains("/Library/CloudStorage")
+    }
+
+    /// Enumerate a directory, guarding only the directories that can actually
+    /// hang. Local directories are read directly on the calling worker (fast,
+    /// zero dispatch). Cloud/FileProvider directories go through a sacrificial
+    /// thread with a hard deadline: the syscall runs on one GCD worker while a
+    /// second waits on it with a timeout and abandons it if it never returns.
     ///
-    /// `getattrlistbulk` can block *uninterruptibly in the kernel* on dead
-    /// FileProvider mounts (iCloud Drive "Mobile Documents", CloudStorage) and
-    /// stalled network filesystems — no cancellation reaches it. The only safe
-    /// defense is to issue the syscall on a sacrificial GCD thread and abandon
-    /// it on timeout; a dead subtree then costs one deadline instead of hanging
-    /// the whole scan forever.
-    ///
-    /// This must be async (suspending), NOT a semaphore wait: blocking the
-    /// caller’s cooperative-pool thread starves the very GCD work it waits on
-    /// once all pool threads are blocked, causing spurious timeouts and silently
-    /// dropped subtrees.
-    ///
-    /// Returns nil when the deadline passes (caller should skip the directory).
+    /// Returns nil only when a guarded directory blows its deadline (caller skips
+    /// it). Crucially there is no per-directory Swift `Task`/timer: an uncancelled
+    /// timer per directory accumulates into hundreds of thousands of live timers
+    /// on a large scan and throttles the whole concurrency runtime.
     static func timedEntries(atPath path: String, timeoutSeconds: Double = 5) async -> [EntryInfo]? {
+        // Fast path: local directory, read inline. Test seams force the guarded
+        // path so the timeout/abandon logic stays exercised by the suite.
+        if _testDelay == nil, _timeoutSecondsOverride == nil, !isHangProne(path) {
+            return entries(atPath: path)
+        }
+
         let timeout = _timeoutSecondsOverride ?? timeoutSeconds
         return await withCheckedContinuation { (cont: CheckedContinuation<[EntryInfo]?, Never>) in
-            let once = OnceFlag()
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = entries(atPath: path)
-                if once.tryFire() { cont.resume(returning: result) }
-            }
-            // The deadline must NOT run on the GCD pool: when a burst of dead
-            // directories hangs hundreds of sacrificial workers, the pool is
-            // exhausted and asyncAfter timers never fire — freezing the scan.
-            // Task.sleep runs on the Swift Concurrency runtime, which the GCD
-            // clog cannot block.
-            Task.detached(priority: .userInitiated) {
-                try? await Task.sleep(for: .seconds(timeout))
-                if once.tryFire() { cont.resume(returning: nil) }
+                let sem = DispatchSemaphore(value: 0)
+                let box = ResultBox()
+                DispatchQueue.global(qos: .userInitiated).async {
+                    box.value = entries(atPath: path)
+                    sem.signal()
+                }
+                if sem.wait(timeout: .now() + timeout) == .timedOut {
+                    cont.resume(returning: nil)       // abandon the hung worker
+                } else {
+                    cont.resume(returning: box.value)
+                }
             }
         }
     }

@@ -255,6 +255,7 @@ struct InspectorView: View {
         switch node.kind {
         case .hiddenSpace: return Theme.hiddenSpaceColor
         case .aggregate:   return Theme.aggregateColor
+        case .cloudOnlyStorage: return Theme.cloudColor
         default:
             let hue = Theme.topHues[abs(node.name.hashValue) % Theme.topHues.count]
             return Theme.wedgeColor(hue: hue, depth: 0)

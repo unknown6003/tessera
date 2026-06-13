@@ -140,6 +140,7 @@ struct SunburstChart: View {
         switch wedge.node.kind {
         case .hiddenSpace: return AnyShapeStyle(Theme.hiddenSpaceColor)
         case .aggregate:   return AnyShapeStyle(Theme.aggregateColor)
+        case .cloudOnlyStorage: return AnyShapeStyle(Theme.cloudColor)
         case .regular, .package:
             return Theme.wedgeGradient(hue: wedge.hue, depth: wedge.depth)
         }
@@ -269,6 +270,7 @@ struct SunburstChart: View {
         switch node?.kind {
         case .aggregate:    return "Aggregated small items"
         case .hiddenSpace:  return "Space not visible to the scan"
+        case .cloudOnlyStorage: return "Online-only cloud storage (not scanned)"
         default:            return "Nothing here"
         }
     }

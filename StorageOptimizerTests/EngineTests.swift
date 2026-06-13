@@ -238,6 +238,42 @@ struct EngineTests {
         }
     }
 
+    // MARK: 6b — cloud-provider boundary
+
+    @Test("A cloud-provider container is a .cloudOnlyStorage boundary and is not descended")
+    func cloudStorageIsBoundary() async throws {
+        let base = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // Mimic ~/Library/CloudStorage/<provider>/<deep file> and a normal sibling.
+        let fm = FileManager.default
+        let cloudRoot = base.appendingPathComponent("Library/CloudStorage", isDirectory: true)
+        let providerDeep = cloudRoot.appendingPathComponent("Nextcloud-acct/music/album", isDirectory: true)
+        try fm.createDirectory(at: providerDeep, withIntermediateDirectories: true)
+        try Data(repeating: 0x01, count: 8192).write(to: providerDeep.appendingPathComponent("track.flac"))
+
+        let normal = base.appendingPathComponent("Library/Application Support/app", isDirectory: true)
+        try fm.createDirectory(at: normal, withIntermediateDirectories: true)
+        try Data(repeating: 0x02, count: 4096).write(to: normal.appendingPathComponent("data.bin"))
+
+        let root = try await FileScanner.scan(url: base) { _ in }
+
+        // Locate the CloudStorage node.
+        func find(_ node: FileNode, named name: String) -> FileNode? {
+            if node.name == name { return node }
+            for c in node.children { if let hit = find(c, named: name) { return hit } }
+            return nil
+        }
+        let cloud = find(root, named: "CloudStorage")
+        #expect(cloud != nil)
+        #expect(cloud?.kind == .cloudOnlyStorage)
+        #expect(cloud?.children.isEmpty == true)          // never descended
+        #expect(cloud?.size == 0)                          // online-only → 0 local bytes
+        #expect(find(root, named: "track.flac") == nil)    // cloud contents excluded
+        // The normal sibling is still scanned.
+        #expect(find(root, named: "data.bin") != nil)
+    }
+
     // MARK: 7 — cancellation
 
     @Test("Cancelling a large scan throws CancellationError or completes without other errors")

@@ -14,6 +14,11 @@ final class FileNode: Identifiable, @unchecked Sendable {
         case hiddenSpace
         /// Synthetic aggregation node ("Other") used by the chart. Not deletable.
         case aggregate
+        /// A cloud-provider folder (iCloud Drive, CloudStorage) left unscanned:
+        /// its contents are online-only (dataless), occupy ~0 local disk, and each
+        /// directory costs a slow first-touch provider enumeration. Treated as a
+        /// boundary so scans stay fast. Not deletable.
+        case cloudOnlyStorage
     }
 
     let id = UUID()
@@ -37,7 +42,7 @@ final class FileNode: Identifiable, @unchecked Sendable {
     }
 
     /// True for synthetic nodes that must never be trashed or revealed in Finder.
-    var isSynthetic: Bool { kind == .hiddenSpace || kind == .aggregate }
+    var isSynthetic: Bool { kind == .hiddenSpace || kind == .aggregate || kind == .cloudOnlyStorage }
 
     /// Children sorted largest-first.
     var sortedChildren: [FileNode] { children.sorted { $0.size > $1.size } }
