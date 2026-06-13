@@ -17,6 +17,7 @@
 		90D0AECEE8DAE38C1F5E301E /* BulkReader.c in Sources */ = {isa = PBXBuildFile; fileRef = EA25F9BF10EDE58E854FE0E6 /* BulkReader.c */; };
 		A3AA97208A6C81E052A0ECBB /* Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B75DFA4820FD837D699B3F /* Sidebar.swift */; };
 		AD90F8F4C988E9F06DDAB873 /* FileNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ACF3D7AE52318FAB11AFC24 /* FileNode.swift */; };
+		B2D1E7189A4AACB33905A70A /* DebugAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D17682C03471DB6FE5BAC9 /* DebugAutomation.swift */; };
 		B40DF85044A12E2F7076BB03 /* StorageOptimizerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5954AC735E1A8256EDFDE1D /* StorageOptimizerApp.swift */; };
 		C7C1B88B99DBF460C480265D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F655824E790F4A1A9FCB19B2 /* ContentView.swift */; };
 		D0A4691F818CD85261FE23E1 /* BulkDirScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED0D3ED4A340442D741C40C6 /* BulkDirScanner.swift */; };
@@ -39,6 +40,7 @@
 		14BECC25C32D412C2DB15599 /* FileScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileScanner.swift; sourceTree = "<group>"; };
 		1E34A8E0B2233C2B5EA9FFE1 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		4D9B500016263ACA4BF78C4B /* StorageOptimizer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StorageOptimizer.entitlements; sourceTree = "<group>"; };
+		52D17682C03471DB6FE5BAC9 /* DebugAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugAutomation.swift; sourceTree = "<group>"; };
 		5DC066D847E641A17B0DB6AF /* BulkReader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BulkReader.h; sourceTree = "<group>"; };
 		6420CDE63EFE0F46919442BC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7926B52A79D2A820F25AF809 /* TrashService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashService.swift; sourceTree = "<group>"; };
@@ -127,6 +129,7 @@
 		F86139F245933C74CEB7A394 /* StorageOptimizer */ = {
 			isa = PBXGroup;
 			children = (
+				52D17682C03471DB6FE5BAC9 /* DebugAutomation.swift */,
 				6420CDE63EFE0F46919442BC /* Info.plist */,
 				D4949ABD498D6E2BD6A2FBCD /* StorageOptimizer-Bridging-Header.h */,
 				4D9B500016263ACA4BF78C4B /* StorageOptimizer.entitlements */,
@@ -224,6 +227,7 @@
 				D0A4691F818CD85261FE23E1 /* BulkDirScanner.swift in Sources */,
 				90D0AECEE8DAE38C1F5E301E /* BulkReader.c in Sources */,
 				C7C1B88B99DBF460C480265D /* ContentView.swift in Sources */,
+				B2D1E7189A4AACB33905A70A /* DebugAutomation.swift in Sources */,
 				AD90F8F4C988E9F06DDAB873 /* FileNode.swift in Sources */,
 				0C3CC5F272C51E2D497C0B54 /* FileScanner.swift in Sources */,
 				60ADFADC631518C7D4917629 /* InspectorView.swift in Sources */,

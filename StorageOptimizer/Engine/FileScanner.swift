@@ -156,7 +156,13 @@ struct FileScanner: Sendable {
         for work in chunk {
             if Task.isCancelled { break }
 
-            let entries = BulkDirScanner.entries(atPath: work.path)
+            guard let entries = BulkDirScanner.timedEntries(atPath: work.path) else {
+                // Dead filesystem under this directory (e.g. stalled iCloud /
+                // FileProvider mount) — skip it rather than hang the scan.
+                result.dirsScanned += 1
+                result.lastPath = work.path
+                continue
+            }
             var children: [FileNode] = []
             children.reserveCapacity(entries.count)
 

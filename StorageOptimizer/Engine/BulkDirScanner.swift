@@ -27,6 +27,43 @@ private let packageExtensions: Set<String> = [
 enum BulkDirScanner {
     private static let maxEntriesPerDir = 32_768
 
+    /// Box for handing the result across the sacrificial-thread boundary.
+    private final class ResultBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [EntryInfo]?
+        let semaphore = DispatchSemaphore(value: 0)
+
+        func store(_ entries: [EntryInfo]) {
+            lock.lock(); stored = entries; lock.unlock()
+            semaphore.signal()
+        }
+        func take() -> [EntryInfo]? {
+            lock.lock(); defer { lock.unlock() }
+            return stored
+        }
+    }
+
+    /// Enumerate a directory with a hard deadline.
+    ///
+    /// `getattrlistbulk` can block *uninterruptibly in the kernel* on dead
+    /// FileProvider mounts (iCloud Drive "Mobile Documents", CloudStorage) and
+    /// stalled network filesystems — no cancellation reaches it. The only safe
+    /// defense is to issue the syscall on a sacrificial GCD thread and abandon
+    /// it on timeout; a dead subtree then costs one deadline instead of hanging
+    /// the whole scan forever.
+    ///
+    /// Returns nil when the deadline passes (caller should skip the directory).
+    static func timedEntries(atPath path: String, timeoutSeconds: Double = 5) -> [EntryInfo]? {
+        let box = ResultBox()
+        DispatchQueue.global(qos: .utility).async {
+            box.store(entries(atPath: path))
+        }
+        guard box.semaphore.wait(timeout: .now() + timeoutSeconds) == .success else {
+            return nil
+        }
+        return box.take()
+    }
+
     /// Treat package directories (.app, .framework, …) as leaf "directories the user
     /// thinks of as files" only at presentation level; the scanner must still descend
     /// into them to measure their size, so they are reported as `.directory` here and

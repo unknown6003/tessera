@@ -77,8 +77,13 @@ struct SunburstChart: View {
 
     private func canvas(center: CGPoint, chartRadius: CGFloat, hubRadius: CGFloat) -> some View {
         let ringSpan = (chartRadius - hubRadius) / CGFloat(Self.maxRings)
+        // Fall back to a fresh layout when the cache hasn't been primed yet
+        // (e.g. offscreen rendering where onAppear never fires).
+        let cachePrimed = layoutRootID == root?.id && !layout.isEmpty
+        let wedges = cachePrimed ? layout : root.map { Self.buildLayout(root: $0) } ?? []
+        let progress = cachePrimed ? appearProgress : 1.0
         return Canvas { ctx, _ in
-            for wedge in layout {
+            for wedge in wedges {
                 let inner = hubRadius + CGFloat(wedge.depth) * ringSpan + Self.ringInset
                 let outer = hubRadius + CGFloat(wedge.depth + 1) * ringSpan - Self.ringInset
                 let isHovered = wedge.node.id == hoveredNode?.id
@@ -86,7 +91,7 @@ struct SunburstChart: View {
 
                 // Sweep-in: scale the swept angle by appearProgress.
                 let start = wedge.startAngle
-                let end = start + (wedge.endAngle - wedge.startAngle) * appearProgress
+                let end = start + (wedge.endAngle - wedge.startAngle) * progress
                 guard end - start > 0.0001 else { continue }
 
                 let path = wedgePath(center: center,
@@ -281,7 +286,7 @@ struct SunburstChart: View {
 
     /// Walk the tree breadth-by-depth, allocating angular spans proportional to
     /// size, aggregating tiny siblings into a synthetic "Other" wedge.
-    private static func buildLayout(root: FileNode) -> [Wedge] {
+    static func buildLayout(root: FileNode) -> [Wedge] {
         var out: [Wedge] = []
         let total = max(1, Double(root.size))
 
@@ -351,7 +356,7 @@ struct SunburstChart: View {
 
     // MARK: - Wedge model
 
-    private struct Wedge: Identifiable {
+    struct Wedge: Identifiable {
         let id = UUID()
         let node: FileNode
         let depth: Int

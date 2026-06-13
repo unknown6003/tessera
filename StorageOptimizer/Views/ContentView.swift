@@ -20,6 +20,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Rectangle().fill(Theme.backgroundGradient).ignoresSafeArea())
         .background(KeyboardShortcuts(vm: vm))
+        .onAppear { DebugAutomation.runIfRequested(vm: vm) }
     }
 
     // MARK: - Center area
