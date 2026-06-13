@@ -146,16 +146,24 @@ struct EngineTests {
 
     // MARK: 4 — packagesAreScanned
 
-    @Test("A .app directory is classified as .package and its size includes contents")
+    @Test("A .app directory is classified as .package and its size includes all nested contents")
     func packagesAreScanned() async throws {
         let base = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: base) }
         do {
             let appBundle = base.appendingPathComponent("Demo.app", isDirectory: true)
-            try FileManager.default.createDirectory(at: appBundle, withIntermediateDirectories: true)
+            let resDir = appBundle.appendingPathComponent("Resources", isDirectory: true)
+            try FileManager.default.createDirectory(at: resDir, withIntermediateDirectories: true)
+
+            // Two files at different depths inside the bundle
             let binary = appBundle.appendingPathComponent("Demo")
             try Data(repeating: 0xEE, count: 4096).write(to: binary)
+            let asset = resDir.appendingPathComponent("asset.bin")
+            try Data(repeating: 0xAA, count: 8192).write(to: asset)
+
             let expectedBinarySize = allocatedSize(at: binary.path)
+            let expectedAssetSize  = allocatedSize(at: asset.path)
+            let expectedTotal = expectedBinarySize + expectedAssetSize
 
             let root = try await FileScanner.scan(url: base) { _ in }
 
@@ -165,8 +173,8 @@ struct EngineTests {
             }
 
             #expect(appNode.kind == .package)
-            #expect(appNode.size == expectedBinarySize,
-                    "Package size \(appNode.size) != file's allocated size \(expectedBinarySize)")
+            #expect(appNode.size == expectedTotal,
+                    "Package size \(appNode.size) != sum of both files \(expectedTotal)")
         }
     }
 
@@ -204,13 +212,12 @@ struct EngineTests {
             if let frac = finalProg.fraction {
                 #expect(frac == 1.0, "Expected fraction 1.0, got \(frac)")
             }
-            // bytesFound must equal root.size (no hidden space for a plain folder scan)
-            // root.size already aggregated; bytesFound counts raw file allocations.
-            // They should be equal because there's no hidden-space synthetic here.
-            let realSize = root.children
-                .filter { !$0.isSynthetic }
-                .reduce(Int64(0)) { $0 + $1.size }
-            #expect(finalProg.bytesFound == realSize)
+            // bytesFound must equal the real (non-synthetic) byte total
+            #expect(finalProg.bytesFound == sumRealBytes(root),
+                    "bytesFound \(finalProg.bytesFound) != sumRealBytes \(sumRealBytes(root))")
+            // root.size must match sumRealBytes (no hidden space for a plain folder scan)
+            #expect(root.size == sumRealBytes(root),
+                    "root.size \(root.size) != sumRealBytes \(sumRealBytes(root))")
         }
     }
 
@@ -336,5 +343,129 @@ struct EngineTests {
                 #expect(found, "Ground-truth entry '\(name)' missing from BulkDirScanner output")
             }
         }
+    }
+
+    // MARK: 10 — timedEntriesTimesOut
+
+    @Test("BulkDirScanner.timedEntries returns nil for a stalled directory and non-nil for a normal one")
+    func timedEntriesTimesOut() async throws {
+        let base = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // A file so the directory is not empty
+        try Data(repeating: 0x01, count: 512).write(to: base.appendingPathComponent("file.dat"))
+
+        // Point the delay at the last path component of our temp dir
+        let suffix = base.lastPathComponent
+        BulkDirScanner._testDelay = (pathSuffix: suffix, seconds: 1.0)
+        defer { BulkDirScanner._testDelay = nil }
+
+        let start = ContinuousClock.now
+        let result = await BulkDirScanner.timedEntries(atPath: base.path, timeoutSeconds: 0.2)
+        let elapsed = ContinuousClock.now - start
+
+        #expect(result == nil, "Expected nil (timeout) for delayed directory")
+        #expect(elapsed < .seconds(1.5), "timedEntries should return well before the 1s delay fires")
+
+        // A separate, non-delayed directory should return a real listing
+        let other = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: other) }
+        try Data(repeating: 0x02, count: 512).write(to: other.appendingPathComponent("f.dat"))
+        let normalResult = await BulkDirScanner.timedEntries(atPath: other.path, timeoutSeconds: 5)
+        #expect(normalResult != nil, "Non-delayed path should return entries")
+    }
+
+    // MARK: 11 — scanSkipsTimedOutDirectory
+
+    @Test("FileScanner.scan completes when one sibling directory stalls and marks it as childless")
+    func scanSkipsTimedOutDirectory() async throws {
+        let base = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // Three sibling dirs: alpha, slowdir, gamma
+        let alpha   = base.appendingPathComponent("alpha",   isDirectory: true)
+        let slowdir = base.appendingPathComponent("slowdir", isDirectory: true)
+        let gamma   = base.appendingPathComponent("gamma",   isDirectory: true)
+        for dir in [alpha, slowdir, gamma] {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+
+        let alphaFile   = alpha.appendingPathComponent("a.dat")
+        let slowFile    = slowdir.appendingPathComponent("s.dat")
+        let gammaFile   = gamma.appendingPathComponent("g.dat")
+        try Data(repeating: 0xAA, count: 4096).write(to: alphaFile)
+        try Data(repeating: 0xBB, count: 4096).write(to: slowFile)
+        try Data(repeating: 0xCC, count: 4096).write(to: gammaFile)
+
+        let expectedAlpha = allocatedSize(at: alphaFile.path)
+        let expectedGamma = allocatedSize(at: gammaFile.path)
+
+        BulkDirScanner._testDelay = (pathSuffix: "slowdir", seconds: 1.5)
+        BulkDirScanner._timeoutSecondsOverride = 0.3
+        defer {
+            BulkDirScanner._testDelay = nil
+            BulkDirScanner._timeoutSecondsOverride = nil
+        }
+
+        final class ProgressBox: @unchecked Sendable {
+            var last = ScanProgress()
+            let lock = NSLock()
+            func update(_ p: ScanProgress) { lock.withLock { last = p } }
+            func read() -> ScanProgress { lock.withLock { last } }
+        }
+        let box = ProgressBox()
+
+        let root = try await FileScanner.scan(url: base) { p in box.update(p) }
+
+        // alpha and gamma must have the right sizes
+        guard let alphaNode = root.children.first(where: { $0.name == "alpha" }) else {
+            Issue.record("alpha node missing"); return
+        }
+        guard let gammaNode = root.children.first(where: { $0.name == "gamma" }) else {
+            Issue.record("gamma node missing"); return
+        }
+        guard let slowNode = root.children.first(where: { $0.name == "slowdir" }) else {
+            Issue.record("slowdir node missing"); return
+        }
+
+        #expect(alphaNode.size == expectedAlpha,
+                "alpha size \(alphaNode.size) != expected \(expectedAlpha)")
+        #expect(gammaNode.size == expectedGamma,
+                "gamma size \(gammaNode.size) != expected \(expectedGamma)")
+        // slowdir timed out — its entries were never enumerated
+        #expect(slowNode.children.isEmpty, "slowdir should have no children after timeout")
+
+        // Progress fraction must reach 1.0
+        let finalProg = box.read()
+        if let frac = finalProg.fraction {
+            #expect(frac == 1.0, "Final fraction should be 1.0, got \(frac)")
+        }
+    }
+
+    // MARK: 12 — hardlinksAcrossLevels
+
+    @Test("Hard-linked file is counted once when link is one BFS level deeper than original")
+    func hardlinksAcrossLevels() async throws {
+        let base = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        // base/a/file.dat  (original)
+        // base/a/b/link.dat  (hard link — one BFS level deeper than the original)
+        let aDir = base.appendingPathComponent("a", isDirectory: true)
+        let bDir = aDir.appendingPathComponent("b", isDirectory: true)
+        try FileManager.default.createDirectory(at: bDir, withIntermediateDirectories: true)
+
+        let original = aDir.appendingPathComponent("file.dat")
+        try Data(repeating: 0xDE, count: 1 << 20).write(to: original)
+        let expectedSize = allocatedSize(at: original.path)
+
+        let link = bDir.appendingPathComponent("link.dat")
+        try FileManager.default.linkItem(at: original, to: link)
+
+        let root = try await FileScanner.scan(url: base) { _ in }
+
+        let total = sumRealBytes(root)
+        #expect(total == expectedSize,
+                "Expected \(expectedSize) bytes (one allocation), got \(total)")
     }
 }

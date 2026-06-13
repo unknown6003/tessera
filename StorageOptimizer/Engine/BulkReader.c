@@ -43,6 +43,11 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries) {
             const char *recstart = ptr;
             uint32_t reclen = r32(ptr);
 
+            // Bounds-validate the record before reading any of its fields:
+            // a malformed/short record could otherwise read past the buffer, and
+            // reclen == 0 would loop forever on `ptr = recstart + reclen`.
+            if (reclen < 24 || recstart + reclen > buf + BUFFER_SIZE) break;
+
             // Record layout:
             //  [0]  uint32_t length
             //  [4]  attribute_set_t returned = { commonattr, volattr, dirattr, fileattr, forkattr } (5 × uint32 = 20 bytes)
@@ -61,8 +66,16 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries) {
                 int32_t  nameoff = ri32(field);
                 uint32_t namelen = r32(field + 4);   // includes NUL
                 const char *namedata = field + nameoff;
-                uint32_t copylen = (namelen > 1 && namelen <= sizeof(e.name)) ? namelen - 1 : 0;
-                if (copylen > 0) {
+                // Clamp overlong names instead of dropping them — dropping the name
+                // would silently discard the whole subtree rooted at this entry.
+                uint32_t copylen = (namelen > 1) ? namelen - 1 : 0;
+                if (copylen > sizeof(e.name) - 1) copylen = sizeof(e.name) - 1;
+                // Validate the name reference lies fully within the buffer; on any
+                // violation leave the name empty (the record is then skipped below).
+                if (copylen > 0 &&
+                    nameoff >= 0 &&
+                    namedata >= buf && namedata < buf + BUFFER_SIZE &&
+                    namedata + copylen <= buf + BUFFER_SIZE) {
                     memcpy(e.name, namedata, copylen);
                     e.name[copylen] = '\0';
                 }

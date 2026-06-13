@@ -19,6 +19,7 @@
 		AD90F8F4C988E9F06DDAB873 /* FileNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ACF3D7AE52318FAB11AFC24 /* FileNode.swift */; };
 		B2D1E7189A4AACB33905A70A /* DebugAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D17682C03471DB6FE5BAC9 /* DebugAutomation.swift */; };
 		B40DF85044A12E2F7076BB03 /* StorageOptimizerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5954AC735E1A8256EDFDE1D /* StorageOptimizerApp.swift */; };
+		BDD3789B507C4EBF852E55AF /* LayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9ECCAD27253345F26B22237 /* LayoutTests.swift */; };
 		C7C1B88B99DBF460C480265D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F655824E790F4A1A9FCB19B2 /* ContentView.swift */; };
 		D0A4691F818CD85261FE23E1 /* BulkDirScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED0D3ED4A340442D741C40C6 /* BulkDirScanner.swift */; };
 		DF1F9DB8C555F6BC447DC4C0 /* EngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACFDCAB20E8FA97583AD2706 /* EngineTests.swift */; };
@@ -50,6 +51,7 @@
 		9ACF3D7AE52318FAB11AFC24 /* FileNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNode.swift; sourceTree = "<group>"; };
 		A22799EC27F3878A28E92A74 /* SunburstChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunburstChart.swift; sourceTree = "<group>"; };
 		A2EF1450DA7F131DAE378539 /* ScanViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanViewModel.swift; sourceTree = "<group>"; };
+		A9ECCAD27253345F26B22237 /* LayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutTests.swift; sourceTree = "<group>"; };
 		ACFDCAB20E8FA97583AD2706 /* EngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTests.swift; sourceTree = "<group>"; };
 		C5954AC735E1A8256EDFDE1D /* StorageOptimizerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageOptimizerApp.swift; sourceTree = "<group>"; };
 		D4949ABD498D6E2BD6A2FBCD /* StorageOptimizer-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "StorageOptimizer-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -72,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				ACFDCAB20E8FA97583AD2706 /* EngineTests.swift */,
+				A9ECCAD27253345F26B22237 /* LayoutTests.swift */,
 				8A7F392BD6C036181ABA6E22 /* ViewModelTests.swift */,
 			);
 			path = StorageOptimizerTests;
@@ -245,6 +248,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DF1F9DB8C555F6BC447DC4C0 /* EngineTests.swift in Sources */,
+				BDD3789B507C4EBF852E55AF /* LayoutTests.swift in Sources */,
 				63BDE4AC31181AF946BB6324 /* ViewModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

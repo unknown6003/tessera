@@ -25,10 +25,18 @@ enum DebugAutomation {
                 snapshotKeyWindow(to: dir + "/scanning.png")
             }
 
+            var ticks = 0
             while vm.isScanning {
                 try? await Task.sleep(for: .milliseconds(200))
+                ticks += 1
+                if ticks % 150 == 0 {  // every ~30s
+                    let p = vm.progress
+                    log("progress: dirs \(p.dirsScanned)/\(p.dirsDiscovered) files \(p.filesScanned) at \(p.currentPath)")
+                }
             }
-            log("scan finished: root=\(vm.rootNode?.size ?? -1) error=\(vm.errorMessage ?? "none")")
+            let p = vm.progress
+            log("scan finished: root=\(vm.rootNode?.size ?? -1) error=\(vm.errorMessage ?? "none") " +
+                "cancelled=\(vm.scanTaskWasCancelled) dirs \(p.dirsScanned)/\(p.dirsDiscovered)")
             // Let the wedge sweep-in animation settle
             try? await Task.sleep(for: .milliseconds(1200))
             if let dir = snapshotDir {

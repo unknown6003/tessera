@@ -25,21 +25,30 @@ private let packageExtensions: Set<String> = [
 // MARK: - BulkDirScanner
 
 enum BulkDirScanner {
-    private static let maxEntriesPerDir = 32_768
+    private static let maxEntriesPerDir = 4096
 
-    /// Box for handing the result across the sacrificial-thread boundary.
-    private final class ResultBox: @unchecked Sendable {
+    // MARK: - Test seams (test-only)
+    //
+    // These are `nonisolated(unsafe)` by design: the test suite runs serially and
+    // mutates them only from a single test thread, so no synchronization is needed.
+    // They must not be touched by production code.
+
+    /// When set, `entries(atPath:)` sleeps for `seconds` if the path ends with
+    /// `pathSuffix` — used to exercise the timeout/sacrificial-thread path.
+    nonisolated(unsafe) static var _testDelay: (pathSuffix: String, seconds: Double)? = nil
+
+    /// When set, `timedEntries` uses this timeout instead of its default.
+    nonisolated(unsafe) static var _timeoutSecondsOverride: Double? = nil
+
+    /// Resume-once latch so whichever of {result, deadline} fires first wins.
+    private final class OnceFlag: @unchecked Sendable {
         private let lock = NSLock()
-        private var stored: [EntryInfo]?
-        let semaphore = DispatchSemaphore(value: 0)
-
-        func store(_ entries: [EntryInfo]) {
-            lock.lock(); stored = entries; lock.unlock()
-            semaphore.signal()
-        }
-        func take() -> [EntryInfo]? {
+        private var fired = false
+        func tryFire() -> Bool {
             lock.lock(); defer { lock.unlock() }
-            return stored
+            if fired { return false }
+            fired = true
+            return true
         }
     }
 
@@ -52,16 +61,30 @@ enum BulkDirScanner {
     /// it on timeout; a dead subtree then costs one deadline instead of hanging
     /// the whole scan forever.
     ///
+    /// This must be async (suspending), NOT a semaphore wait: blocking the
+    /// caller’s cooperative-pool thread starves the very GCD work it waits on
+    /// once all pool threads are blocked, causing spurious timeouts and silently
+    /// dropped subtrees.
+    ///
     /// Returns nil when the deadline passes (caller should skip the directory).
-    static func timedEntries(atPath path: String, timeoutSeconds: Double = 5) -> [EntryInfo]? {
-        let box = ResultBox()
-        DispatchQueue.global(qos: .utility).async {
-            box.store(entries(atPath: path))
+    static func timedEntries(atPath path: String, timeoutSeconds: Double = 5) async -> [EntryInfo]? {
+        let timeout = _timeoutSecondsOverride ?? timeoutSeconds
+        return await withCheckedContinuation { (cont: CheckedContinuation<[EntryInfo]?, Never>) in
+            let once = OnceFlag()
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = entries(atPath: path)
+                if once.tryFire() { cont.resume(returning: result) }
+            }
+            // The deadline must NOT run on the GCD pool: when a burst of dead
+            // directories hangs hundreds of sacrificial workers, the pool is
+            // exhausted and asyncAfter timers never fire — freezing the scan.
+            // Task.sleep runs on the Swift Concurrency runtime, which the GCD
+            // clog cannot block.
+            Task.detached(priority: .userInitiated) {
+                try? await Task.sleep(for: .seconds(timeout))
+                if once.tryFire() { cont.resume(returning: nil) }
+            }
         }
-        guard box.semaphore.wait(timeout: .now() + timeoutSeconds) == .success else {
-            return nil
-        }
-        return box.take()
     }
 
     /// Treat package directories (.app, .framework, …) as leaf "directories the user
@@ -73,9 +96,18 @@ enum BulkDirScanner {
     }
 
     static func entries(atPath path: String) -> [EntryInfo] {
-        // Try getattrlistbulk via C bridge
-        var cEntries = [BREntry](repeating: BREntry(), count: maxEntriesPerDir)
-        let count = br_scan_directory(path, &cEntries, Int32(maxEntriesPerDir))
+        // Test-only delay hook (see `_testDelay`).
+        if let delay = _testDelay, path.hasSuffix(delay.pathSuffix) {
+            Thread.sleep(forTimeInterval: delay.seconds)
+        }
+
+        // Try getattrlistbulk via C bridge.
+        // Allocate without zero-fill — only indices 0..<count are read, and the C
+        // side fully populates each written entry. Deallocated unconditionally.
+        let cEntries = UnsafeMutableBufferPointer<BREntry>.allocate(capacity: maxEntriesPerDir)
+        defer { cEntries.deallocate() }
+
+        let count = br_scan_directory(path, cEntries.baseAddress, Int32(maxEntriesPerDir))
         if count >= 0 {
             // A completely full buffer may mean the directory was truncated;
             // re-read with the unbounded fallback to avoid silently dropping entries.

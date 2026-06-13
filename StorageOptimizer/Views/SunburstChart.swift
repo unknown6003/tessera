@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - SunburstChart
 
@@ -22,8 +23,8 @@ struct SunburstChart: View {
     private static let minWedgeDegrees: Double = 0.7
     private static let aggregateFraction: Double = 0.004   // 0.4 %
     private static let gapDegrees: Double = 1.2
+    private static let maxWedgesPerRing = 60
     private static let ringInset: CGFloat = 1.5            // hairline separation
-    private static let hoverPop: CGFloat = 3.0
 
     // Cached layout, recomputed only on root/size change.
     @State private var layout: [Wedge] = []
@@ -32,6 +33,13 @@ struct SunburstChart: View {
     @State private var appearProgress: Double = 0          // 0…1 sweep-in
     @State private var cursor: CGPoint = .zero
     @State private var hovering = false
+    /// This view's frame in window coordinates, used to convert global
+    /// right-click events into local space.
+    @State private var windowFrame: CGRect = .zero
+    /// Measured tooltip size for accurate edge clamping.
+    @State private var tooltipSize: CGSize = .zero
+    /// Local NSEvent monitor for right-clicks; removed on disappear.
+    @State private var rightClickMonitor: Any?
 
     var body: some View {
         GeometryReader { geo in
@@ -65,7 +73,18 @@ struct SunburstChart: View {
                     tooltip(for: node, in: geo.size)
                 }
             }
-            .onAppear { rebuild(size: geo.size) }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { windowFrame = proxy.frame(in: .global) }
+                        .onChange(of: proxy.frame(in: .global)) { _, f in windowFrame = f }
+                }
+            )
+            .onAppear {
+                rebuild(size: geo.size)
+                installRightClickMonitor()
+            }
+            .onDisappear { removeRightClickMonitor() }
             .onChange(of: geo.size) { _, s in rebuild(size: s) }
             .onChange(of: root?.id) { _, _ in rebuild(size: geo.size) }
         }
@@ -87,23 +106,25 @@ struct SunburstChart: View {
                 let inner = hubRadius + CGFloat(wedge.depth) * ringSpan + Self.ringInset
                 let outer = hubRadius + CGFloat(wedge.depth + 1) * ringSpan - Self.ringInset
                 let isHovered = wedge.node.id == hoveredNode?.id
-                let pop: CGFloat = isHovered ? Self.hoverPop : 0
 
                 // Sweep-in: scale the swept angle by appearProgress.
                 let start = wedge.startAngle
                 let end = start + (wedge.endAngle - wedge.startAngle) * progress
                 guard end - start > 0.0001 else { continue }
 
+                // Hit-testing and drawing share identical geometry — no radial
+                // pop. Hover is conveyed purely via fill brightening and a glow
+                // stroke so clicks always land on the wedge under the cursor.
                 let path = wedgePath(center: center,
-                                     inner: inner + pop, outer: outer + pop,
+                                     inner: inner, outer: outer,
                                      start: start, end: end)
 
                 ctx.fill(path, with: .style(fill(for: wedge)))
 
                 if isHovered {
-                    ctx.fill(path, with: .color(.white.opacity(0.18)))
-                    ctx.stroke(path, with: .color(.white.opacity(0.5)),
-                               style: StrokeStyle(lineWidth: 1, lineJoin: .round))
+                    ctx.fill(path, with: .color(.white.opacity(0.28)))
+                    ctx.stroke(path, with: .color(.white.opacity(0.85)),
+                               style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
                 }
                 if wedge.node.id == selectedNode?.id {
                     ctx.stroke(path, with: .color(.white.opacity(0.9)),
@@ -190,13 +211,16 @@ struct SunburstChart: View {
         .frame(maxWidth: 240, alignment: .leading)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .fixedSize()
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { tooltipSize = $0 }
         .position(tooltipPosition(in: size))
         .allowsHitTesting(false)
         .transition(.opacity)
     }
 
     private func tooltipPosition(in size: CGSize) -> CGPoint {
-        let w: CGFloat = 130, h: CGFloat = 44
+        // Clamp using the measured tooltip size so wide tooltips (up to 240pt)
+        // never spill off the chart edge.
+        let w = tooltipSize.width, h = tooltipSize.height
         var x = cursor.x + w / 2 + 16
         var y = cursor.y - h / 2 - 16
         x = min(max(w / 2 + 4, x), size.width - w / 2 - 4)
@@ -213,7 +237,11 @@ struct SunburstChart: View {
                                       chartRadius: chartRadius, hubRadius: hubRadius) else {
                 onSelect(nil); return
             }
-            if wedge.node.isDirectory && !wedge.node.isSynthetic {
+            if wedge.node.isSynthetic {
+                // Synthetic wedges ("Other" / hidden space) aren't real files;
+                // tapping them is a no-op selection.
+                onSelect(nil)
+            } else if wedge.node.isDirectory {
                 onZoomIn(wedge.node)
             } else {
                 onSelect(wedge.node)
@@ -226,10 +254,64 @@ struct SunburstChart: View {
                                   hubRadius: CGFloat) -> some View {
         let node = hitTest(at: cursor, center: center,
                            chartRadius: chartRadius, hubRadius: hubRadius)?.node
-        Button("Add to Collector") { if let node { onAddToCollector(node) } }
-            .disabled(node?.isSynthetic ?? true)
-        Button("Reveal in Finder") { if let node { onRevealInFinder(node) } }
-            .disabled(node?.isSynthetic ?? true)
+        if let node, !node.isSynthetic {
+            Button("Add to Collector") { onAddToCollector(node) }
+            Button("Reveal in Finder") { onRevealInFinder(node) }
+        } else {
+            // Synthetic wedge (or empty space): explain why no actions apply.
+            Text(syntheticMenuLabel(for: node))
+                .disabled(true)
+        }
+    }
+
+    /// Informational menu label for synthetic / empty hit targets.
+    private func syntheticMenuLabel(for node: FileNode?) -> String {
+        switch node?.kind {
+        case .aggregate:    return "Aggregated small items"
+        case .hiddenSpace:  return "Space not visible to the scan"
+        default:            return "Nothing here"
+        }
+    }
+
+    // MARK: - Right-click monitor
+
+    /// Install a local monitor so right-clicks update `cursor` even when the
+    /// user never hovered first (onContinuousHover would otherwise leave it
+    /// stale/zero). The monitor converts the event's window-space location into
+    /// this view's local coordinate space using the cached `windowFrame`.
+    private func installRightClickMonitor() {
+        guard rightClickMonitor == nil else { return }
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown]) { event in
+            if let local = localPoint(for: event) {
+                cursor = local
+            }
+            return event
+        }
+    }
+
+    private func removeRightClickMonitor() {
+        if let monitor = rightClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            rightClickMonitor = nil
+        }
+    }
+
+    /// Convert a right-mouse event into this view's local (SwiftUI, top-left
+    /// origin) coordinate space, or nil if it lands outside the chart.
+    private func localPoint(for event: NSEvent) -> CGPoint? {
+        guard let window = event.window, windowFrame != .zero else { return nil }
+        // Event location is in window coordinates (AppKit: bottom-left origin).
+        let inWindow = event.locationInWindow
+        let height = window.contentLayoutRect.height
+        // Flip to top-left origin to match SwiftUI's `.global` frame.
+        let flippedY = height - inWindow.y
+        let local = CGPoint(x: inWindow.x - windowFrame.minX,
+                            y: flippedY - windowFrame.minY)
+        guard local.x >= 0, local.y >= 0,
+              local.x <= windowFrame.width, local.y <= windowFrame.height else {
+            return nil
+        }
+        return local
     }
 
     private func updateHover(at p: CGPoint, center: CGPoint,
@@ -288,7 +370,6 @@ struct SunburstChart: View {
     /// size, aggregating tiny siblings into a synthetic "Other" wedge.
     static func buildLayout(root: FileNode) -> [Wedge] {
         var out: [Wedge] = []
-        let total = max(1, Double(root.size))
 
         func recurse(parent: FileNode, depth: Int, start: Double, sweep: Double,
                      hue: Double, inheritHue: Bool) {
@@ -297,15 +378,26 @@ struct SunburstChart: View {
             guard !kids.isEmpty else { return }
             let parentSize = max(1, Double(parent.size))
 
-            // Aggregate tiny children (relative to the CURRENT ROOT) into "Other".
+            // Fold tiny children into a single synthetic "Other" wedge — at EVERY
+            // depth, not just the root ring. The threshold is relative to the
+            // parent's size (which equals the root total at depth 0, so the top
+            // ring is unchanged). Without this, a directory with hundreds of small
+            // children (e.g. an iCloud .Trash) spends its whole sweep on
+            // inter-wedge gaps and renders nothing (usable <= 0).
             var visible: [FileNode] = []
             var aggregateSize: Int64 = 0
             for k in kids {
-                if depth == 0 && Double(k.size) / total < aggregateFraction {
+                if Double(k.size) / parentSize < aggregateFraction {
                     aggregateSize += k.size
                 } else {
                     visible.append(k)
                 }
+            }
+            // Hard cap on real wedges per ring; fold the remainder into "Other".
+            // Bounds the gap budget and per-frame work regardless of fan-out.
+            if visible.count > maxWedgesPerRing {
+                for extra in visible[maxWedgesPerRing...] { aggregateSize += extra.size }
+                visible = Array(visible.prefix(maxWedgesPerRing))
             }
             var entries: [(node: FileNode, size: Int64)] = visible.map { ($0, $0.size) }
             if aggregateSize > 0 {
@@ -315,7 +407,11 @@ struct SunburstChart: View {
             }
 
             let n = entries.count
-            let gaps = gapDegrees * Double(n)
+            // Clamp the per-wedge gap so the total gap budget can never swallow the
+            // sweep (which would zero out `usable`). In the common case (few
+            // children) this stays at gapDegrees and the look is unchanged.
+            let gap = min(gapDegrees, sweep * 0.35 / Double(max(1, n)))
+            let gaps = gap * Double(n)
             let usable = max(0, sweep - gaps)
             var cursor = start
 
@@ -339,7 +435,7 @@ struct SunburstChart: View {
                                 start: cursor, sweep: span, hue: childHue, inheritHue: true)
                     }
                 }
-                cursor += span + gapDegrees
+                cursor += span + gap
             }
         }
 

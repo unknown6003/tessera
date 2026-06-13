@@ -15,7 +15,10 @@ struct ScanProgress: Sendable {
 
     /// 0…1 fraction of completion, or nil while the estimate is still too noisy.
     var fraction: Double? {
-        guard dirsDiscovered >= 64 else { return nil }
+        // Always show 100% once everything discovered has been scanned, so small
+        // scans (few directories) don't get stuck below 1.0.
+        if dirsScanned >= dirsDiscovered && dirsScanned > 0 { return 1.0 }
+        guard dirsDiscovered >= 16 else { return nil }
         return min(1.0, Double(dirsScanned) / Double(dirsDiscovered))
     }
 }
@@ -62,8 +65,9 @@ struct FileScanner: Sendable {
         let rootNode = FileNode(url: url, name: rootName, isDirectory: true, size: 0)
 
         var progress = ScanProgress(currentPath: rootPath)
-        var seenInodes = Set<UInt64>()
-        var level: [DirWork] = [DirWork(path: rootPath, node: rootNode)]
+        var seenInodes = Set<DevIno>()
+        var level: [DirWork] = [DirWork(path: rootPath, parentPath: "", node: rootNode)]
+        let timeouts = TimeoutTracker()
         let clock = ContinuousClock()
         var lastReport = clock.now
 
@@ -76,7 +80,7 @@ struct FileScanner: Sendable {
             try await withThrowingTaskGroup(of: ChunkResult.self) { group in
                 for chunk in chunks {
                     group.addTask(priority: .userInitiated) {
-                        scanChunk(chunk, allowedDevices: allowedDevices)
+                        await scanChunk(chunk, allowedDevices: allowedDevices, timeouts: timeouts)
                     }
                 }
                 for try await result in group {
@@ -91,7 +95,8 @@ struct FileScanner: Sendable {
                     // Hard-link dedup: only files with linkCount > 1 reach this list,
                     // and the merge runs single-threaded, so a plain Set suffices.
                     for candidate in result.hardlinks {
-                        if !seenInodes.insert(candidate.inode).inserted {
+                        let key = DevIno(device: candidate.device, inode: candidate.inode)
+                        if !seenInodes.insert(key).inserted {
                             progress.bytesFound -= candidate.node.size
                             candidate.node.overrideSize(0)
                         }
@@ -121,12 +126,40 @@ struct FileScanner: Sendable {
 
     private struct DirWork: Sendable {
         let path: String
+        let parentPath: String
         let node: FileNode
     }
 
+    /// Tracks directories whose enumeration timed out, keyed by parent path.
+    /// Dead filesystems (stalled iCloud/FileProvider subtrees) usually kill a
+    /// whole sibling group at once (e.g. the 256 fan-out dirs of .git/objects);
+    /// after two timeouts under the same parent, the remaining siblings are
+    /// skipped instantly instead of each leaking a hung thread and a deadline.
+    /// A single dead directory does not penalize its healthy siblings.
+    private final class TimeoutTracker: @unchecked Sendable {
+        private let lock = NSLock()
+        private var timeoutsByParent: [String: Int] = [:]
+
+        func recordTimeout(parent: String) {
+            lock.lock(); timeoutsByParent[parent, default: 0] += 1; lock.unlock()
+        }
+        func isQuarantined(parent: String) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            return timeoutsByParent[parent, default: 0] >= 2
+        }
+    }
+
     private struct HardlinkCandidate: Sendable {
+        let device: UInt32
         let inode: UInt64
         let node: FileNode
+    }
+
+    /// (device, inode) identity — inode numbers are only unique within a device,
+    /// so dedup must key on both to avoid collisions across volumes/firmlinks.
+    private struct DevIno: Hashable {
+        let device: UInt32
+        let inode: UInt64
     }
 
     private struct ChunkResult: Sendable {
@@ -140,9 +173,12 @@ struct FileScanner: Sendable {
 
     /// Split a BFS level into chunks sized to keep all cores busy without
     /// flooding the task group near the root (where levels are tiny).
+    /// A chunk reports progress only when *all* its directories finish, so the
+    /// cap is kept modest: one slow directory then stalls the visible bar for at
+    /// most a few-dozen siblings, not a hundred-plus.
     private static func chunked(_ level: [DirWork]) -> [[DirWork]] {
         let workers = max(2, ProcessInfo.processInfo.activeProcessorCount)
-        let chunkSize = max(1, min(128, level.count / (workers * 4) + 1))
+        let chunkSize = max(1, min(48, level.count / (workers * 4) + 1))
         return stride(from: 0, to: level.count, by: chunkSize).map {
             Array(level[$0 ..< min($0 + chunkSize, level.count)])
         }
@@ -150,15 +186,24 @@ struct FileScanner: Sendable {
 
     // MARK: Per-chunk scan (runs on a worker; touches only its own nodes)
 
-    private static func scanChunk(_ chunk: [DirWork], allowedDevices: Set<UInt32>) -> ChunkResult {
+    private static func scanChunk(_ chunk: [DirWork], allowedDevices: Set<UInt32>,
+                                  timeouts: TimeoutTracker) async -> ChunkResult {
         var result = ChunkResult()
 
         for work in chunk {
             if Task.isCancelled { break }
 
-            guard let entries = BulkDirScanner.timedEntries(atPath: work.path) else {
+            // Sibling group already known dead — skip without spawning a thread.
+            if timeouts.isQuarantined(parent: work.parentPath) {
+                result.dirsScanned += 1
+                result.lastPath = work.path
+                continue
+            }
+
+            guard let entries = await BulkDirScanner.timedEntries(atPath: work.path) else {
                 // Dead filesystem under this directory (e.g. stalled iCloud /
                 // FileProvider mount) — skip it rather than hang the scan.
+                timeouts.recordTimeout(parent: work.parentPath)
                 result.dirsScanned += 1
                 result.lastPath = work.path
                 continue
@@ -183,7 +228,7 @@ struct FileScanner: Sendable {
                     let childNode = FileNode(url: childURL, name: entry.name,
                                              isDirectory: true, size: 0, kind: kind)
                     children.append(childNode)
-                    result.nextDirs.append(DirWork(path: childPath, node: childNode))
+                    result.nextDirs.append(DirWork(path: childPath, parentPath: work.path, node: childNode))
 
                 case .file:
                     let childURL = URL(fileURLWithPath: work.path).appendingPathComponent(entry.name)
@@ -191,7 +236,7 @@ struct FileScanner: Sendable {
                                              isDirectory: false, size: entry.allocatedSize)
                     children.append(childNode)
                     if entry.linkCount > 1, entry.inode > 0 {
-                        result.hardlinks.append(HardlinkCandidate(inode: entry.inode, node: childNode))
+                        result.hardlinks.append(HardlinkCandidate(device: entry.device, inode: entry.inode, node: childNode))
                     }
                     result.fileCount += 1
                     result.bytes += entry.allocatedSize
