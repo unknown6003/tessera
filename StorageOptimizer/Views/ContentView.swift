@@ -5,23 +5,57 @@ struct ContentView: View {
     @StateObject private var vm = ScanViewModel()
 
     var body: some View {
-        HStack(spacing: 16) {
-            Sidebar(vm: vm)
-                .frame(width: 250)
+        GlassEffectContainer(spacing: 22) {
+            HStack(spacing: 18) {
+                Sidebar(vm: vm)
+                    .frame(width: 252)
 
-            centerArea
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                centerArea
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            InspectorView(vm: vm)
-                .frame(width: 290)
+                InspectorView(vm: vm)
+                    .frame(width: 296)
+            }
         }
-        .padding(16)
+        .padding(18)
         .frame(minWidth: 920, minHeight: 600)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Rectangle().fill(Theme.backgroundGradient).ignoresSafeArea())
+        .background(luminousBackdrop)
         .background(KeyboardShortcuts(vm: vm))
         .preferredColorScheme(.dark)
-        .onAppear { DebugAutomation.runIfRequested(vm: vm) }
+        .overlay {
+            if vm.showFDAOnboarding {
+                FullDiskAccessOnboarding(vm: vm)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
+        .animation(.smooth(duration: 0.3), value: vm.showFDAOnboarding)
+        .onAppear {
+            vm.refreshFullDiskAccessStatus()
+            DebugAutomation.runIfRequested(vm: vm)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // Returning from System Settings after granting access auto-dismisses.
+            vm.refreshFullDiskAccessStatus()
+        }
+    }
+
+    // MARK: - Luminous animated backdrop
+
+    private var luminousBackdrop: some View {
+        ZStack {
+            Rectangle().fill(Theme.backgroundGradient)
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                Theme.backgroundBlobs(phase: t * 0.18)
+            }
+            // A faint vignette darkens the corners so glass edges pop.
+            RadialGradient(
+                colors: [.clear, .black.opacity(0.35)],
+                center: .center, startRadius: 360, endRadius: 1000
+            )
+        }
+        .ignoresSafeArea()
     }
 
     // MARK: - Center area
@@ -79,11 +113,12 @@ struct ContentView: View {
     // MARK: - Glass card wrapper
 
     private func centeredCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(36)
+        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+        return content()
+            .padding(40)
             .frame(maxWidth: 460)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24))
-            .shadow(color: .black.opacity(0.18), radius: 26, y: 14)
+            .glassEffect(.regular.interactive(), in: shape)
+            .liquidGlassDepth(shape, shadowRadius: 34, shadowY: 18)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .transition(.opacity.combined(with: .scale(scale: 0.97)))
     }
@@ -196,7 +231,7 @@ struct ContentView: View {
             .fixedSize(horizontal: true, vertical: false)
         }
         .glassEffect(.regular.interactive(), in: Capsule())
-        .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
+        .liquidGlassDepth(Capsule(), highlight: 0.9, shadowRadius: 16, shadowY: 8)
     }
 
     private var chevron: some View {
@@ -224,7 +259,7 @@ private struct ScanningView: View {
     var body: some View {
         VStack(spacing: 24) {
             PulsingRings()
-                .frame(width: 132, height: 132)
+                .frame(width: 140, height: 140)
 
             VStack(spacing: 6) {
                 Text("Scanning…")
@@ -276,37 +311,55 @@ private struct ScanningView: View {
 
 private struct PulsingRings: View {
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            Canvas { ctx, size in
-                let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let maxR = min(size.width, size.height) / 2
-                let count = 3
-                for i in 0..<count {
-                    let phase = (t / 1.6 + Double(i) / Double(count)).truncatingRemainder(dividingBy: 1)
-                    let radius = maxR * (0.2 + 0.8 * phase)
-                    let opacity = (1 - phase) * 0.55
-                    let rect = CGRect(
-                        x: center.x - radius, y: center.y - radius,
-                        width: radius * 2, height: radius * 2
-                    )
-                    ctx.stroke(
-                        Path(ellipseIn: rect),
-                        with: .color(Color.accentColor.opacity(opacity)),
-                        lineWidth: 3
-                    )
+        ZStack {
+            TimelineView(.animation) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                Canvas { ctx, size in
+                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                    let maxR = min(size.width, size.height) / 2
+
+                    // Expanding luminous rings refracting outward.
+                    let count = 4
+                    for i in 0..<count {
+                        let phase = (t / 1.9 + Double(i) / Double(count)).truncatingRemainder(dividingBy: 1)
+                        let radius = maxR * (0.16 + 0.84 * phase)
+                        let opacity = (1 - phase) * (1 - phase) * 0.6
+                        let hue = (0.58 + 0.12 * phase).truncatingRemainder(dividingBy: 1)
+                        let rect = CGRect(
+                            x: center.x - radius, y: center.y - radius,
+                            width: radius * 2, height: radius * 2
+                        )
+                        ctx.stroke(
+                            Path(ellipseIn: rect),
+                            with: .color(Color(hue: hue, saturation: 0.7, brightness: 1.0).opacity(opacity)),
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                        )
+                    }
+
+                    // A sweeping specular arc that orbits the core like a glint.
+                    let glintAngle = Angle(degrees: (t * 90).truncatingRemainder(dividingBy: 360))
+                    let glintR = maxR * 0.62
+                    let arc = Path { p in
+                        p.addArc(center: center, radius: glintR,
+                                 startAngle: glintAngle,
+                                 endAngle: glintAngle + .degrees(70),
+                                 clockwise: false)
+                    }
+                    ctx.stroke(arc, with: .color(.white.opacity(0.55)),
+                               style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 }
-                // Steady core
-                let coreR = maxR * 0.16
-                let coreRect = CGRect(
-                    x: center.x - coreR, y: center.y - coreR,
-                    width: coreR * 2, height: coreR * 2
-                )
-                ctx.fill(
-                    Path(ellipseIn: coreRect),
-                    with: .color(Color.accentColor.opacity(0.85))
-                )
             }
+
+            // Glass core hub that refracts the backdrop.
+            Circle()
+                .frame(width: 46, height: 46)
+                .glassEffect(.regular.interactive(), in: Circle())
+                .overlay(
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.tint)
+                )
+                .liquidGlassDepth(Circle(), highlight: 0.8, shadowRadius: 14, shadowY: 6)
         }
     }
 }
@@ -326,5 +379,94 @@ private struct KeyboardShortcuts: View {
         .opacity(0)
         .frame(width: 0, height: 0)
         .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Full Disk Access onboarding
+
+/// First-launch overlay that asks for Full Disk Access once, up front, so the
+/// app can read the whole disk instead of failing per-directory mid-scan. It
+/// dims the window behind a glass card and auto-dismisses the moment access is
+/// detected (the window re-checks on reactivation).
+private struct FullDiskAccessOnboarding: View {
+    @ObservedObject var vm: ScanViewModel
+
+    private let steps: [(symbol: String, text: String)] = [
+        ("1.circle.fill", "Click **Open System Settings** below."),
+        ("2.circle.fill", "Find **Storage Optimizer** in the list and turn it on."),
+        ("3.circle.fill", "Return here — scanning unlocks automatically."),
+    ]
+
+    var body: some View {
+        ZStack {
+            // Scrim that darkens and blurs the app behind the card.
+            Rectangle()
+                .fill(.black.opacity(0.45))
+                .ignoresSafeArea()
+
+            card
+                .frame(maxWidth: 520)
+                .padding(40)
+        }
+    }
+
+    private var card: some View {
+        let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
+        return VStack(spacing: 24) {
+            ZStack {
+                Circle()
+                    .fill(.orange.opacity(0.18))
+                    .frame(width: 96, height: 96)
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 46, weight: .light))
+                    .foregroundStyle(.orange)
+                    .symbolRenderingMode(.hierarchical)
+            }
+
+            VStack(spacing: 10) {
+                Text("Grant Full Disk Access")
+                    .font(.title.weight(.semibold))
+                Text("Storage Optimizer needs Full Disk Access to measure every folder on your Mac. Grant it once and you're set — no more per-folder prompts.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(steps, id: \.symbol) { step in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Image(systemName: step.symbol)
+                            .font(.title3)
+                            .foregroundStyle(.tint)
+                        Text(.init(step.text))
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(.horizontal, 8)
+
+            VStack(spacing: 10) {
+                Button {
+                    vm.openFullDiskAccessSettings()
+                } label: {
+                    Label("Open System Settings", systemImage: "gearshape.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+
+                Button("Not Now") {
+                    vm.dismissFDAOnboarding()
+                }
+                .buttonStyle(.glass)
+                .controlSize(.large)
+            }
+        }
+        .padding(40)
+        .glassEffect(.regular.interactive(), in: shape)
+        .liquidGlassDepth(shape, shadowRadius: 40, shadowY: 22)
     }
 }

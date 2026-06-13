@@ -47,13 +47,16 @@ struct Sidebar: View {
     @State private var selectedVolumeURL: URL?
     @State private var showFolderPicker = false
 
+    private let panelShape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+
     var body: some View {
         ZStack(alignment: .bottom) {
             // Glass panel container. Use Color.clear as the carrier — a bare Shape
             // used as a View fills opaquely with the foreground style *before* the
             // glass material is applied, which is what made the panel look flat.
             Color.clear
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .glassEffect(.regular, in: panelShape)
+                .liquidGlassDepth(panelShape, shadowRadius: 28, shadowY: 16)
 
             VStack(spacing: 0) {
                 // Header
@@ -115,8 +118,11 @@ struct Sidebar: View {
     private var sidebarHeader: some View {
         HStack {
             Image(systemName: "externaldrive.fill")
-                .font(.title3.weight(.semibold))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.tint)
+                .frame(width: 34, height: 34)
+                .glassEffect(.regular.interactive(), in: Circle())
+                .liquidGlassDepth(Circle(), highlight: 0.7, shadowRadius: 8, shadowY: 3)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Storage Optimizer")
                     .font(.headline.smallCaps())
@@ -269,17 +275,24 @@ private struct VolumeCard: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.vertical, 10)
         .background {
+            let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
             if isSelected {
+                // Selection = brighter, tinted glass (not an opaque fill).
                 Color.clear
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .glassEffect(.regular.interactive().tint(Theme.selectionTint),
+                                 in: shape)
+                    .overlay(
+                        shape.strokeBorder(Theme.glassHighlightStroke, lineWidth: 1)
+                            .blendMode(.plusLighter)
+                    )
             } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.clear)
+                shape.fill(.white.opacity(0.04))
             }
         }
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .animation(.smooth(duration: 0.2), value: isSelected)
     }
 
     @ViewBuilder
@@ -293,14 +306,30 @@ private struct VolumeCard: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(.quaternary)
-                        .frame(height: 4)
+                        .fill(.white.opacity(0.10))
+                        .frame(height: 5)
                     Capsule()
-                        .fill(fraction > 0.9 ? AnyShapeStyle(Color.red) : AnyShapeStyle(Color.accentColor))
-                        .frame(width: max(4, geo.size.width * fraction), height: 4)
+                        .fill(
+                            LinearGradient(
+                                colors: fraction > 0.9
+                                    ? [Color(hue: 0.02, saturation: 0.7, brightness: 1.0), .red]
+                                    : [Color.accentColor.opacity(0.95), Color.accentColor.opacity(0.6)],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(5, geo.size.width * fraction), height: 5)
+                        .overlay(
+                            Capsule()
+                                .fill(.white.opacity(0.35))
+                                .frame(height: 1.5)
+                                .padding(.horizontal, 1)
+                                .offset(y: -1),
+                            alignment: .top
+                        )
+                        .frame(width: max(5, geo.size.width * fraction), alignment: .leading)
                 }
             }
-            .frame(height: 4)
+            .frame(height: 5)
 
             Text("\(usedStr) used of \(totalStr)")
                 .font(.caption2.monospacedDigit())

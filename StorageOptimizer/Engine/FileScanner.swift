@@ -56,7 +56,6 @@ struct FileScanner: Sendable {
 
     // MARK: Tuning
 
-    private static let progressInterval: Duration = .milliseconds(80)
     private static let hiddenSpaceThreshold: Int64 = 1 << 30  // 1 GiB
 
     /// Absolute paths never descended into (unless they are the scan root itself).
@@ -66,18 +65,6 @@ struct FileScanner: Sendable {
         "/dev",
         "/Network",
     ]
-
-    /// A cloud-provider container whose subtree is online-only (dataless) content:
-    /// iCloud Drive ("~/Library/Mobile Documents") and third-party FileProviders
-    /// ("~/Library/CloudStorage"). Descending is the single biggest scan-time sink —
-    /// every directory inside forces a slow first-touch provider enumeration — while
-    /// the files are dataless and occupy ~0 local disk. We stop AT the container and
-    /// represent it as one `.cloudOnlyStorage` boundary node instead of crawling it.
-    /// (When such a container is itself the explicit scan root, we still descend, so
-    /// a user can deliberately inspect it.)
-    private static func isCloudBoundary(_ path: String) -> Bool {
-        path.hasSuffix("/Library/Mobile Documents") || path.hasSuffix("/Library/CloudStorage")
-    }
 
     // MARK: Public API
 
@@ -97,92 +84,34 @@ struct FileScanner: Sendable {
         // Only use the volume-bytes denominator for a true volume scan; for a
         // folder we don't know its byte total up front, so leave it 0.
         progress.volumeUsedTotal = isVolumeRoot ? volumeUsed : 0
-        var seenInodes = Set<DevIno>()
-        var level: [DirWork] = [DirWork(path: rootPath, parentPath: "", node: rootNode)]
-        let timeouts = TimeoutTracker()
-        let clock = ContinuousClock()
-        var lastReport = clock.now
 
-        while !level.isEmpty {
-            try Task.checkCancellation()
+        let coordinator = ScanCoordinator(
+            rootNode: rootNode,
+            rootWork: DirWork(path: rootPath, node: rootNode),
+            allowedDevices: allowedDevices,
+            volumeUsed: volumeUsed,
+            isVolumeRoot: isVolumeRoot,
+            progress: progress,
+            onProgress: onProgress
+        )
 
-            let chunks = chunked(level)
-            var next: [DirWork] = []
-
-            try await withThrowingTaskGroup(of: ChunkResult.self) { group in
-                for chunk in chunks {
-                    group.addTask(priority: .userInitiated) {
-                        await scanChunk(chunk, allowedDevices: allowedDevices, timeouts: timeouts)
-                    }
-                }
-                for try await result in group {
-                    try Task.checkCancellation()
-
-                    progress.filesScanned += result.fileCount
-                    progress.bytesFound += result.bytes
-                    progress.dirsScanned += result.dirsScanned
-                    progress.dirsDiscovered += result.nextDirs.count
-                    progress.currentPath = result.lastPath
-
-                    // Hard-link dedup: only files with linkCount > 1 reach this list,
-                    // and the merge runs single-threaded, so a plain Set suffices.
-                    for candidate in result.hardlinks {
-                        let key = DevIno(device: candidate.device, inode: candidate.inode)
-                        if !seenInodes.insert(key).inserted {
-                            progress.bytesFound -= candidate.node.size
-                            candidate.node.overrideSize(0)
-                        }
-                    }
-
-                    next.append(contentsOf: result.nextDirs)
-
-                    let now = clock.now
-                    if now - lastReport >= progressInterval {
-                        lastReport = now
-                        onProgress(progress)
-                    }
-                }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<FileNode, Error>) in
+                coordinator.start(continuation: cont)
             }
-            level = next
+        } onCancel: {
+            coordinator.cancel()
         }
-
-        rootNode.recomputeDirectorySizes()
-        attachHiddenSpace(to: rootNode, volumeUsed: volumeUsed, isVolumeRoot: isVolumeRoot)
-
-        progress.dirsScanned = progress.dirsDiscovered
-        progress.isComplete = true
-        onProgress(progress)
-        return rootNode
     }
 
     // MARK: Work units
 
     private struct DirWork: Sendable {
         let path: String
-        let parentPath: String
         let node: FileNode
     }
 
-    /// Tracks directories whose enumeration timed out, keyed by parent path.
-    /// Dead filesystems (stalled iCloud/FileProvider subtrees) usually kill a
-    /// whole sibling group at once (e.g. the 256 fan-out dirs of .git/objects);
-    /// after two timeouts under the same parent, the remaining siblings are
-    /// skipped instantly instead of each leaking a hung thread and a deadline.
-    /// A single dead directory does not penalize its healthy siblings.
-    private final class TimeoutTracker: @unchecked Sendable {
-        private let lock = NSLock()
-        private var timeoutsByParent: [String: Int] = [:]
-
-        func recordTimeout(parent: String) {
-            lock.lock(); timeoutsByParent[parent, default: 0] += 1; lock.unlock()
-        }
-        func isQuarantined(parent: String) -> Bool {
-            lock.lock(); defer { lock.unlock() }
-            return timeoutsByParent[parent, default: 0] >= 2
-        }
-    }
-
-    private struct HardlinkCandidate: Sendable {
+    private struct HardlinkCandidate {
         let device: UInt32
         let inode: UInt64
         let node: FileNode
@@ -195,54 +124,151 @@ struct FileScanner: Sendable {
         let inode: UInt64
     }
 
-    private struct ChunkResult: Sendable {
+    /// Per-directory enumeration result, computed on a worker before the worker
+    /// takes the shared lock to merge it.
+    private struct DirResult {
+        var children: [FileNode] = []
+        var subdirs: [DirWork] = []
         var fileCount = 0
         var bytes: Int64 = 0
-        var dirsScanned = 0
-        var nextDirs: [DirWork] = []
         var hardlinks: [HardlinkCandidate] = []
-        var lastPath = ""
     }
 
-    /// Split a BFS level into chunks sized to keep all cores busy without
-    /// flooding the task group near the root (where levels are tiny).
-    /// A chunk reports progress only when *all* its directories finish, so the
-    /// cap is kept modest: one slow directory then stalls the visible bar for at
-    /// most a few-dozen siblings, not a hundred-plus.
-    private static func chunked(_ level: [DirWork]) -> [[DirWork]] {
-        let workers = max(2, ProcessInfo.processInfo.activeProcessorCount)
-        let chunkSize = max(1, min(48, level.count / (workers * 4) + 1))
-        return stride(from: 0, to: level.count, by: chunkSize).map {
-            Array(level[$0 ..< min($0 + chunkSize, level.count)])
+    // MARK: Coordinator — bounded pool of dedicated worker threads over a shared queue
+
+    /// Drives the scan on a fixed pool of long-lived worker threads (NEVER the
+    /// Swift cooperative pool — blocking enumeration syscalls run here). Workers
+    /// pop directories from a shared, lock-protected queue and push discovered
+    /// subdirectories back continuously; there is no per-level barrier, so one
+    /// stuck directory occupies one worker while the rest keep progressing.
+    ///
+    /// Termination is tracked by `pending` (directories discovered but not yet
+    /// completed): starts at 1 (the root); each completion does
+    /// `pending += childDirCount; pending -= 1`. When `pending` hits 0 the whole
+    /// tree is done. A watchdog force-finishes if progress stalls on an
+    /// uninterruptible syscall, so the scan ALWAYS terminates.
+    private final class ScanCoordinator: @unchecked Sendable {
+        private let cond = NSCondition()
+
+        // Shared mutable state — guarded by `cond`.
+        private var queue: [DirWork] = []
+        private var pending = 1            // the root
+        private var cancelled = false
+        private var finished = false       // continuation resumed (single-resume guard)
+        private var activeWorkers = 0      // workers currently inside a directory
+        private var seenInodes = Set<DevIno>()
+        private var progress: ScanProgress
+
+        // Watchdog stall detection (guarded by `cond`).
+        private var lastDirsScanned = 0
+        private var lastAdvanceAt = DispatchTime.now()
+
+        // Immutable config.
+        private let rootNode: FileNode
+        private let allowedDevices: Set<UInt32>
+        private let volumeUsed: Int64
+        private let isVolumeRoot: Bool
+        private let onProgress: @Sendable (ScanProgress) -> Void
+        private let workerCount: Int
+
+        // Progress throttling (guarded by `cond`).
+        private var lastReport = DispatchTime.now()
+        private static let progressIntervalNanos: UInt64 = 80_000_000   // 80 ms
+        private static let stallTimeoutSeconds: Double = 60
+
+        private var continuation: CheckedContinuation<FileNode, Error>?
+        private var watchdog: DispatchSourceTimer?
+
+        init(rootNode: FileNode, rootWork: DirWork, allowedDevices: Set<UInt32>,
+             volumeUsed: Int64, isVolumeRoot: Bool, progress: ScanProgress,
+             onProgress: @escaping @Sendable (ScanProgress) -> Void) {
+            self.rootNode = rootNode
+            self.allowedDevices = allowedDevices
+            self.volumeUsed = volumeUsed
+            self.isVolumeRoot = isVolumeRoot
+            self.onProgress = onProgress
+            self.progress = progress
+            self.queue = [rootWork]
+            self.workerCount = min(max(ProcessInfo.processInfo.activeProcessorCount, 4), 12)
         }
-    }
 
-    // MARK: Per-chunk scan (runs on a worker; touches only its own nodes)
+        // MARK: Lifecycle
 
-    private static func scanChunk(_ chunk: [DirWork], allowedDevices: Set<UInt32>,
-                                  timeouts: TimeoutTracker) async -> ChunkResult {
-        var result = ChunkResult()
-
-        for work in chunk {
-            if Task.isCancelled { break }
-
-            // Sibling group already known dead — skip without spawning a thread.
-            if timeouts.isQuarantined(parent: work.parentPath) {
-                result.dirsScanned += 1
-                result.lastPath = work.path
-                continue
+        func start(continuation cont: CheckedContinuation<FileNode, Error>) {
+            cond.lock()
+            continuation = cont
+            // If cancellation already fired before we stored the continuation,
+            // resume immediately.
+            if cancelled {
+                cond.unlock()
+                resumeThrowing(CancellationError())
+                return
             }
+            cond.unlock()
 
-            guard let entries = await BulkDirScanner.timedEntries(atPath: work.path) else {
-                // Dead filesystem under this directory (e.g. stalled iCloud /
-                // FileProvider mount) — skip it rather than hang the scan.
-                timeouts.recordTimeout(parent: work.parentPath)
-                result.dirsScanned += 1
-                result.lastPath = work.path
-                continue
+            startWatchdog()
+            for _ in 0 ..< workerCount {
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    self?.workerLoop()
+                }
             }
-            var children: [FileNode] = []
-            children.reserveCapacity(entries.count)
+        }
+
+        func cancel() {
+            cond.lock()
+            cancelled = true
+            cond.broadcast()
+            cond.unlock()
+        }
+
+        // MARK: Worker loop
+
+        private func workerLoop() {
+            while true {
+                cond.lock()
+                // Wait for work, cancellation, or completion.
+                while queue.isEmpty, pending > 0, !cancelled, !finished {
+                    cond.wait()
+                }
+                if cancelled {
+                    cond.unlock()
+                    // First worker to observe cancellation resumes the continuation;
+                    // the single-resume guard makes redundant calls harmless.
+                    resumeThrowing(CancellationError())
+                    return
+                }
+                if finished {
+                    cond.unlock()
+                    return
+                }
+                if queue.isEmpty {
+                    // pending == 0 → tree complete. Wake siblings and exit.
+                    cond.unlock()
+                    maybeFinishNormally()
+                    return
+                }
+                let work = queue.removeLast()
+                activeWorkers += 1
+                cond.unlock()
+
+                let result = enumerate(work)
+
+                cond.lock()
+                merge(result, for: work)
+                activeWorkers -= 1
+                cond.unlock()
+            }
+        }
+
+        /// Enumerate one directory off-lock (the slow part). Returns nil children
+        /// if the directory blew its deadline (treated as childless but counted).
+        private func enumerate(_ work: DirWork) -> DirResult {
+            var result = DirResult()
+            guard let entries = BulkDirScanner.workerEntries(atPath: work.path) else {
+                // Dead/stalled directory — skip its contents, still counts as scanned.
+                return result
+            }
+            result.children.reserveCapacity(entries.count)
 
             for entry in entries {
                 switch entry.type {
@@ -258,27 +284,32 @@ struct FileScanner: Sendable {
                           !skippedPaths.contains(childPath) else { continue }
                     let childURL = URL(fileURLWithPath: childPath, isDirectory: true)
 
-                    // Cloud-provider container: record a boundary node and do NOT
-                    // descend. Its online-only contents use ~0 local disk, and
-                    // crawling them is the dominant scan-time sink.
-                    if isCloudBoundary(childPath) {
+                    // Dataless (online-only) directory placeholder: descending would
+                    // force a slow provider round-trip, and its contents occupy ~0
+                    // local disk. The dataless flag came from the PARENT enumeration,
+                    // so we decide WITHOUT opening the child → no hang. Represent it
+                    // as a boundary node and do NOT enqueue.
+                    if entry.isDataless {
                         let cloudNode = FileNode(url: childURL, name: entry.name,
                                                  isDirectory: true, size: 0, kind: .cloudOnlyStorage)
-                        children.append(cloudNode)
+                        result.children.append(cloudNode)
                         continue
                     }
 
                     let kind: FileNode.Kind = BulkDirScanner.isPackageName(entry.name) ? .package : .regular
                     let childNode = FileNode(url: childURL, name: entry.name,
                                              isDirectory: true, size: 0, kind: kind)
-                    children.append(childNode)
-                    result.nextDirs.append(DirWork(path: childPath, parentPath: work.path, node: childNode))
+                    result.children.append(childNode)
+                    result.subdirs.append(DirWork(path: childPath, node: childNode))
 
                 case .file:
+                    // Dataless (online-only) file: not materialized, ~0 local disk.
+                    // Skip entirely — no node, no bytes, not counted.
+                    if entry.isDataless { continue }
                     let childURL = URL(fileURLWithPath: work.path).appendingPathComponent(entry.name)
                     let childNode = FileNode(url: childURL, name: entry.name,
                                              isDirectory: false, size: entry.allocatedSize)
-                    children.append(childNode)
+                    result.children.append(childNode)
                     if entry.linkCount > 1, entry.inode > 0 {
                         result.hardlinks.append(HardlinkCandidate(device: entry.device, inode: entry.inode, node: childNode))
                     }
@@ -286,13 +317,143 @@ struct FileScanner: Sendable {
                     result.bytes += entry.allocatedSize
                 }
             }
-
-            work.node.setChildren(children)
-            result.dirsScanned += 1
-            result.lastPath = work.path
+            return result
         }
 
-        return result
+        /// Merge one directory's result under the lock: attach children, enqueue
+        /// subdirs, update pending and progress, and dedup hard links.
+        /// Caller holds `cond`.
+        private func merge(_ result: DirResult, for work: DirWork) {
+            work.node.setChildren(result.children)
+
+            // Enqueue discovered subdirectories and adjust the pending counter:
+            // +childDirCount for what we discovered, -1 for the directory we finished.
+            queue.append(contentsOf: result.subdirs)
+            pending += result.subdirs.count
+            pending -= 1
+
+            progress.filesScanned += result.fileCount
+            progress.bytesFound += result.bytes
+            progress.dirsScanned += 1
+            progress.dirsDiscovered += result.subdirs.count
+            progress.currentPath = work.path
+
+            // Hard-link dedup against the shared set (under the lock).
+            for candidate in result.hardlinks {
+                let key = DevIno(device: candidate.device, inode: candidate.inode)
+                if !seenInodes.insert(key).inserted {
+                    progress.bytesFound -= candidate.node.size
+                    candidate.node.overrideSize(0)
+                }
+            }
+
+            // Wake workers: either there is fresh work, or the tree just completed.
+            if !result.subdirs.isEmpty || pending == 0 {
+                cond.broadcast()
+            }
+
+            // Throttled progress emission.
+            let now = DispatchTime.now()
+            if now.uptimeNanoseconds &- lastReport.uptimeNanoseconds >= Self.progressIntervalNanos {
+                lastReport = now
+                let snapshot = progress
+                onProgress(snapshot)
+            }
+        }
+
+        // MARK: Completion
+
+        /// Normal completion: pending hit 0. Finalize and resume once.
+        private func maybeFinishNormally() {
+            cond.lock()
+            // Wake any siblings still parked in their wait loop so they exit.
+            cond.broadcast()
+            if finished || cancelled {
+                cond.unlock()
+                if cancelled { resumeThrowing(CancellationError()) }
+                return
+            }
+            finished = true
+            cond.unlock()
+            finalizeAndResume()
+        }
+
+        /// Finalize the tree and resume the continuation with the root node.
+        /// Runs exactly once (guarded by `finished`).
+        private func finalizeAndResume() {
+            watchdog?.cancel()
+            watchdog = nil
+
+            rootNode.recomputeDirectorySizes()
+            FileScanner.attachHiddenSpace(to: rootNode, volumeUsed: volumeUsed, isVolumeRoot: isVolumeRoot)
+
+            cond.lock()
+            progress.dirsScanned = progress.dirsDiscovered
+            progress.isComplete = true
+            let snapshot = progress
+            let cont = continuation
+            continuation = nil
+            cond.unlock()
+
+            onProgress(snapshot)
+            cont?.resume(returning: rootNode)
+        }
+
+        private func resumeThrowing(_ error: Error) {
+            watchdog?.cancel()
+            watchdog = nil
+            cond.lock()
+            let cont = continuation
+            continuation = nil
+            cond.unlock()
+            cont?.resume(throwing: error)
+        }
+
+        // MARK: Watchdog
+
+        /// Guarantees termination even if a worker is stuck in an uninterruptible
+        /// syscall. If progress hasn't advanced for ~60s while the queue is empty
+        /// (all remaining pending dirs are stuck in-flight), force completion with
+        /// whatever has been scanned and abandon the stuck worker threads.
+        private func startWatchdog() {
+            let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+            timer.schedule(deadline: .now() + 5, repeating: 5)
+            timer.setEventHandler { [weak self] in self?.watchdogTick() }
+            watchdog = timer
+            timer.resume()
+        }
+
+        private func watchdogTick() {
+            cond.lock()
+
+            if finished || cancelled {
+                cond.unlock()
+                if cancelled { resumeThrowing(CancellationError()) }
+                return
+            }
+
+            // Progress advanced since last tick → reset the stall clock.
+            if progress.dirsScanned != lastDirsScanned {
+                lastDirsScanned = progress.dirsScanned
+                lastAdvanceAt = DispatchTime.now()
+                cond.unlock()
+                return
+            }
+
+            // No advance. Only force-finish if there is no queued work left to do —
+            // i.e. the remaining `pending` dirs are all stuck in-flight in workers.
+            let stalledNanos = DispatchTime.now().uptimeNanoseconds &- lastAdvanceAt.uptimeNanoseconds
+            let stalled = Double(stalledNanos) / 1_000_000_000 >= Self.stallTimeoutSeconds
+            guard stalled, pending > 0, queue.isEmpty else {
+                cond.unlock()
+                return
+            }
+
+            finished = true
+            cond.broadcast()   // release idle workers (stuck ones are abandoned)
+            cond.unlock()
+            finalizeAndResume()
+        }
     }
 
     // MARK: Device boundaries

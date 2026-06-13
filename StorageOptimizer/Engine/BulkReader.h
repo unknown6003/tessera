@@ -13,6 +13,7 @@ typedef struct {
     uint32_t nlink;         // hard-link count (files only; 0 when unavailable)
     uint64_t inode;         // inode / file ID
     int64_t  alloc_size;    // on-disk allocated bytes (0 for directories)
+    uint32_t flags;         // st_flags (UF_*/SF_* incl. SF_DATALESS); 0 when unavailable
 } BREntry;
 
 /// Scan `path` using getattrlistbulk.

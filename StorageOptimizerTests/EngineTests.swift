@@ -238,19 +238,22 @@ struct EngineTests {
         }
     }
 
-    // MARK: 6b — cloud-provider boundary
+    // MARK: 6b — materialized cloud content is scanned
 
-    @Test("A cloud-provider container is a .cloudOnlyStorage boundary and is not descended")
-    func cloudStorageIsBoundary() async throws {
+    @Test("Materialized files under a CloudStorage-named path ARE scanned and counted")
+    func cloudStorageMaterializedFilesAreScanned() async throws {
         let base = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: base) }
 
-        // Mimic ~/Library/CloudStorage/<provider>/<deep file> and a normal sibling.
+        // Mimic ~/Library/CloudStorage/<provider>/<deep file> with REAL local
+        // (materialized) files — no dataless seam — and a normal sibling.
+        // Datalessness, not the path name, is now the signal, so these are scanned.
         let fm = FileManager.default
         let cloudRoot = base.appendingPathComponent("Library/CloudStorage", isDirectory: true)
         let providerDeep = cloudRoot.appendingPathComponent("Nextcloud-acct/music/album", isDirectory: true)
         try fm.createDirectory(at: providerDeep, withIntermediateDirectories: true)
-        try Data(repeating: 0x01, count: 8192).write(to: providerDeep.appendingPathComponent("track.flac"))
+        let track = providerDeep.appendingPathComponent("track.flac")
+        try Data(repeating: 0x01, count: 8192).write(to: track)
 
         let normal = base.appendingPathComponent("Library/Application Support/app", isDirectory: true)
         try fm.createDirectory(at: normal, withIntermediateDirectories: true)
@@ -258,20 +261,92 @@ struct EngineTests {
 
         let root = try await FileScanner.scan(url: base) { _ in }
 
-        // Locate the CloudStorage node.
         func find(_ node: FileNode, named name: String) -> FileNode? {
             if node.name == name { return node }
             for c in node.children { if let hit = find(c, named: name) { return hit } }
             return nil
         }
+        // The CloudStorage container is now descended (it's materialized).
         let cloud = find(root, named: "CloudStorage")
         #expect(cloud != nil)
-        #expect(cloud?.kind == .cloudOnlyStorage)
-        #expect(cloud?.children.isEmpty == true)          // never descended
-        #expect(cloud?.size == 0)                          // online-only → 0 local bytes
-        #expect(find(root, named: "track.flac") == nil)    // cloud contents excluded
+        #expect(cloud?.kind != .cloudOnlyStorage)
+        #expect(cloud?.children.isEmpty == false)            // descended now
+        // The deep materialized file is found and counted.
+        let trackNode = find(root, named: "track.flac")
+        #expect(trackNode != nil)
+        #expect(trackNode?.size == allocatedSize(at: track.path))
         // The normal sibling is still scanned.
         #expect(find(root, named: "data.bin") != nil)
+        #expect(sumRealBytes(root) > 0)
+    }
+
+    // MARK: 6c — dataless (online-only) items via the test seam
+
+    @Test("Dataless files are excluded; a dataless directory becomes a .cloudOnlyStorage boundary")
+    func datalessItemsAreHandled() async throws {
+        let base = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let fm = FileManager.default
+
+        // Materialized (kept) file + dataless (online-only) file as siblings.
+        let keptFile = base.appendingPathComponent("kept.bin")
+        try Data(repeating: 0xAA, count: 8192).write(to: keptFile)
+        let onlineFile = base.appendingPathComponent("ghost.online")     // marked dataless
+        try Data(repeating: 0xBB, count: 8192).write(to: onlineFile)
+
+        // Materialized directory (descended) with a real file inside.
+        let keptDir = base.appendingPathComponent("kept.dir", isDirectory: true)
+        try fm.createDirectory(at: keptDir, withIntermediateDirectories: true)
+        let inner = keptDir.appendingPathComponent("inner.bin")
+        try Data(repeating: 0xCC, count: 4096).write(to: inner)
+
+        // Dataless directory placeholder (must NOT be descended). It has a real
+        // file inside on disk to prove its contents are NOT counted (descending it
+        // is exactly what the boundary node avoids).
+        let onlineDir = base.appendingPathComponent("cloudfolder.online", isDirectory: true)
+        try fm.createDirectory(at: onlineDir, withIntermediateDirectories: true)
+        try Data(repeating: 0xDD, count: 16384).write(to: onlineDir.appendingPathComponent("hidden.bin"))
+
+        // The seam matches a single suffix; both the online file and the online
+        // directory end in ".online", so one seam covers both.
+        BulkDirScanner._testDatalessSuffix = ".online"
+        defer { BulkDirScanner._testDatalessSuffix = nil }
+
+        let expectedKeptFile = allocatedSize(at: keptFile.path)
+        let expectedInner = allocatedSize(at: inner.path)
+
+        let root = try await FileScanner.scan(url: base) { _ in }
+
+        func find(_ node: FileNode, named name: String) -> FileNode? {
+            if node.name == name { return node }
+            for c in node.children { if let hit = find(c, named: name) { return hit } }
+            return nil
+        }
+
+        // Dataless file excluded entirely (no node).
+        #expect(find(root, named: "ghost.online") == nil)
+
+        // Dataless directory → boundary node, size 0, NOT descended.
+        let onlineDirNode = find(root, named: "cloudfolder.online")
+        #expect(onlineDirNode != nil)
+        #expect(onlineDirNode?.kind == .cloudOnlyStorage)
+        #expect(onlineDirNode?.size == 0)
+        #expect(onlineDirNode?.children.isEmpty == true)
+        #expect(find(root, named: "hidden.bin") == nil)   // contents not scanned
+
+        // Materialized file counted.
+        let kept = find(root, named: "kept.bin")
+        #expect(kept != nil)
+        #expect(kept?.size == expectedKeptFile)
+
+        // Materialized directory descended and its inner file counted.
+        let innerNode = find(root, named: "inner.bin")
+        #expect(innerNode != nil)
+        #expect(innerNode?.size == expectedInner)
+
+        // Sum of real bytes excludes the dataless file & the dataless dir contents.
+        #expect(sumRealBytes(root) == expectedKeptFile + expectedInner)
     }
 
     // MARK: 7 — cancellation

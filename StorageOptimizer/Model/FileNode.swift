@@ -14,10 +14,9 @@ final class FileNode: Identifiable, @unchecked Sendable {
         case hiddenSpace
         /// Synthetic aggregation node ("Other") used by the chart. Not deletable.
         case aggregate
-        /// A cloud-provider folder (iCloud Drive, CloudStorage) left unscanned:
-        /// its contents are online-only (dataless), occupy ~0 local disk, and each
-        /// directory costs a slow first-touch provider enumeration. Treated as a
-        /// boundary so scans stay fast. Not deletable.
+        /// A dataless (online-only) directory left unscanned: its contents are not
+        /// materialized, occupy ~0 local disk, and descending would force a slow
+        /// provider round-trip. Boundary node; not deletable.
         case cloudOnlyStorage
     }
 

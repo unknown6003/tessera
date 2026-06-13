@@ -11,9 +11,11 @@ struct InspectorView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 12) {
-                detailsSection
-                collectorSection
+            GlassEffectContainer(spacing: 14) {
+                VStack(spacing: 14) {
+                    detailsSection
+                    collectorSection
+                }
             }
             .padding(14)
         }
@@ -57,20 +59,32 @@ struct InspectorView: View {
             }
         }
         .padding(16)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+        .modifier(GlassCard())
     }
 
     @ViewBuilder
     private func nodeHeader(_ node: FileNode) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            // Icon in colored circle
+            // Icon in a luminous glass badge tinted by the node's colour.
             ZStack {
                 Circle()
-                    .fill(iconCircleColor(node))
-                    .frame(width: 42, height: 42)
+                    .fill(
+                        RadialGradient(
+                            colors: [iconCircleColor(node).opacity(0.95),
+                                     iconCircleColor(node).opacity(0.45)],
+                            center: .topLeading, startRadius: 2, endRadius: 46
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Circle().strokeBorder(Theme.glassHighlightStroke, lineWidth: 1)
+                            .blendMode(.plusLighter)
+                    )
+                    .shadow(color: iconCircleColor(node).opacity(0.5), radius: 8)
                 Image(systemName: Theme.icon(for: node))
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -238,7 +252,7 @@ struct InspectorView: View {
             }
         }
         .padding(16)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+        .modifier(GlassCard())
     }
 
     // MARK: - Helpers
@@ -304,5 +318,17 @@ private struct CollectorRow: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 7)
+    }
+}
+
+// MARK: - Glass card finish
+
+/// Shared translucent "thick glass" card surface for inspector sections.
+private struct GlassCard: ViewModifier {
+    private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+    func body(content: Content) -> some View {
+        content
+            .glassEffect(.regular, in: shape)
+            .liquidGlassDepth(shape, shadowRadius: 22, shadowY: 12)
     }
 }

@@ -106,6 +106,7 @@ struct SunburstChart: View {
                 let inner = hubRadius + CGFloat(wedge.depth) * ringSpan + Self.ringInset
                 let outer = hubRadius + CGFloat(wedge.depth + 1) * ringSpan - Self.ringInset
                 let isHovered = wedge.node.id == hoveredNode?.id
+                let isSelected = wedge.node.id == selectedNode?.id
 
                 // Sweep-in: scale the swept angle by appearProgress.
                 let start = wedge.startAngle
@@ -113,27 +114,60 @@ struct SunburstChart: View {
                 guard end - start > 0.0001 else { continue }
 
                 // Hit-testing and drawing share identical geometry — no radial
-                // pop. Hover is conveyed purely via fill brightening and a glow
-                // stroke so clicks always land on the wedge under the cursor.
+                // pop. Hover/selection are conveyed purely via fill brightening,
+                // a rim light, and glow strokes so clicks always land on the
+                // wedge under the cursor.
                 let path = wedgePath(center: center,
                                      inner: inner, outer: outer,
                                      start: start, end: end)
 
+                // Glassy body fill (specular → body → translucent shadow).
                 ctx.fill(path, with: .style(fill(for: wedge)))
 
+                // Bright inner specular rim along the inner arc — the refracting
+                // "lip" of glass. Drawn for real (non-synthetic) wedges only.
+                if case .regular = wedge.node.kind { drawRim(ctx, center: center, inner: inner, start: start, end: end, wedge: wedge) }
+                else if case .package = wedge.node.kind { drawRim(ctx, center: center, inner: inner, start: start, end: end, wedge: wedge) }
+
+                // Hairline edge separation between adjacent wedges for crisp glass.
+                ctx.stroke(path, with: .color(.black.opacity(0.18)),
+                           style: StrokeStyle(lineWidth: 0.5, lineJoin: .round))
+
                 if isHovered {
-                    ctx.fill(path, with: .color(.white.opacity(0.28)))
-                    ctx.stroke(path, with: .color(.white.opacity(0.85)),
+                    // Luminous hover glow: a soft white wash plus a bright halo.
+                    ctx.fill(path, with: .color(.white.opacity(0.30)))
+                    ctx.drawLayer { layer in
+                        layer.addFilter(.blur(radius: 6))
+                        layer.stroke(path, with: .color(.white.opacity(0.9)),
+                                     style: StrokeStyle(lineWidth: 3, lineJoin: .round))
+                    }
+                    ctx.stroke(path, with: .color(.white.opacity(0.95)),
                                style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
                 }
-                if wedge.node.id == selectedNode?.id {
-                    ctx.stroke(path, with: .color(.white.opacity(0.9)),
-                               style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+                if isSelected {
+                    ctx.stroke(path, with: .color(.white),
+                               style: StrokeStyle(lineWidth: 1.8, lineJoin: .round))
                 }
             }
         }
         .animation(.easeInOut(duration: 0.18), value: hoveredNode?.id)
+        .animation(.easeInOut(duration: 0.18), value: selectedNode?.id)
         .animation(.easeInOut(duration: 0.35), value: layoutRootID)
+    }
+
+    /// Stroke a bright, slightly inset arc along the inner edge of a wedge to
+    /// suggest a refracting glass lip. Purely cosmetic; does not affect hit
+    /// testing.
+    private func drawRim(_ ctx: GraphicsContext, center: CGPoint, inner: CGFloat,
+                         start: Double, end: Double, wedge: Wedge) {
+        let r = inner + 0.75
+        var rim = Path()
+        rim.addArc(center: center, radius: r,
+                   startAngle: Angle(degrees: start),
+                   endAngle: Angle(degrees: end), clockwise: false)
+        let rimColor = Theme.wedgeRim(hue: wedge.hue, depth: wedge.depth)
+        ctx.stroke(rim, with: .color(rimColor.opacity(0.55)),
+                   style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
     }
 
     private func fill(for wedge: Wedge) -> AnyShapeStyle {
@@ -180,6 +214,20 @@ struct SunburstChart: View {
         .padding(radius * 0.18)
         .frame(width: radius * 2, height: radius * 2)
         .glassEffect(.regular.interactive(), in: Circle())
+        .overlay(
+            // Refracting highlight lip around the glass hub.
+            Circle()
+                .strokeBorder(Theme.glassHighlightStroke, lineWidth: 1.2)
+                .blendMode(.plusLighter)
+        )
+        .background(
+            // Soft luminous halo bleeding out behind the hub.
+            Circle()
+                .fill(.white.opacity(0.12))
+                .frame(width: radius * 2.3, height: radius * 2.3)
+                .blur(radius: radius * 0.35)
+        )
+        .shadow(color: .black.opacity(0.35), radius: radius * 0.22, y: radius * 0.08)
         .position(center)
         .contentShape(Circle())
         .onTapGesture { if isZoomed { onZoomOut() } }
@@ -207,10 +255,16 @@ struct SunburstChart: View {
             }
             .font(.system(size: 11))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
         .frame(maxWidth: 240, alignment: .leading)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Theme.glassHighlightStroke, lineWidth: 1)
+                .blendMode(.plusLighter)
+        )
+        .shadow(color: .black.opacity(0.3), radius: 14, y: 7)
         .fixedSize()
         .onGeometryChange(for: CGSize.self) { $0.size } action: { tooltipSize = $0 }
         .position(tooltipPosition(in: size))

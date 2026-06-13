@@ -9,6 +9,12 @@ struct EntryInfo {
     var device: UInt32
     var linkCount: UInt32
     var allocatedSize: Int64
+    var flags: UInt32
+
+    /// SF_DATALESS (0x40000000): the item is online-only / not materialized.
+    /// For files this means ~0 local disk; for directories it means descending
+    /// would force a slow provider round-trip.
+    var isDataless: Bool { (flags & 0x40000000) != 0 }
 
     enum EntryType { case file, directory, symlink, other }
 }
@@ -39,6 +45,13 @@ enum BulkDirScanner {
 
     /// When set, `timedEntries` uses this timeout instead of its default.
     nonisolated(unsafe) static var _timeoutSecondsOverride: Double? = nil
+
+    /// When set, any entry whose `name` ends with this suffix is treated as
+    /// dataless (SF_DATALESS bit forced on) — lets the cloud/dataless logic be
+    /// tested without a real iCloud/FileProvider mount. Applied in
+    /// `entries(atPath:)` after the listing is built, so both the C bridge and
+    /// the FileManager fallback honor it.
+    nonisolated(unsafe) static var _testDatalessSuffix: String? = nil
 
     /// Holds the syscall result across the sacrificial-thread / waiter boundary.
     /// The DispatchSemaphore signal/wait pair establishes the happens-before, but
@@ -83,19 +96,54 @@ enum BulkDirScanner {
         let timeout = _timeoutSecondsOverride ?? timeoutSeconds
         return await withCheckedContinuation { (cont: CheckedContinuation<[EntryInfo]?, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                let sem = DispatchSemaphore(value: 0)
-                let box = ResultBox()
-                DispatchQueue.global(qos: .userInitiated).async {
-                    box.value = entries(atPath: path)
-                    sem.signal()
-                }
-                if sem.wait(timeout: .now() + timeout) == .timedOut {
-                    cont.resume(returning: nil)       // abandon the hung worker
-                } else {
-                    cont.resume(returning: box.value)
-                }
+                cont.resume(returning: entriesWithDeadline(atPath: path, timeoutSeconds: timeout))
             }
         }
+    }
+
+    /// Whether the test seams are active. When they are, EVERY directory must go
+    /// through the deadline path so the timeout/abandon logic stays exercised (and
+    /// the `_testDelay`/`_timeoutSecondsOverride` semantics tests 10 & 11 rely on
+    /// keep working).
+    static var seamsActive: Bool { _testDelay != nil || _timeoutSecondsOverride != nil }
+
+    /// Worker-thread enumeration of a directory. Reads inline (fast, zero
+    /// dispatch) for local directories; for hang-prone cloud/FileProvider
+    /// directories — or whenever a test seam is active — it goes through a hard
+    /// deadline and returns nil if the directory blows it (caller skips it).
+    ///
+    /// MUST be called from a dedicated worker thread, never the Swift cooperative
+    /// pool: the deadline path blocks the calling thread while it waits.
+    static func workerEntries(atPath path: String) -> [EntryInfo]? {
+        if seamsActive {
+            let timeout = _timeoutSecondsOverride ?? (isHangProne(path) ? 10 : 5)
+            return entriesWithDeadline(atPath: path, timeoutSeconds: timeout)
+        }
+        if isHangProne(path) {
+            return entriesWithDeadline(atPath: path, timeoutSeconds: 10)
+        }
+        return entries(atPath: path)
+    }
+
+    /// Synchronous, worker-thread-callable enumeration with a hard deadline.
+    /// Runs `entries(atPath:)` on a sacrificial GCD worker and waits on a
+    /// semaphore: on timeout it returns nil and ABANDONS the helper (the hung
+    /// syscall keeps running on its own thread but never blocks the caller).
+    ///
+    /// Must NOT be called from the Swift cooperative pool — the wait blocks the
+    /// calling thread, so callers are the scanner's dedicated worker threads (or
+    /// `timedEntries`, which hops onto a global queue first).
+    static func entriesWithDeadline(atPath path: String, timeoutSeconds: Double) -> [EntryInfo]? {
+        let sem = DispatchSemaphore(value: 0)
+        let box = ResultBox()
+        DispatchQueue.global(qos: .userInitiated).async {
+            box.value = entries(atPath: path)
+            sem.signal()
+        }
+        if sem.wait(timeout: .now() + timeoutSeconds) == .timedOut {
+            return nil           // abandon the hung worker
+        }
+        return box.value
     }
 
     /// Treat package directories (.app, .framework, …) as leaf "directories the user
@@ -112,6 +160,22 @@ enum BulkDirScanner {
             Thread.sleep(forTimeInterval: delay.seconds)
         }
 
+        let list = rawEntries(atPath: path)
+
+        // Test-only dataless hook (see `_testDatalessSuffix`): force the
+        // SF_DATALESS bit on any entry whose name matches, so the cloud logic can
+        // be exercised without a real online-only mount. Applied uniformly here so
+        // both the C bridge and the FileManager fallback honor it.
+        guard let suffix = _testDatalessSuffix else { return list }
+        return list.map { entry in
+            guard entry.name.hasSuffix(suffix) else { return entry }
+            var e = entry
+            e.flags |= 0x40000000   // SF_DATALESS
+            return e
+        }
+    }
+
+    private static func rawEntries(atPath path: String) -> [EntryInfo] {
         // Try getattrlistbulk via C bridge.
         // Allocate without zero-fill — only indices 0..<count are read, and the C
         // side fully populates each written entry. Deallocated unconditionally.
@@ -156,7 +220,8 @@ enum BulkDirScanner {
             inode: c.inode,
             device: c.devid,
             linkCount: c.nlink,
-            allocatedSize: c.alloc_size
+            allocatedSize: c.alloc_size,
+            flags: c.flags
         )
     }
 
@@ -187,7 +252,8 @@ enum BulkDirScanner {
                 inode: UInt64(sb.st_ino),
                 device: UInt32(bitPattern: sb.st_dev),
                 linkCount: UInt32(sb.st_nlink),
-                allocatedSize: Int64(sb.st_blocks) * 512
+                allocatedSize: Int64(sb.st_blocks) * 512,
+                flags: sb.st_flags
             )
         }
     }

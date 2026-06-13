@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <sys/attr.h>
 #include <sys/vnode.h>
+#include <sys/stat.h>
 
 #define BUFFER_SIZE (256 * 1024)
 
@@ -26,6 +27,7 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries) {
                                      ATTR_CMN_NAME           |
                                      ATTR_CMN_DEVID          |
                                      ATTR_CMN_OBJTYPE        |
+                                     ATTR_CMN_FLAGS          |
                                      ATTR_CMN_FILEID);
     alist.fileattr = (attrgroup_t)(ATTR_FILE_LINKCOUNT | ATTR_FILE_ALLOCSIZE);
 
@@ -91,6 +93,14 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries) {
             // ATTR_CMN_OBJTYPE: uint32_t
             if (ret_common & ATTR_CMN_OBJTYPE) {
                 e.type = r32(field);
+                field += 4;
+            }
+
+            // ATTR_CMN_FLAGS: uint32_t (st_flags, e.g. SF_DATALESS for online-only
+            // cloud items). Parsed in ascending-bit order: after OBJTYPE (0x8),
+            // before FILEID (0x2000000).
+            if (ret_common & ATTR_CMN_FLAGS) {
+                e.flags = r32(field);
                 field += 4;
             }
 

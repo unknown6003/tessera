@@ -13,6 +13,10 @@ final class ScanViewModel: ObservableObject {
     @Published var progress = ScanProgress()
     @Published var errorMessage: String?
     @Published var needsFullDiskAccess = false
+    /// Drives the first-launch onboarding prompt that asks for Full Disk Access
+    /// once, up front, instead of failing per-directory mid-scan.
+    @Published var showFDAOnboarding = false
+    private var fdaDismissedThisSession = false
 
     private var scanTask: Task<Void, Never>?
     /// Diagnostic: true when the last scan ended via CancellationError.
@@ -191,5 +195,55 @@ final class ScanViewModel: ObservableObject {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Probe whether the app currently holds Full Disk Access. We try to open a
+    /// couple of TCC-protected files that always exist in a user's home but are
+    /// only readable with FDA granted. A successful `open` (or a non-permission
+    /// error) means access is granted; `EPERM`/`EACCES` means it is denied.
+    ///
+    /// This is the same signal macOS uses, observed without prompting: an app
+    /// with FDA can open these, one without cannot.
+    static func hasFullDiskAccess() -> Bool {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let probes = [
+            home + "/Library/Application Support/com.apple.TCC/TCC.db",
+            home + "/Library/Safari/Bookmarks.plist",
+        ]
+        for path in probes where FileManager.default.fileExists(atPath: path) {
+            let fd = open(path, O_RDONLY)
+            if fd >= 0 {
+                close(fd)
+                return true
+            }
+            if errno == EPERM || errno == EACCES {
+                return false
+            }
+        }
+        // Neither probe file exists (unusual) — don't block the user on a guess.
+        return true
+    }
+
+    /// Re-evaluate FDA status and drive the onboarding overlay. Called on launch
+    /// and whenever the app reactivates (e.g. returning from System Settings), so
+    /// granting access auto-dismisses the prompt with no further action.
+    func refreshFullDiskAccessStatus() {
+        // Headless/automation runs must never block on UI.
+        if ProcessInfo.processInfo.environment["SO_AUTOSCAN"] != nil { return }
+
+        if Self.hasFullDiskAccess() {
+            showFDAOnboarding = false
+            needsFullDiskAccess = false
+        } else if !fdaDismissedThisSession {
+            showFDAOnboarding = true
+        }
+    }
+
+    /// User chose to proceed without granting access. Suppress the overlay for the
+    /// rest of this session; the per-scan `needsFullDiskAccess` card still appears
+    /// if a scan later comes back empty for lack of permission.
+    func dismissFDAOnboarding() {
+        fdaDismissedThisSession = true
+        showFDAOnboarding = false
     }
 }

@@ -21,53 +21,130 @@ enum Theme {
         return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 
-    /// Linear gradient fill — lighter inner edge fading to the base wedge colour.
+    /// Glassy gradient fill for a wedge — a bright specular inner edge bleeding
+    /// into a translucent, slightly desaturated body so the luminous backdrop
+    /// refracts through the ring. Outer rings read as thinner, cooler glass.
     static func wedgeGradient(hue: Double, depth: Int) -> AnyShapeStyle {
-        let base   = wedgeColor(hue: hue, depth: depth)
-        let bright = Color(hue: hue,
-                           saturation: max(0.30, 0.70 - Double(depth) * 0.08),
-                           brightness: min(1.0,  1.00 - Double(depth) * 0.04))
+        // Bright specular highlight near the inner edge (top-leading).
+        let specular = Color(hue: hue,
+                             saturation: max(0.18, 0.55 - Double(depth) * 0.07),
+                             brightness: min(1.0,  1.02 - Double(depth) * 0.03))
+        // Saturated body.
+        let body = wedgeColor(hue: hue, depth: depth)
+        // Cooler, more translucent shadow side so depth reads through the glass.
+        let shadow = Color(hue: hue,
+                           saturation: min(1.0, 0.92 - Double(depth) * 0.05),
+                           brightness: max(0.40, 0.66 - Double(depth) * 0.05))
+            .opacity(0.92)
         return AnyShapeStyle(
             LinearGradient(
-                colors: [bright, base],
+                stops: [
+                    .init(color: specular.opacity(0.96), location: 0.00),
+                    .init(color: body,                    location: 0.42),
+                    .init(color: shadow,                  location: 1.00),
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
         )
     }
 
+    /// A thin bright "rim light" colour for a wedge's inner specular edge,
+    /// drawn as a stroke in the Canvas for a refracted-glass lip.
+    static func wedgeRim(hue: Double, depth: Int) -> Color {
+        Color(hue: hue,
+              saturation: max(0.10, 0.40 - Double(depth) * 0.06),
+              brightness: 1.0)
+    }
+
     // MARK: - Synthetic node colours
 
-    /// Translucent neutral for "Hidden Space" (space the scan cannot see).
+    /// Translucent frosted neutral for "Hidden Space" (space the scan cannot see).
     static let hiddenSpaceColor: Color = Color(
-        NSColor(calibratedWhite: 0.55, alpha: 0.55)
+        NSColor(calibratedWhite: 0.62, alpha: 0.42)
     )
 
-    /// Translucent neutral for aggregated "Other" slices.
+    /// Translucent frosted neutral for aggregated "Other" slices.
     static let aggregateColor: Color = Color(
-        NSColor(calibratedWhite: 0.45, alpha: 0.45)
+        NSColor(calibratedWhite: 0.50, alpha: 0.34)
     )
 
-    /// Soft cyan for online-only cloud-storage boundary nodes.
-    static let cloudColor: Color = Color(hue: 0.55, saturation: 0.45, brightness: 0.85)
+    /// Soft luminous cyan for online-only cloud-storage boundary nodes.
+    static let cloudColor: Color = Color(hue: 0.54, saturation: 0.42, brightness: 0.92)
 
     // MARK: - Background
 
-    /// Deep slate→indigo radial gradient backdrop — the canvas the glass panels float on.
+    /// Primary luminous backdrop — a deep indigo/teal multi-stop radial gradient
+    /// giving the floating glass something vivid to refract. Layer the
+    /// `backgroundBlobs` view on top of this for chromatic depth.
     static var backgroundGradient: AnyShapeStyle {
         AnyShapeStyle(
             RadialGradient(
                 stops: [
-                    .init(color: Color(hue: 0.63, saturation: 0.30, brightness: 0.22), location: 0.00),
-                    .init(color: Color(hue: 0.68, saturation: 0.45, brightness: 0.16), location: 0.55),
-                    .init(color: Color(hue: 0.72, saturation: 0.55, brightness: 0.10), location: 1.00),
+                    .init(color: Color(hue: 0.60, saturation: 0.42, brightness: 0.30), location: 0.00),
+                    .init(color: Color(hue: 0.66, saturation: 0.55, brightness: 0.20), location: 0.45),
+                    .init(color: Color(hue: 0.71, saturation: 0.62, brightness: 0.12), location: 0.80),
+                    .init(color: Color(hue: 0.74, saturation: 0.70, brightness: 0.06), location: 1.00),
                 ],
-                center: .center,
+                center: UnitPoint(x: 0.38, y: 0.30),
                 startRadius: 0,
-                endRadius: 800
+                endRadius: 1100
             )
         )
     }
+
+    /// Soft, large, blurred colour "blobs" that sit behind the glass panels to
+    /// create chromatic depth showing through translucent surfaces. Animated by a
+    /// slow phase so the light gently drifts.
+    static func backgroundBlobs(phase: Double) -> some View {
+        let drift = sin(phase) * 26
+        let drift2 = cos(phase * 0.8) * 30
+        return ZStack {
+            blob(color: Color(hue: 0.58, saturation: 0.85, brightness: 0.95), // cyan-blue
+                 size: 620, opacity: 0.34)
+                .offset(x: -260 + drift, y: -200 - drift2)
+            blob(color: Color(hue: 0.80, saturation: 0.80, brightness: 0.95), // violet
+                 size: 560, opacity: 0.30)
+                .offset(x: 320 + drift2, y: -130 + drift)
+            blob(color: Color(hue: 0.50, saturation: 0.80, brightness: 0.92), // teal
+                 size: 520, opacity: 0.24)
+                .offset(x: 200 - drift, y: 280 + drift2)
+            blob(color: Color(hue: 0.92, saturation: 0.70, brightness: 0.92), // magenta
+                 size: 460, opacity: 0.20)
+                .offset(x: -300 - drift2, y: 240 - drift)
+        }
+        .blur(radius: 80)
+        .blendMode(.screen)
+    }
+
+    private static func blob(color: Color, size: CGFloat, opacity: Double) -> some View {
+        Circle()
+            .fill(
+                RadialGradient(
+                    colors: [color.opacity(opacity), color.opacity(0.0)],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: size / 2
+                )
+            )
+            .frame(width: size, height: size)
+    }
+
+    // MARK: - Glass tints & strokes
+
+    /// Faint top-highlight stroke gradient that gives glass a "thick" refracting
+    /// lip — bright at the top, fading to nothing at the bottom.
+    static var glassHighlightStroke: LinearGradient {
+        LinearGradient(
+            colors: [.white.opacity(0.55), .white.opacity(0.06), .clear],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    /// A subtle tint used to brighten selected glass (selection = brighter glass,
+    /// not an opaque fill).
+    static let selectionTint = Color.accentColor.opacity(0.22)
 
     // MARK: - Formatting
 
@@ -136,5 +213,29 @@ enum Theme {
         default:
             return "doc.fill"
         }
+    }
+}
+
+// MARK: - Glass depth modifiers
+
+extension View {
+    /// Adds the "thick Liquid Glass" finish to a shape-clipped surface: a faint
+    /// bright top-highlight lip plus a soft ambient drop shadow for floating
+    /// depth. Apply *after* `.glassEffect(_:in:)` using the same shape.
+    func liquidGlassDepth<S: InsettableShape>(
+        _ shape: S,
+        highlight: Double = 1.0,
+        shadowRadius: CGFloat = 22,
+        shadowY: CGFloat = 14
+    ) -> some View {
+        self
+            .overlay(
+                shape
+                    .strokeBorder(Theme.glassHighlightStroke, lineWidth: 1)
+                    .opacity(highlight)
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: .black.opacity(0.28), radius: shadowRadius, y: shadowY)
     }
 }
