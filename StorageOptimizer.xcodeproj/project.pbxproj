@@ -8,32 +8,47 @@
 
 /* Begin PBXBuildFile section */
 		0311A37FE2C7BF19F55948FA /* ScanViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2EF1450DA7F131DAE378539 /* ScanViewModel.swift */; };
+		0547D783C2969C03E9AE4A9B /* SunburstChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22799EC27F3878A28E92A74 /* SunburstChart.swift */; };
 		0C3CC5F272C51E2D497C0B54 /* FileScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14BECC25C32D412C2DB15599 /* FileScanner.swift */; };
-		18D49BD1E3056D013486FDEB /* SunburstRepresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE242CDA1A7D859B19FC8FA1 /* SunburstRepresentable.swift */; };
 		60ADFADC631518C7D4917629 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136FA6DA4546458D405F4D38 /* InspectorView.swift */; };
+		63BDE4AC31181AF946BB6324 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7F392BD6C036181ABA6E22 /* ViewModelTests.swift */; };
 		66464E106EA850FA6B7F855F /* TrashService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7926B52A79D2A820F25AF809 /* TrashService.swift */; };
+		7D339ADA7F390D9F34F7A4D1 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E34A8E0B2233C2B5EA9FFE1 /* Theme.swift */; };
 		90D0AECEE8DAE38C1F5E301E /* BulkReader.c in Sources */ = {isa = PBXBuildFile; fileRef = EA25F9BF10EDE58E854FE0E6 /* BulkReader.c */; };
 		A3AA97208A6C81E052A0ECBB /* Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B75DFA4820FD837D699B3F /* Sidebar.swift */; };
 		AD90F8F4C988E9F06DDAB873 /* FileNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ACF3D7AE52318FAB11AFC24 /* FileNode.swift */; };
 		B40DF85044A12E2F7076BB03 /* StorageOptimizerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5954AC735E1A8256EDFDE1D /* StorageOptimizerApp.swift */; };
-		BAC684546B4CF2CB95E87A64 /* SunburstView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 155B34E029C565C621C89969 /* SunburstView.swift */; };
 		C7C1B88B99DBF460C480265D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F655824E790F4A1A9FCB19B2 /* ContentView.swift */; };
 		D0A4691F818CD85261FE23E1 /* BulkDirScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED0D3ED4A340442D741C40C6 /* BulkDirScanner.swift */; };
+		DF1F9DB8C555F6BC447DC4C0 /* EngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACFDCAB20E8FA97583AD2706 /* EngineTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		104C69DAB25A91DE3F5C19B4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 18ABA8804E1728C9F6F6602D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 59466466AA65229C3DE4171F;
+			remoteInfo = StorageOptimizer;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		123BE699CC4659B27483C5FA /* StorageOptimizer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StorageOptimizer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		136FA6DA4546458D405F4D38 /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		14BECC25C32D412C2DB15599 /* FileScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileScanner.swift; sourceTree = "<group>"; };
-		155B34E029C565C621C89969 /* SunburstView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunburstView.swift; sourceTree = "<group>"; };
+		1E34A8E0B2233C2B5EA9FFE1 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		4D9B500016263ACA4BF78C4B /* StorageOptimizer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StorageOptimizer.entitlements; sourceTree = "<group>"; };
 		5DC066D847E641A17B0DB6AF /* BulkReader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BulkReader.h; sourceTree = "<group>"; };
 		6420CDE63EFE0F46919442BC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7926B52A79D2A820F25AF809 /* TrashService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashService.swift; sourceTree = "<group>"; };
+		79C1D1444458486D1635EA98 /* StorageOptimizerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StorageOptimizerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		85B75DFA4820FD837D699B3F /* Sidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sidebar.swift; sourceTree = "<group>"; };
+		8A7F392BD6C036181ABA6E22 /* ViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelTests.swift; sourceTree = "<group>"; };
 		9ACF3D7AE52318FAB11AFC24 /* FileNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNode.swift; sourceTree = "<group>"; };
+		A22799EC27F3878A28E92A74 /* SunburstChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunburstChart.swift; sourceTree = "<group>"; };
 		A2EF1450DA7F131DAE378539 /* ScanViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanViewModel.swift; sourceTree = "<group>"; };
-		BE242CDA1A7D859B19FC8FA1 /* SunburstRepresentable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunburstRepresentable.swift; sourceTree = "<group>"; };
+		ACFDCAB20E8FA97583AD2706 /* EngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTests.swift; sourceTree = "<group>"; };
 		C5954AC735E1A8256EDFDE1D /* StorageOptimizerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageOptimizerApp.swift; sourceTree = "<group>"; };
 		D4949ABD498D6E2BD6A2FBCD /* StorageOptimizer-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "StorageOptimizer-Bridging-Header.h"; sourceTree = "<group>"; };
 		EA25F9BF10EDE58E854FE0E6 /* BulkReader.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BulkReader.c; sourceTree = "<group>"; };
@@ -46,8 +61,18 @@
 			isa = PBXGroup;
 			children = (
 				F86139F245933C74CEB7A394 /* StorageOptimizer */,
+				19674189024756034CDF43F7 /* StorageOptimizerTests */,
 				5F5F62128C67BA8480F01135 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		19674189024756034CDF43F7 /* StorageOptimizerTests */ = {
+			isa = PBXGroup;
+			children = (
+				ACFDCAB20E8FA97583AD2706 /* EngineTests.swift */,
+				8A7F392BD6C036181ABA6E22 /* ViewModelTests.swift */,
+			);
+			path = StorageOptimizerTests;
 			sourceTree = "<group>";
 		};
 		1E0810F2D332F34A057AA734 /* Views */ = {
@@ -56,8 +81,8 @@
 				F655824E790F4A1A9FCB19B2 /* ContentView.swift */,
 				136FA6DA4546458D405F4D38 /* InspectorView.swift */,
 				85B75DFA4820FD837D699B3F /* Sidebar.swift */,
-				BE242CDA1A7D859B19FC8FA1 /* SunburstRepresentable.swift */,
-				155B34E029C565C621C89969 /* SunburstView.swift */,
+				A22799EC27F3878A28E92A74 /* SunburstChart.swift */,
+				1E34A8E0B2233C2B5EA9FFE1 /* Theme.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -78,6 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				123BE699CC4659B27483C5FA /* StorageOptimizer.app */,
+				79C1D1444458486D1635EA98 /* StorageOptimizerTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -133,6 +159,24 @@
 			productReference = 123BE699CC4659B27483C5FA /* StorageOptimizer.app */;
 			productType = "com.apple.product-type.application";
 		};
+		99C55DFA4F10731DE1844AD5 /* StorageOptimizerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 730435EB53223909EC601B59 /* Build configuration list for PBXNativeTarget "StorageOptimizerTests" */;
+			buildPhases = (
+				D38D7FF6B9F3C7103FDD204A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A5BA1D5066E4B075653D403D /* PBXTargetDependency */,
+			);
+			name = StorageOptimizerTests;
+			packageProductDependencies = (
+			);
+			productName = StorageOptimizerTests;
+			productReference = 79C1D1444458486D1635EA98 /* StorageOptimizerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -140,9 +184,13 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2650;
+				LastUpgradeCheck = 1700;
 				TargetAttributes = {
 					59466466AA65229C3DE4171F = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					99C55DFA4F10731DE1844AD5 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
@@ -163,6 +211,7 @@
 			projectRoot = "";
 			targets = (
 				59466466AA65229C3DE4171F /* StorageOptimizer */,
+				99C55DFA4F10731DE1844AD5 /* StorageOptimizerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -181,20 +230,36 @@
 				0311A37FE2C7BF19F55948FA /* ScanViewModel.swift in Sources */,
 				A3AA97208A6C81E052A0ECBB /* Sidebar.swift in Sources */,
 				B40DF85044A12E2F7076BB03 /* StorageOptimizerApp.swift in Sources */,
-				18D49BD1E3056D013486FDEB /* SunburstRepresentable.swift in Sources */,
-				BAC684546B4CF2CB95E87A64 /* SunburstView.swift in Sources */,
+				0547D783C2969C03E9AE4A9B /* SunburstChart.swift in Sources */,
+				7D339ADA7F390D9F34F7A4D1 /* Theme.swift in Sources */,
 				66464E106EA850FA6B7F855F /* TrashService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D38D7FF6B9F3C7103FDD204A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DF1F9DB8C555F6BC447DC4C0 /* EngineTests.swift in Sources */,
+				63BDE4AC31181AF946BB6324 /* ViewModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A5BA1D5066E4B075653D403D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 59466466AA65229C3DE4171F /* StorageOptimizer */;
+			targetProxy = 104C69DAB25A91DE3F5C19B4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		52030EFDF0CE64A84BE23C98 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -225,11 +290,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -250,10 +313,30 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		5A37C43F2C7D5A83A556C635 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.abdwy.StorageOptimizerTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/StorageOptimizer.app/Contents/MacOS/StorageOptimizer";
 			};
 			name = Debug;
 		};
@@ -261,7 +344,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -292,11 +374,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -310,7 +390,6 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -324,11 +403,11 @@
 				CODE_SIGN_ENTITLEMENTS = StorageOptimizer/StorageOptimizer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_TESTABILITY = YES;
 				GCC_OPTIMIZATION_LEVEL = 3;
 				INFOPLIST_FILE = StorageOptimizer/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -351,7 +430,6 @@
 				CODE_SIGN_ENTITLEMENTS = StorageOptimizer/StorageOptimizer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
@@ -368,6 +446,27 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "StorageOptimizer/StorageOptimizer-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		BDFE408C6E179B8DD87BDB0F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.abdwy.StorageOptimizerTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/StorageOptimizer.app/Contents/MacOS/StorageOptimizer";
 			};
 			name = Release;
 		};
@@ -388,6 +487,15 @@
 			buildConfigurations = (
 				739BE65A5DD44A1E87D3D771 /* Debug */,
 				A90BC88AD3A47D3D81B007AC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		730435EB53223909EC601B59 /* Build configuration list for PBXNativeTarget "StorageOptimizerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A37C43F2C7D5A83A556C635 /* Debug */,
+				BDFE408C6E179B8DD87BDB0F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

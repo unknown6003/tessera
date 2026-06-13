@@ -33,6 +33,37 @@ targets:
         Debug:
           SWIFT_OPTIMIZATION_LEVEL: "-Onone"
           DEBUG_INFORMATION_FORMAT: dwarf
+          ENABLE_TESTABILITY: YES
         Release:
           SWIFT_OPTIMIZATION_LEVEL: "-O"
           DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+
+  StorageOptimizerTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - StorageOptimizerTests
+    dependencies:
+      - target: StorageOptimizer
+    settings:
+      base:
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/StorageOptimizer.app/Contents/MacOS/StorageOptimizer"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+
+schemes:
+  StorageOptimizer:
+    build:
+      targets:
+        StorageOptimizer: all
+        StorageOptimizerTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - StorageOptimizerTests
