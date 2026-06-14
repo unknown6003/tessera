@@ -17,7 +17,7 @@ enum DebugAutomation {
         log("automation armed: scan=\(scanPath)")
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(800))
-            log("starting scan; windows=\(NSApp.windows.map { "\($0.title):visible=\($0.isVisible):opaque=\($0.isOpaque):bgAlpha=\(String(format: "%.2f", $0.backgroundColor.alphaComponent)):fullSizeContent=\($0.styleMask.contains(.fullSizeContentView))" })")
+            log("starting scan; windows=\(NSApp.windows.map { "\($0.title):num=\($0.windowNumber):visible=\($0.isVisible):opaque=\($0.isOpaque):bgAlpha=\(String(format: "%.2f", $0.backgroundColor.alphaComponent)):fullSizeContent=\($0.styleMask.contains(.fullSizeContentView))" })")
             let scanStart = Date()
             vm.startScan(volumeURL: URL(fileURLWithPath: scanPath))
 
@@ -50,8 +50,29 @@ enum DebugAutomation {
             }
             if autoQuit {
                 NSApp.terminate(nil)
+            } else {
+                prepareForCapture()
             }
         }
+    }
+
+    /// Interactive-capture mode (no SO_AUTOQUIT): size/centre the window, bring
+    /// it frontmost and activate the app (which switches the active Space to it),
+    /// then log its CGWindowID so an external `screencapture -l <id>` can grab the
+    /// REAL behind-window glass that in-app `cacheDisplay` snapshots can't show.
+    private static func prepareForCapture() {
+        guard let window = NSApp.windows.first(where: { $0.isVisible }) ?? NSApp.windows.first else {
+            log("CAPTURE: no window"); return
+        }
+        if let screen = window.screen ?? NSScreen.main {
+            let target = NSSize(width: 1280, height: 840)
+            let vf = screen.visibleFrame
+            let origin = NSPoint(x: vf.midX - target.width / 2, y: vf.midY - target.height / 2)
+            window.setFrame(NSRect(origin: origin, size: target), display: true)
+        }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        log("CAPTURE READY windowNumber=\(window.windowNumber) frame=\(NSStringFromRect(window.frame))")
     }
 
     private static func snapshotKeyWindow(to path: String) {

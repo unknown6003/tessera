@@ -22,17 +22,19 @@ struct ContentView: View {
         .padding(18)
         .frame(minWidth: 920, minHeight: 600)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // The whole app is a glass pane over the desktop. A faint full-window
-        // frosted base (behind-window vibrancy) gives the window visible bounds
-        // so it reads as a pane rather than a 100%-transparent hole — while still
-        // refracting the desktop and apps behind it. Panels then sit on top with
-        // `.withinWindow` glass, frosting THIS base instead of re-blurring the
-        // desktop, which keeps the stacked-card effect gentle.
+        // The whole app is a glass pane over the desktop. A STRONG full-window
+        // frosted base (behind-window vibrancy, full strength) gives the window
+        // clear, obviously-blurred bounds — the desktop reads as heavily frosted
+        // behind it rather than showing through almost untouched. Panels then sit
+        // on top with a light within-window material, frosting THIS base instead
+        // of re-blurring the desktop, so the stacked-card effect stays gentle.
         .background(
-            DesktopGlass(material: .hudWindow, blendingMode: .behindWindow,
-                         emphasized: false, cornerRadius: 18)
-                .opacity(0.5)
-                .ignoresSafeArea()
+            ZStack {
+                DesktopGlass(material: GlassTuning.baseMaterial, blendingMode: .behindWindow,
+                             emphasized: GlassTuning.baseEmphasized, cornerRadius: 18)
+                Color.black.opacity(GlassTuning.baseTint)
+            }
+            .ignoresSafeArea()
         )
         .background(TransparentWindowConfigurator())
         .background(KeyboardShortcuts(vm: vm))

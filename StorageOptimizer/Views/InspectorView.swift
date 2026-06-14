@@ -321,14 +321,15 @@ private struct CollectorRow: View {
 
 // MARK: - Glass card finish
 
-/// Shared translucent glass card surface for inspector sections. Uses
-/// behind-window glass so each card refracts the desktop, consistent with the
-/// rest of the transparent app.
+/// Shared translucent glass card surface for inspector sections. Uses a light
+/// SwiftUI within-window material so each card only lightly frosts the strongly
+/// blurred window base — a hint of what's behind shows through while the text
+/// stays crisp — consistent with the other panels.
 private struct GlassCard: ViewModifier {
     private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
     func body(content: Content) -> some View {
         content
-            .background(DesktopGlass(cornerRadius: 22))
+            .background(GlassTuning.cardMaterial, in: shape)
             .liquidGlassDepth(shape, shadowRadius: 22, shadowY: 12)
     }
 }
