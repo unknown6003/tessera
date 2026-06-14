@@ -77,4 +77,91 @@ struct LayoutTests {
             #expect(w.endAngle >= w.startAngle)
         }
     }
+
+    // MARK: - Hit-testing
+
+    // Chart geometry mirrors SunburstChart's body. hubFraction (0.17) and
+    // maxRings (5) are private to the view, so they are duplicated here.
+    private static let hubFraction: CGFloat = 0.17
+    private static let maxRings = 5
+
+    private func chartGeometry(for size: CGSize)
+        -> (center: CGPoint, chartRadius: CGFloat, hubRadius: CGFloat, ringSpan: CGFloat) {
+        let side = min(size.width, size.height)
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let chartRadius = side / 2 * 0.96
+        let hubRadius = chartRadius * Self.hubFraction
+        let ringSpan = (chartRadius - hubRadius) / CGFloat(Self.maxRings)
+        return (center, chartRadius, hubRadius, ringSpan)
+    }
+
+    private func multiRingRoot() -> FileNode {
+        let base = URL(fileURLWithPath: "/tmp/layout-hittest")
+        let root = FileNode(url: base, name: "root", isDirectory: true, size: 0)
+        var tops: [FileNode] = []
+        for d in 0 ..< 5 {
+            let dir = FileNode(url: base.appendingPathComponent("d\(d)"),
+                               name: "d\(d)", isDirectory: true, size: 0)
+            var kids: [FileNode] = []
+            for c in 0 ..< 4 {
+                let sub = FileNode(url: base.appendingPathComponent("d\(d)/c\(c)"),
+                                   name: "c\(c)", isDirectory: true, size: 0)
+                let leaf = FileNode(url: base.appendingPathComponent("d\(d)/c\(c)/leaf"),
+                                    name: "leaf", isDirectory: false, size: Int64(120 + c * 40))
+                sub.setChildren([leaf])
+                kids.append(sub)
+            }
+            dir.setChildren(kids)
+            tops.append(dir)
+        }
+        root.setChildren(tops)
+        root.recomputeDirectorySizes()
+        return root
+    }
+
+    /// The drawing geometry and the hit-test geometry must agree: a click on the
+    /// angular/radial midpoint of any rendered wedge must resolve back to that
+    /// exact wedge. This is what makes the chart clickable — the regression the
+    /// `.position`'d interactive-glass hub used to mask by swallowing all events.
+    @Test("Every wedge's midpoint hit-tests back to itself")
+    func clickMapsToWedge() {
+        let root = multiRingRoot()
+        let wedges = SunburstChart.buildLayout(root: root)
+        #expect(!wedges.isEmpty)
+
+        let g = chartGeometry(for: CGSize(width: 800, height: 800))
+
+        for w in wedges {
+            let midDeg = (w.startAngle + w.endAngle) / 2
+            let midRad = midDeg * .pi / 180
+            let radius = g.hubRadius + (CGFloat(w.depth) + 0.5) * g.ringSpan
+            let p = CGPoint(x: g.center.x + cos(midRad) * radius,
+                            y: g.center.y + sin(midRad) * radius)
+            let hit = SunburstChart.hitTest(in: wedges, at: p, center: g.center,
+                                            chartRadius: g.chartRadius, hubRadius: g.hubRadius)
+            #expect(hit?.id == w.id,
+                    "midpoint of '\(w.node.name)' (depth \(w.depth)) should hit itself, got '\(hit?.node.name ?? "nil")'")
+        }
+    }
+
+    /// Points in the central hub hole and beyond the outer rim hit nothing, so a
+    /// click there clears the selection rather than mis-selecting an edge wedge.
+    @Test("Hub hole and area beyond the rim hit nothing")
+    func hitTestMissesHubAndBeyondRim() {
+        let root = multiRingRoot()
+        let wedges = SunburstChart.buildLayout(root: root)
+        let g = chartGeometry(for: CGSize(width: 800, height: 800))
+
+        // Dead centre — inside the hub hole.
+        #expect(SunburstChart.hitTest(in: wedges, at: g.center, center: g.center,
+                                      chartRadius: g.chartRadius, hubRadius: g.hubRadius) == nil)
+        // Just inside the hub radius.
+        let nearCentre = CGPoint(x: g.center.x + g.hubRadius * 0.5, y: g.center.y)
+        #expect(SunburstChart.hitTest(in: wedges, at: nearCentre, center: g.center,
+                                      chartRadius: g.chartRadius, hubRadius: g.hubRadius) == nil)
+        // Beyond the outer rim.
+        let beyond = CGPoint(x: g.center.x + g.chartRadius + 20, y: g.center.y)
+        #expect(SunburstChart.hitTest(in: wedges, at: beyond, center: g.center,
+                                      chartRadius: g.chartRadius, hubRadius: g.hubRadius) == nil)
+    }
 }

@@ -49,6 +49,17 @@ struct SunburstChart: View {
             let hubRadius = chartRadius * Self.hubFraction
 
             ZStack {
+                // Frosted glass plate beneath the wedges: it frosts the faint
+                // window-base glass (within-window) rather than re-blurring the
+                // desktop a second time, giving the light pastel wedges a
+                // consistent seat so they stay legible over any wallpaper while
+                // keeping the layered frost gentle.
+                DesktopGlass(material: .hudWindow, blendingMode: .withinWindow,
+                             cornerRadius: chartRadius)
+                    .frame(width: chartRadius * 2, height: chartRadius * 2)
+                    .opacity(0.5)
+                    .allowsHitTesting(false)
+
                 canvas(center: center, chartRadius: chartRadius, hubRadius: hubRadius)
                     // Make the entire chart frame hit-testable, including the
                     // transparent gaps between wedges, so hover and taps always land.
@@ -72,7 +83,7 @@ struct SunburstChart: View {
                     .contextMenu { contextMenuItems(center: center, chartRadius: chartRadius,
                                                     hubRadius: hubRadius) }
 
-                hub(center: center, radius: hubRadius)
+                hub(radius: hubRadius)
 
                 if hovering, let node = hoveredNode {
                     tooltip(for: node, in: geo.size)
@@ -135,24 +146,31 @@ struct SunburstChart: View {
                 if case .regular = wedge.node.kind { drawRim(ctx, center: center, inner: inner, start: start, end: end, wedge: wedge) }
                 else if case .package = wedge.node.kind { drawRim(ctx, center: center, inner: inner, start: start, end: end, wedge: wedge) }
 
-                // Hairline edge separation between adjacent wedges for crisp glass.
-                ctx.stroke(path, with: .color(.black.opacity(0.18)),
+                // Hairline edge separation between adjacent wedges. Kept airy
+                // (very faint) so the pastel palette stays light and flowy.
+                ctx.stroke(path, with: .color(.black.opacity(0.10)),
                            style: StrokeStyle(lineWidth: 0.5, lineJoin: .round))
 
                 if isHovered {
-                    // Luminous hover glow: a soft white wash plus a bright halo.
-                    ctx.fill(path, with: .color(.white.opacity(0.30)))
+                    // Soft luminous hover glow: a gentle white wash plus a halo —
+                    // restrained so it lifts the pastel wedge without blowing it out.
+                    ctx.fill(path, with: .color(.white.opacity(0.16)))
                     ctx.drawLayer { layer in
                         layer.addFilter(.blur(radius: 6))
-                        layer.stroke(path, with: .color(.white.opacity(0.9)),
+                        layer.stroke(path, with: .color(.white.opacity(0.8)),
                                      style: StrokeStyle(lineWidth: 3, lineJoin: .round))
                     }
-                    ctx.stroke(path, with: .color(.white.opacity(0.95)),
+                    ctx.stroke(path, with: .color(.white.opacity(0.85)),
                                style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
                 }
                 if isSelected {
-                    ctx.stroke(path, with: .color(.white),
-                               style: StrokeStyle(lineWidth: 1.8, lineJoin: .round))
+                    // A crisp ink outline reads cleanly against light pastels where
+                    // a plain white stroke would vanish; a thin white inset keeps
+                    // the glassy lip.
+                    ctx.stroke(path, with: .color(.black.opacity(0.55)),
+                               style: StrokeStyle(lineWidth: 2.2, lineJoin: .round))
+                    ctx.stroke(path, with: .color(.white.opacity(0.9)),
+                               style: StrokeStyle(lineWidth: 1.0, lineJoin: .round))
                 }
             }
         }
@@ -210,7 +228,12 @@ struct SunburstChart: View {
 
     // MARK: - Center hub
 
-    private func hub(center: CGPoint, radius: CGFloat) -> some View {
+    /// The hub is centred naturally by the parent `ZStack` (its centre coincides
+    /// with the chart's geometric centre), so it does NOT use `.position`.
+    /// `.position` makes a view's hit-test frame fill the entire parent, which —
+    /// combined with interactive glass — is exactly what used to swallow every
+    /// hover and click meant for the wedges.
+    private func hub(radius: CGFloat) -> some View {
         let node = root
         return VStack(spacing: 2) {
             if isZoomed {
@@ -228,23 +251,28 @@ struct SunburstChart: View {
         }
         .padding(radius * 0.18)
         .frame(width: radius * 2, height: radius * 2)
-        .glassEffect(.regular.interactive(), in: Circle())
+        // Within-window glass so the hub frosts the window-base layer like the
+        // panels do, instead of re-blurring the desktop a second time.
+        .background(DesktopGlass(blendingMode: .withinWindow, cornerRadius: radius))
+        .background(
+            // Soft luminous halo bleeding out behind the hub.
+            Circle()
+                .fill(.white.opacity(0.10))
+                .frame(width: radius * 2.3, height: radius * 2.3)
+                .blur(radius: radius * 0.35)
+        )
         .overlay(
             // Refracting highlight lip around the glass hub.
             Circle()
                 .strokeBorder(Theme.glassHighlightStroke, lineWidth: 1.2)
                 .blendMode(.plusLighter)
+                .allowsHitTesting(false)
         )
-        .background(
-            // Soft luminous halo bleeding out behind the hub.
-            Circle()
-                .fill(.white.opacity(0.12))
-                .frame(width: radius * 2.3, height: radius * 2.3)
-                .blur(radius: radius * 0.35)
-        )
-        .shadow(color: .black.opacity(0.35), radius: radius * 0.22, y: radius * 0.08)
-        .position(center)
+        .shadow(color: .black.opacity(0.30), radius: radius * 0.22, y: radius * 0.08)
         .contentShape(Circle())
+        // Pass hover/clicks through to the wedges below. Only when zoomed in does
+        // the hub become an active target (tap = zoom out).
+        .allowsHitTesting(isZoomed)
         .onTapGesture { if isZoomed { onZoomOut() } }
         .help(isZoomed ? "Zoom out" : "")
     }
@@ -397,10 +425,22 @@ struct SunburstChart: View {
     /// Precise polar hit-testing against the cached layout.
     private func hitTest(at p: CGPoint, center: CGPoint,
                          chartRadius: CGFloat, hubRadius: CGFloat) -> Wedge? {
+        Self.hitTest(in: layout, at: p, center: center,
+                     chartRadius: chartRadius, hubRadius: hubRadius)
+    }
+
+    /// Pure, side-effect-free polar hit-test: which wedge in `layout` contains
+    /// the point `p`? Static so it can be unit-tested against `buildLayout`
+    /// output without a live view. Returns nil inside the hub hole
+    /// (`r < hubRadius`) and outside the chart (`r > chartRadius`). The drawing
+    /// code in `canvas` uses this exact geometry, so a click always lands on the
+    /// wedge under the cursor.
+    static func hitTest(in layout: [Wedge], at p: CGPoint, center: CGPoint,
+                        chartRadius: CGFloat, hubRadius: CGFloat) -> Wedge? {
         let dx = p.x - center.x, dy = p.y - center.y
         let r = sqrt(dx * dx + dy * dy)
         guard r >= hubRadius, r <= chartRadius else { return nil }
-        let ringSpan = (chartRadius - hubRadius) / CGFloat(Self.maxRings)
+        let ringSpan = (chartRadius - hubRadius) / CGFloat(maxRings)
         let depth = Int((r - hubRadius) / ringSpan)
         var deg = Angle(radians: atan2(dy, dx)).degrees
         if deg < 0 { deg += 360 }

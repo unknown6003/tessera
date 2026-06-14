@@ -47,61 +47,55 @@ struct Sidebar: View {
     @State private var selectedVolumeURL: URL?
     @State private var showFolderPicker = false
 
-    private let panelShape = RoundedRectangle(cornerRadius: 24, style: .continuous)
-
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // Glass panel container. Use Color.clear as the carrier — a bare Shape
-            // used as a View fills opaquely with the foreground style *before* the
-            // glass material is applied, which is what made the panel look flat.
-            Color.clear
-                .glassEffect(.regular, in: panelShape)
-                .liquidGlassDepth(panelShape, shadowRadius: 28, shadowY: 16)
+        // One behind-window glass pane with sharp content layered on top — never
+        // glass-on-glass. The old design stacked a `.glassEffect` carrier under
+        // cards that were themselves glass, and an outer GlassEffectContainer
+        // merged it all into a frosted smear that washed the sidebar out.
+        VStack(spacing: 0) {
+            // Header
+            sidebarHeader
 
-            VStack(spacing: 0) {
-                // Header
-                sidebarHeader
-
-                // Volume list
-                ScrollView {
-                    LazyVStack(spacing: 6) {
-                        ForEach(volumes) { info in
-                            VolumeCard(
-                                info: info,
-                                isSelected: selectedVolumeURL == info.url
-                            )
-                            .onTapGesture { selectedVolumeURL = info.url }
-                        }
-
-                        // Choose Folder row
-                        Button {
-                            showFolderPicker = true
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "folder.badge.plus")
-                                    .foregroundStyle(.secondary)
-                                Text("Choose Folder…")
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                            }
-                            .font(.subheadline)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 9)
-                        }
-                        .buttonStyle(.plain)
+            // Volume list
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(volumes) { info in
+                        VolumeCard(
+                            info: info,
+                            isSelected: selectedVolumeURL == info.url
+                        )
+                        .onTapGesture { selectedVolumeURL = info.url }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 4)
-                    .padding(.bottom, 8)
+
+                    // Choose Folder row
+                    Button {
+                        showFolderPicker = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder.badge.plus")
+                                .foregroundStyle(.secondary)
+                            Text("Choose Folder…")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .font(.subheadline)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                    }
+                    .buttonStyle(.plain)
                 }
-
-                Divider()
-                    .opacity(0.3)
-
-                // Scan footer
-                scanFooter
+                .padding(.horizontal, 10)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
             }
+
+            Divider()
+                .opacity(0.3)
+
+            // Scan footer
+            scanFooter
         }
+        .desktopGlassPanel(cornerRadius: 24, shadowRadius: 28, shadowY: 16)
         .onAppear { loadVolumes() }
         .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
             if let url = try? result.get() {

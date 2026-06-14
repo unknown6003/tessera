@@ -5,22 +5,36 @@ struct ContentView: View {
     @StateObject private var vm = ScanViewModel()
 
     var body: some View {
-        GlassEffectContainer(spacing: 22) {
-            HStack(spacing: 18) {
-                Sidebar(vm: vm)
-                    .frame(width: 252)
+        // No GlassEffectContainer here. It merges every `.glassEffect` surface
+        // within its spacing into ONE shared layer — which flattened the three
+        // panels + the prominent Scan button into a single frosted sheet, exactly
+        // the "glass on top of the sidebar" wash. Each panel now owns its glass.
+        HStack(spacing: 18) {
+            Sidebar(vm: vm)
+                .frame(width: 252)
 
-                centerArea
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            centerArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                InspectorView(vm: vm)
-                    .frame(width: 296)
-            }
+            InspectorView(vm: vm)
+                .frame(width: 296)
         }
         .padding(18)
         .frame(minWidth: 920, minHeight: 600)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(luminousBackdrop)
+        // The whole app is a glass pane over the desktop. A faint full-window
+        // frosted base (behind-window vibrancy) gives the window visible bounds
+        // so it reads as a pane rather than a 100%-transparent hole — while still
+        // refracting the desktop and apps behind it. Panels then sit on top with
+        // `.withinWindow` glass, frosting THIS base instead of re-blurring the
+        // desktop, which keeps the stacked-card effect gentle.
+        .background(
+            DesktopGlass(material: .hudWindow, blendingMode: .behindWindow,
+                         emphasized: false, cornerRadius: 18)
+                .opacity(0.5)
+                .ignoresSafeArea()
+        )
+        .background(TransparentWindowConfigurator())
         .background(KeyboardShortcuts(vm: vm))
         .preferredColorScheme(.dark)
         .overlay {
@@ -38,24 +52,6 @@ struct ContentView: View {
             // Returning from System Settings after granting access auto-dismisses.
             vm.refreshFullDiskAccessStatus()
         }
-    }
-
-    // MARK: - Luminous animated backdrop
-
-    private var luminousBackdrop: some View {
-        ZStack {
-            Rectangle().fill(Theme.backgroundGradient)
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                Theme.backgroundBlobs(phase: t * 0.18)
-            }
-            // A faint vignette darkens the corners so glass edges pop.
-            RadialGradient(
-                colors: [.clear, .black.opacity(0.35)],
-                center: .center, startRadius: 360, endRadius: 1000
-            )
-        }
-        .ignoresSafeArea()
     }
 
     // MARK: - Center area
@@ -112,12 +108,12 @@ struct ContentView: View {
     // MARK: - Glass card wrapper
 
     private func centeredCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
-        return content()
+        content()
             .padding(40)
             .frame(maxWidth: 460)
-            .glassEffect(.regular.interactive(), in: shape)
-            .liquidGlassDepth(shape, shadowRadius: 34, shadowY: 18)
+            // Behind-window glass so the empty / scanning / error cards refract the
+            // desktop instead of refracting nothing over the transparent window.
+            .desktopGlassPanel(cornerRadius: 28, shadowRadius: 34, shadowY: 18)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .transition(.opacity.combined(with: .scale(scale: 0.97)))
     }

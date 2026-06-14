@@ -11,11 +11,9 @@ struct InspectorView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            GlassEffectContainer(spacing: 14) {
-                VStack(spacing: 14) {
-                    detailsSection
-                    collectorSection
-                }
+            VStack(spacing: 14) {
+                detailsSection
+                collectorSection
             }
             .padding(14)
         }
@@ -323,12 +321,14 @@ private struct CollectorRow: View {
 
 // MARK: - Glass card finish
 
-/// Shared translucent "thick glass" card surface for inspector sections.
+/// Shared translucent glass card surface for inspector sections. Uses
+/// behind-window glass so each card refracts the desktop, consistent with the
+/// rest of the transparent app.
 private struct GlassCard: ViewModifier {
     private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
     func body(content: Content) -> some View {
         content
-            .glassEffect(.regular, in: shape)
+            .background(DesktopGlass(cornerRadius: 22))
             .liquidGlassDepth(shape, shadowRadius: 22, shadowY: 12)
     }
 }

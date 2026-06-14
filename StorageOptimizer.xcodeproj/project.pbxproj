@@ -10,6 +10,7 @@
 		0311A37FE2C7BF19F55948FA /* ScanViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2EF1450DA7F131DAE378539 /* ScanViewModel.swift */; };
 		0547D783C2969C03E9AE4A9B /* SunburstChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22799EC27F3878A28E92A74 /* SunburstChart.swift */; };
 		0C3CC5F272C51E2D497C0B54 /* FileScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14BECC25C32D412C2DB15599 /* FileScanner.swift */; };
+		31FAFF8A0D0CDF349F90577F /* GlassSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDF8B61DD701FAE1208BB3C8 /* GlassSurfaces.swift */; };
 		60ADFADC631518C7D4917629 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136FA6DA4546458D405F4D38 /* InspectorView.swift */; };
 		63BDE4AC31181AF946BB6324 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7F392BD6C036181ABA6E22 /* ViewModelTests.swift */; };
 		66464E106EA850FA6B7F855F /* TrashService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7926B52A79D2A820F25AF809 /* TrashService.swift */; };
@@ -54,6 +55,7 @@
 		A9ECCAD27253345F26B22237 /* LayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutTests.swift; sourceTree = "<group>"; };
 		ACFDCAB20E8FA97583AD2706 /* EngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTests.swift; sourceTree = "<group>"; };
 		C5954AC735E1A8256EDFDE1D /* StorageOptimizerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageOptimizerApp.swift; sourceTree = "<group>"; };
+		CDF8B61DD701FAE1208BB3C8 /* GlassSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassSurfaces.swift; sourceTree = "<group>"; };
 		D4949ABD498D6E2BD6A2FBCD /* StorageOptimizer-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "StorageOptimizer-Bridging-Header.h"; sourceTree = "<group>"; };
 		EA25F9BF10EDE58E854FE0E6 /* BulkReader.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BulkReader.c; sourceTree = "<group>"; };
 		ED0D3ED4A340442D741C40C6 /* BulkDirScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BulkDirScanner.swift; sourceTree = "<group>"; };
@@ -84,6 +86,7 @@
 			isa = PBXGroup;
 			children = (
 				F655824E790F4A1A9FCB19B2 /* ContentView.swift */,
+				CDF8B61DD701FAE1208BB3C8 /* GlassSurfaces.swift */,
 				136FA6DA4546458D405F4D38 /* InspectorView.swift */,
 				85B75DFA4820FD837D699B3F /* Sidebar.swift */,
 				A22799EC27F3878A28E92A74 /* SunburstChart.swift */,
@@ -233,6 +236,7 @@
 				B2D1E7189A4AACB33905A70A /* DebugAutomation.swift in Sources */,
 				AD90F8F4C988E9F06DDAB873 /* FileNode.swift in Sources */,
 				0C3CC5F272C51E2D497C0B54 /* FileScanner.swift in Sources */,
+				31FAFF8A0D0CDF349F90577F /* GlassSurfaces.swift in Sources */,
 				60ADFADC631518C7D4917629 /* InspectorView.swift in Sources */,
 				0311A37FE2C7BF19F55948FA /* ScanViewModel.swift in Sources */,
 				A3AA97208A6C81E052A0ECBB /* Sidebar.swift in Sources */,

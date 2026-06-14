@@ -5,47 +5,47 @@ enum Theme {
 
     // MARK: - Hues
 
-    /// Curated jewel-tone palette for the top ring. A flat 12-step rainbow ran
-    /// through a harsh neon yellow-green/lime band (hues ~0.20–0.40) that looked
-    /// garish against the dark glass; this set skips that band and leans on rich
-    /// reds, ambers, teals, blues, violets and magentas instead. Entries are
-    /// interleaved warm/cool so adjacent sibling wedges always contrast.
+    /// Soft pastel palette for the top ring. The chart is now a light, airy glass
+    /// pane floating over the desktop, so the wedges use gentle, low-saturation
+    /// hues — blush, sky, peach, lavender, mint — instead of the old saturated
+    /// jewel tones, which read as garish against the translucent theme. Entries
+    /// are interleaved warm/cool so adjacent siblings still contrast.
     static let topHues: [Double] = [
-        0.00,  // red
-        0.55,  // azure
-        0.09,  // orange
-        0.70,  // violet
-        0.13,  // gold
-        0.60,  // blue
-        0.92,  // magenta
-        0.48,  // teal
-        0.04,  // vermilion
-        0.80,  // purple
-        0.52,  // cyan
-        0.16,  // warm amber
+        0.96,  // blush rose
+        0.55,  // sky blue
+        0.08,  // peach
+        0.72,  // lavender
+        0.14,  // butter
+        0.48,  // mint
+        0.86,  // lilac
+        0.58,  // powder blue
+        0.03,  // coral
+        0.78,  // soft violet
+        0.42,  // sage
+        0.17,  // warm sand
     ]
 
     // MARK: - Wedge colours
 
-    /// HSB-based wedge colour. depth 0 = innermost ring (most vivid).
+    /// HSB-based wedge colour for legend/icon swatches. Kept soft and pastel —
+    /// low saturation, high brightness — to match the chart. depth 0 = innermost.
     static func wedgeColor(hue: Double, depth: Int) -> Color {
-        let saturation = max(0.45, 0.88 - Double(depth) * 0.08)
-        let brightness  = max(0.55, 0.92 - Double(depth) * 0.06)
+        let saturation = max(0.16, 0.34 - Double(depth) * 0.04)
+        let brightness  = min(0.97, 0.86 + Double(depth) * 0.02)
         return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 
-    /// Coherent radial palette for a wedge, lit from the chart centre: glossy and
-    /// bright on the inner edge, deepening richly toward the rim. Paired with a
-    /// `GraphicsContext` radial shading centred on the hub so every ring shares
-    /// ONE light direction. This replaces the old per-wedge bounding-box
-    /// `LinearGradient`, which lit each wedge from its own corner — producing the
-    /// inconsistent, muddy, neon look. Saturation rises slightly outward so deep
-    /// rings stay vivid instead of greying out.
+    /// Coherent pastel radial palette for a wedge, lit from the chart centre:
+    /// luminous and near-white on the inner edge, gently deepening toward the
+    /// rim. Paired with a `GraphicsContext` radial shading centred on the hub so
+    /// every ring shares ONE light direction. Saturation rises only slightly
+    /// outward — just enough to separate adjacent rings — keeping the whole chart
+    /// light, flowy and glassy rather than vivid.
     static func wedgeRadialGradient(hue: Double) -> Gradient {
         Gradient(stops: [
-            .init(color: Color(hue: hue, saturation: 0.70, brightness: 1.00), location: 0.00),
-            .init(color: Color(hue: hue, saturation: 0.82, brightness: 0.88), location: 0.45),
-            .init(color: Color(hue: hue, saturation: 0.92, brightness: 0.60), location: 1.00),
+            .init(color: Color(hue: hue, saturation: 0.22, brightness: 0.99), location: 0.00),
+            .init(color: Color(hue: hue, saturation: 0.34, brightness: 0.93), location: 0.50),
+            .init(color: Color(hue: hue, saturation: 0.46, brightness: 0.84), location: 1.00),
         ])
     }
 
@@ -53,7 +53,7 @@ enum Theme {
     /// drawn as a stroke in the Canvas for a refracted-glass lip.
     static func wedgeRim(hue: Double, depth: Int) -> Color {
         Color(hue: hue,
-              saturation: max(0.10, 0.40 - Double(depth) * 0.06),
+              saturation: max(0.04, 0.16 - Double(depth) * 0.03),
               brightness: 1.0)
     }
 
@@ -61,74 +61,16 @@ enum Theme {
 
     /// Translucent frosted neutral for "Hidden Space" (space the scan cannot see).
     static let hiddenSpaceColor: Color = Color(
-        NSColor(calibratedWhite: 0.62, alpha: 0.42)
+        NSColor(calibratedWhite: 0.80, alpha: 0.32)
     )
 
     /// Translucent frosted neutral for aggregated "Other" slices.
     static let aggregateColor: Color = Color(
-        NSColor(calibratedWhite: 0.50, alpha: 0.34)
+        NSColor(calibratedWhite: 0.72, alpha: 0.24)
     )
 
-    /// Soft luminous cyan for online-only cloud-storage boundary nodes.
-    static let cloudColor: Color = Color(hue: 0.54, saturation: 0.42, brightness: 0.92)
-
-    // MARK: - Background
-
-    /// Primary luminous backdrop — a deep indigo/teal multi-stop radial gradient
-    /// giving the floating glass something vivid to refract. Layer the
-    /// `backgroundBlobs` view on top of this for chromatic depth.
-    static var backgroundGradient: AnyShapeStyle {
-        AnyShapeStyle(
-            RadialGradient(
-                stops: [
-                    .init(color: Color(hue: 0.60, saturation: 0.42, brightness: 0.30), location: 0.00),
-                    .init(color: Color(hue: 0.66, saturation: 0.55, brightness: 0.20), location: 0.45),
-                    .init(color: Color(hue: 0.71, saturation: 0.62, brightness: 0.12), location: 0.80),
-                    .init(color: Color(hue: 0.74, saturation: 0.70, brightness: 0.06), location: 1.00),
-                ],
-                center: UnitPoint(x: 0.38, y: 0.30),
-                startRadius: 0,
-                endRadius: 1100
-            )
-        )
-    }
-
-    /// Soft, large, blurred colour "blobs" that sit behind the glass panels to
-    /// create chromatic depth showing through translucent surfaces. Animated by a
-    /// slow phase so the light gently drifts.
-    static func backgroundBlobs(phase: Double) -> some View {
-        let drift = sin(phase) * 26
-        let drift2 = cos(phase * 0.8) * 30
-        return ZStack {
-            blob(color: Color(hue: 0.58, saturation: 0.85, brightness: 0.95), // cyan-blue
-                 size: 620, opacity: 0.34)
-                .offset(x: -260 + drift, y: -200 - drift2)
-            blob(color: Color(hue: 0.80, saturation: 0.80, brightness: 0.95), // violet
-                 size: 560, opacity: 0.30)
-                .offset(x: 320 + drift2, y: -130 + drift)
-            blob(color: Color(hue: 0.50, saturation: 0.80, brightness: 0.92), // teal
-                 size: 520, opacity: 0.24)
-                .offset(x: 200 - drift, y: 280 + drift2)
-            blob(color: Color(hue: 0.92, saturation: 0.70, brightness: 0.92), // magenta
-                 size: 460, opacity: 0.20)
-                .offset(x: -300 - drift2, y: 240 - drift)
-        }
-        .blur(radius: 80)
-        .blendMode(.screen)
-    }
-
-    private static func blob(color: Color, size: CGFloat, opacity: Double) -> some View {
-        Circle()
-            .fill(
-                RadialGradient(
-                    colors: [color.opacity(opacity), color.opacity(0.0)],
-                    center: .center,
-                    startRadius: 0,
-                    endRadius: size / 2
-                )
-            )
-            .frame(width: size, height: size)
-    }
+    /// Soft pastel cyan for online-only cloud-storage boundary nodes.
+    static let cloudColor: Color = Color(hue: 0.54, saturation: 0.24, brightness: 0.98)
 
     // MARK: - Glass tints & strokes
 

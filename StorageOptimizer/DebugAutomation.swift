@@ -17,7 +17,7 @@ enum DebugAutomation {
         log("automation armed: scan=\(scanPath)")
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(800))
-            log("starting scan; windows=\(NSApp.windows.map { "\($0.title):visible=\($0.isVisible)" })")
+            log("starting scan; windows=\(NSApp.windows.map { "\($0.title):visible=\($0.isVisible):opaque=\($0.isOpaque):bgAlpha=\(String(format: "%.2f", $0.backgroundColor.alphaComponent)):fullSizeContent=\($0.styleMask.contains(.fullSizeContentView))" })")
             let scanStart = Date()
             vm.startScan(volumeURL: URL(fileURLWithPath: scanPath))
 
@@ -79,7 +79,12 @@ enum DebugAutomation {
             onZoomOut: {}, onAddToCollector: { _ in }, onRevealInFinder: { _ in }
         )
         .frame(width: 900, height: 900)
-        .background(Rectangle().fill(Theme.backgroundGradient))
+        // Offscreen renders have no desktop behind them; a neutral grey stands in
+        // for the wallpaper so the pastel wedges are visible in the snapshot.
+        .background(
+            LinearGradient(colors: [Color(white: 0.30), Color(white: 0.16)],
+                           startPoint: .top, endPoint: .bottom)
+        )
 
         let renderer = ImageRenderer(content: chart)
         renderer.scale = 2
