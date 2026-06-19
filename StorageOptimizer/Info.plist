@@ -66,11 +66,11 @@
     <!-- Appcast hosted as a GitHub Release asset (latest/download/appcast.xml). -->
     <key>SUFeedURL</key>
     <string>https://github.com/unknown6003/storage-optimizer/releases/latest/download/appcast.xml</string>
-    <!-- REQUIRED before distribution: replace with YOUR Sparkle EdDSA public key,
-         printed by Sparkle's `generate_keys` (the matching private key stays in your
-         Keychain). Until then, update *checks* run but installs won't verify. -->
+    <!-- Sparkle EdDSA public key. The matching private key lives in this Mac's
+         login Keychain (generated via Sparkle's generate_keys); never commit it.
+         Sparkle verifies every downloaded update's signature against this key. -->
     <key>SUPublicEDKey</key>
-    <string>REPLACE_WITH_YOUR_SPARKLE_PUBLIC_ED_KEY</string>
+    <string>5Fh/ArGlhV1lk+drNjvVxbYEgqTsq5h0pbLFwoDDr+0=</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
     <key>SUScheduledCheckInterval</key>

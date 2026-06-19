@@ -10,26 +10,34 @@ Sparkle signing key.
 
 ## 0. One-time setup
 
-### Apple Developer ID
-- In Xcode → Settings → Accounts, sign in and create a **Developer ID Application**
-  certificate (this is the cert used for direct distribution, *not* "Mac App
-  Distribution").
-- Create a notarytool credential profile:
+### Sparkle EdDSA signing key — ✅ DONE
+Already generated. The **private** key is in this Mac's login Keychain and the
+**public** key is in `StorageOptimizer/Info.plist` (`SUPublicEDKey`). Don't commit
+or export the private key. To re-print the public key:
+`<DerivedData>/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -p`.
+⚠️ Back up the private key (Keychain item "ed25519" / account
+`https://sparkle-project.org`) — if it's lost you can't sign updates that existing
+installs will accept.
+
+### Apple Developer ID — ⛔ STILL NEEDED (no signing cert on this machine)
+`security find-identity -v -p codesigning` currently shows **0 identities**. Being
+signed into your Apple account in Xcode is not enough; create the cert (one time):
+- **Xcode → Settings → Accounts → (your team) → Manage Certificates → + → Developer
+  ID Application.** (Requires the Account Holder role.)
+- Then create a notarytool credential profile:
   ```sh
   xcrun notarytool store-credentials "SO_NOTARY" \
     --apple-id "you@example.com" --team-id "YOURTEAMID" --password "app-specific-pw"
   ```
 
-### Sparkle EdDSA signing key (do this once, keep the private key safe)
-Download the Sparkle release (https://github.com/sparkle-project/Sparkle/releases),
-then:
+### Then: one command
 ```sh
-./bin/generate_keys          # stores the PRIVATE key in your login Keychain
+./release.sh            # build → sign → notarize → staple → Sparkle-sign → appcast
+./release.sh --publish  # ...and create the GitHub Release (serves the appcast)
 ```
-It prints your **public** key. Paste it into `StorageOptimizer/Info.plist` →
-`SUPublicEDKey`, replacing `REPLACE_WITH_YOUR_SPARKLE_PUBLIC_ED_KEY`.
-(Until you do this, OTA is inert by design — the app runs fine and the "Check for
-Updates…" menu item stays disabled.)
+`release.sh` auto-detects the Developer ID identity and the Sparkle tools and reads
+the version from Info.plist. The manual steps below (1–6) are what it automates,
+kept for reference / troubleshooting.
 
 ### Appcast feed URL
 `SUFeedURL` in Info.plist currently points at:
