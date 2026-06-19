@@ -62,5 +62,18 @@
             </array>
         </dict>
     </array>
+    <!-- Sparkle OTA auto-update (direct distribution; see RELEASING.md). -->
+    <!-- Appcast hosted as a GitHub Release asset (latest/download/appcast.xml). -->
+    <key>SUFeedURL</key>
+    <string>https://github.com/unknown6003/storage-optimizer/releases/latest/download/appcast.xml</string>
+    <!-- REQUIRED before distribution: replace with YOUR Sparkle EdDSA public key,
+         printed by Sparkle's `generate_keys` (the matching private key stays in your
+         Keychain). Until then, update *checks* run but installs won't verify. -->
+    <key>SUPublicEDKey</key>
+    <string>REPLACE_WITH_YOUR_SPARKLE_PUBLIC_ED_KEY</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>

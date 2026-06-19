@@ -37,6 +37,8 @@
 		FACADE00000000000000003C /* FinderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000003B /* FinderService.swift */; };
 		FACADE000000000000000111 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = FACADE000000000000000101 /* MLXLLM */; };
 		FACADE000000000000000112 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = FACADE000000000000000102 /* MLXLMCommon */; };
+		FACADE00000000000000003E /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000003D /* Updater.swift */; };
+		FACADE000000000000000113 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = FACADE000000000000000104 /* Sparkle */; };
 		FACADE000000000000000018 /* PremiumUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000017 /* PremiumUI.swift */; };
 		FACADE00000000000000001A /* DuplicateFinderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000019 /* DuplicateFinderView.swift */; };
 		FACADE00000000000000001C /* SmartSuggestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000001B /* SmartSuggestionsView.swift */; };
@@ -95,6 +97,7 @@
 		FACADE000000000000000011 /* NaturalLanguageCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageCleanupView.swift; sourceTree = "<group>"; };
 		FACADE000000000000000013 /* DuplicateFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinder.swift; sourceTree = "<group>"; };
 		FACADE00000000000000001F /* LocalAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAI.swift; sourceTree = "<group>"; };
+		FACADE00000000000000003D /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
 		FACADE000000000000000021 /* CleanupActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupActionBar.swift; sourceTree = "<group>"; };
 		FACADE000000000000000023 /* MLXRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXRunner.swift; sourceTree = "<group>"; };
 		FACADE000000000000000025 /* HiddenSpace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSpace.swift; sourceTree = "<group>"; };
@@ -177,6 +180,7 @@
 				FACADE00000000000000000F /* IntentPlanner.swift */,
 				FACADE000000000000000013 /* DuplicateFinder.swift */,
 				FACADE00000000000000001F /* LocalAI.swift */,
+				FACADE00000000000000003D /* Updater.swift */,
 				FACADE000000000000000023 /* MLXRunner.swift */,
 				FACADE000000000000000025 /* HiddenSpace.swift */,
 				FACADE000000000000000029 /* FileKind.swift */,
@@ -240,6 +244,7 @@
 			files = (
 				FACADE000000000000000111 /* MLXLLM in Frameworks */,
 				FACADE000000000000000112 /* MLXLMCommon in Frameworks */,
+				FACADE000000000000000113 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -261,6 +266,7 @@
 			packageProductDependencies = (
 				FACADE000000000000000101 /* MLXLLM */,
 				FACADE000000000000000102 /* MLXLMCommon */,
+				FACADE000000000000000104 /* Sparkle */,
 			);
 			productName = StorageOptimizer;
 			productReference = 123BE699CC4659B27483C5FA /* StorageOptimizer.app */;
@@ -314,6 +320,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				FACADE000000000000000100 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */,
+				FACADE000000000000000103 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5F5F62128C67BA8480F01135 /* Products */;
@@ -344,6 +351,7 @@
 				FACADE000000000000000012 /* NaturalLanguageCleanupView.swift in Sources */,
 				FACADE000000000000000014 /* DuplicateFinder.swift in Sources */,
 				FACADE000000000000000020 /* LocalAI.swift in Sources */,
+				FACADE00000000000000003E /* Updater.swift in Sources */,
 				FACADE000000000000000022 /* CleanupActionBar.swift in Sources */,
 				FACADE000000000000000024 /* MLXRunner.swift in Sources */,
 				FACADE000000000000000026 /* HiddenSpace.swift in Sources */,
@@ -663,6 +671,14 @@
 				minimumVersion = 2.29.1;
 			};
 		};
+		FACADE000000000000000103 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -675,6 +691,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FACADE000000000000000100 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
 			productName = MLXLMCommon;
+		};
+		FACADE000000000000000104 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FACADE000000000000000103 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
