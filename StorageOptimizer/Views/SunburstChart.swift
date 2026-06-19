@@ -16,6 +16,10 @@ struct SunburstChart: View {
     let onZoomOut: () -> Void
     let onAddToCollector: (FileNode) -> Void
     let onRevealInFinder: (FileNode) -> Void
+    /// Drives drag-and-drop of wedges into the bottom dock.
+    @ObservedObject var drag: CollectorDragController
+    /// Called when a wedge is dropped onto a dock zone (collector or trash).
+    let onDrop: (FileNode) -> Void
 
     // Tuning constants
     private static let maxRings = 5
@@ -29,13 +33,16 @@ struct SunburstChart: View {
     // Cached layout, recomputed only on root/size change.
     @State private var layout: [Wedge] = []
     @State private var layoutSize: CGSize = .zero
-    @State private var layoutRootID: UUID?
+    @State private var layoutRootID: ObjectIdentifier?
     @State private var appearProgress: Double = 0          // 0…1 sweep-in
     @State private var cursor: CGPoint = .zero
     @State private var hovering = false
     /// This view's frame in window coordinates, used to convert global
     /// right-click events into local space.
     @State private var windowFrame: CGRect = .zero
+    /// This view's frame in the shared "app" coordinate space, used to convert a
+    /// drag's app-space start point into local space for wedge hit-testing.
+    @State private var chartFrameInApp: CGRect = .zero
     /// Measured tooltip size for accurate edge clamping.
     @State private var tooltipSize: CGSize = .zero
     /// Local NSEvent monitor for right-clicks; removed on disappear.
@@ -80,6 +87,11 @@ struct SunburstChart: View {
                         handleTap(at: location, center: center,
                                   chartRadius: chartRadius, hubRadius: hubRadius)
                     }
+                    // Drag a wedge out to the dock. Simultaneous so it coexists
+                    // with tap (a click never moves far enough to start a drag).
+                    .simultaneousGesture(
+                        dragGesture(center: center, chartRadius: chartRadius, hubRadius: hubRadius)
+                    )
                     .contextMenu { contextMenuItems(center: center, chartRadius: chartRadius,
                                                     hubRadius: hubRadius) }
 
@@ -92,8 +104,14 @@ struct SunburstChart: View {
             .background(
                 GeometryReader { proxy in
                     Color.clear
-                        .onAppear { windowFrame = proxy.frame(in: .global) }
+                        .onAppear {
+                            windowFrame = proxy.frame(in: .global)
+                            chartFrameInApp = proxy.frame(in: .named(CollectorDragController.appSpace))
+                        }
                         .onChange(of: proxy.frame(in: .global)) { _, f in windowFrame = f }
+                        .onChange(of: proxy.frame(in: .named(CollectorDragController.appSpace))) { _, f in
+                            chartFrameInApp = f
+                        }
                 }
             )
             .onAppear {
@@ -203,6 +221,7 @@ struct SunburstChart: View {
         case .hiddenSpace:      return .color(Theme.hiddenSpaceColor)
         case .aggregate:        return .color(Theme.aggregateColor)
         case .cloudOnlyStorage: return .color(Theme.cloudColor)
+        case .crossVolume:      return .color(Theme.crossVolumeColor)
         case .regular, .package:
             return .radialGradient(
                 Theme.wedgeRadialGradient(hue: wedge.hue),
@@ -337,14 +356,44 @@ struct SunburstChart: View {
             onSelect(nil); return
         }
         if wedge.node.isSynthetic {
-            // Synthetic wedges ("Other" / hidden space) aren't real files;
-            // tapping them is a no-op selection.
-            onSelect(nil)
+            // Synthetic wedges (hidden space, cross-volume, "Other") aren't real
+            // files, but selecting them surfaces their breakdown/explanation in the
+            // inspector — notably the Hidden Space analyzer.
+            onSelect(wedge.node)
         } else if wedge.node.isDirectory {
             onZoomIn(wedge.node)
         } else {
             onSelect(wedge.node)
         }
+    }
+
+    /// Drag a real wedge out of the chart and into the bottom dock. On first
+    /// movement we hit-test the grab point to identify the wedge; thereafter we
+    /// just track the cursor so the dock can highlight the live drop zone.
+    private func dragGesture(center: CGPoint, chartRadius: CGFloat,
+                             hubRadius: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .named(CollectorDragController.appSpace))
+            .onChanged { value in
+                if drag.node == nil {
+                    // Convert the app-space grab point into chart-local space.
+                    let localStart = CGPoint(x: value.startLocation.x - chartFrameInApp.minX,
+                                             y: value.startLocation.y - chartFrameInApp.minY)
+                    guard let wedge = hitTest(at: localStart, center: center,
+                                              chartRadius: chartRadius, hubRadius: hubRadius),
+                          !wedge.node.isSynthetic else { return }
+                    drag.begin(wedge.node, at: value.location)
+                    onHover(nil)   // suppress the tooltip while dragging
+                } else {
+                    drag.update(to: value.location)
+                }
+            }
+            .onEnded { value in
+                guard drag.node != nil else { return }
+                drag.update(to: value.location)
+                if let dropped = drag.end() {
+                    onDrop(dropped)
+                }
+            }
     }
 
     @ViewBuilder
@@ -368,6 +417,7 @@ struct SunburstChart: View {
         case .aggregate:    return "Aggregated small items"
         case .hiddenSpace:  return "Space not visible to the scan"
         case .cloudOnlyStorage: return "Online-only cloud storage (not scanned)"
+        case .crossVolume:  return "Separate volume mounted here (e.g. a Simulator runtime)"
         default:            return "Nothing here"
         }
     }

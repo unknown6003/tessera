@@ -24,13 +24,14 @@ enum GlassTuning {
         #endif
         return false
     }
-    /// A gentle dark wash over the base to deepen the frost and keep the data
-    /// legible over busy wallpaper, without flattening the blur.
+    /// Opacity of the electric-blue-tinted wash (`Theme.windowTint`) over the
+    /// base. Deepens the frost and keeps data legible over busy wallpaper while
+    /// giving the whole pane a cool cyan cast, without flattening the blur.
     static var baseTint: Double {
         #if DEBUG
         if let v = ProcessInfo.processInfo.environment["SO_BASE_TINT"], let d = Double(v) { return d }
         #endif
-        return 0.12
+        return 0.20
     }
 
     /// Panels/cards: a within-window material light enough to only just frost the
@@ -92,7 +93,13 @@ struct TransparentWindowConfigurator: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
-            window.isMovableByWindowBackground = true
+            // Drag the window ONLY from the (hidden) title-bar strip at the top,
+            // never from the content body. With background-movability on, every
+            // press on a panel or the chart also dragged the whole window, which
+            // fought the chart's wedge drag-and-drop. The full-size-content title
+            // bar still provides a grab region across the top edge.
+            window.isMovableByWindowBackground = false
+            window.isMovable = true
             // Strip any opaque backing the hosting controller installed so the
             // desktop shows through the gutters between panels.
             window.contentView?.wantsLayer = true

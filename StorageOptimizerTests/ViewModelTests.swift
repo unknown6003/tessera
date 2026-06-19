@@ -214,4 +214,48 @@ struct ViewModelTests {
         #expect(dir2.size == 300,  "dir2 should sum f3 = 300")
         #expect(root.size == 1300, "root should sum dir1+dir2 = 1300")
     }
+
+    // MARK: - Scan cache (instant disk/cloud switching)
+
+    @Test("Switching to a previously-scanned source restores it from cache, no re-scan")
+    func scanCacheSwitching() async throws {
+        func tempDir() throws -> URL {
+            let d = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+            return d
+        }
+        let a = try tempDir(), b = try tempDir()
+        defer {
+            for u in [a, b] { try? FileManager.default.removeItem(at: u) }
+        }
+        try Data(repeating: 1, count: 100).write(to: a.appendingPathComponent("fa.bin"))
+        try Data(repeating: 2, count: 200).write(to: b.appendingPathComponent("fb.bin"))
+
+        let vm = ScanViewModel()
+        func scan(_ url: URL) async {
+            vm.startScan(volumeURL: url)
+            for _ in 0..<500 where vm.isScanning || vm.rootNode == nil {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        await scan(a)
+        let aTree = vm.rootNode
+        #expect(vm.scannedURL == a)
+
+        await scan(b)
+        #expect(vm.scannedURL == b)
+        #expect(vm.hasCachedScan(for: a))            // a cached when b was scanned
+
+        // Switching back restores the exact cached tree — no re-scan.
+        let switched = vm.showCachedScanIfAvailable(for: a)
+        #expect(switched)
+        #expect(vm.scannedURL == a)
+        #expect(vm.rootNode === aTree)
+        #expect(!vm.isScanning)
+        #expect(vm.hasCachedScan(for: b))            // b cached on switch-away
+
+        // A source we never scanned has no cache.
+        #expect(!vm.hasCachedScan(for: try tempDir()))
+    }
 }

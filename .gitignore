@@ -3,3 +3,8 @@
 xcuserdata/
 build/
 DerivedData/
+
+# Off-device cloud backend (Cloudflare Worker). NOT shipped: the app is
+# on-device only and must make no network calls related to user data. Excluded
+# so this prohibited infrastructure can never be committed/shipped with the app.
+backend/

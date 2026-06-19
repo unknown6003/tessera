@@ -2,6 +2,10 @@ import SwiftUI
 
 @main
 struct StorageOptimizerApp: App {
+    // Hosts the Finder "Analyze with Storage Optimizer" Service provider (registered
+    // in applicationDidFinishLaunching). See FinderService.swift.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             ContentView()

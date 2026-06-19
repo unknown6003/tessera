@@ -3,49 +3,68 @@ import AppKit
 
 enum Theme {
 
+    // MARK: - Signature colour
+
+    /// The app's signature colour: electric blue (#00F0FF). Drives the global
+    /// tint, selection, progress and the anchor of the chart palette.
+    static let electricBlue = Color(red: 0.0, green: 240.0 / 255.0, blue: 1.0)
+    /// Hue of `electricBlue` in the 0…1 wheel (~183.5°) — the centre of the
+    /// wedge palette band.
+    static let electricBlueHue: Double = 183.5 / 360.0
+
+    /// Signature gradient for everything premium / AI — the visual marker that
+    /// separates paid AI features from the free, built-in tools.
+    static let aiGradient = LinearGradient(
+        colors: [electricBlue, Color(red: 0.62, green: 0.35, blue: 1.0)],
+        startPoint: .leading, endPoint: .trailing)
+
+    /// Deep electric-blue-tinted wash laid over the frosted window base. Gives the
+    /// glass a cool cyan cast instead of a flat grey, tying the whole pane to the
+    /// accent. Applied at low opacity (see `GlassTuning.baseTint`).
+    static let windowTint = Color(hue: electricBlueHue, saturation: 0.65, brightness: 0.11)
+
     // MARK: - Hues
 
-    /// Soft pastel palette for the top ring. The chart is now a light, airy glass
-    /// pane floating over the desktop, so the wedges use gentle, low-saturation
-    /// hues — blush, sky, peach, lavender, mint — instead of the old saturated
-    /// jewel tones, which read as garish against the translucent theme. Entries
-    /// are interleaved warm/cool so adjacent siblings still contrast.
+    /// Electric-blue chart palette for the top ring. Every entry sits in a tight
+    /// cyan→blue band around `electricBlueHue`, so the whole chart reads as one
+    /// coherent electric-blue family rather than the old garish rainbow. Adjacent
+    /// siblings still separate because the hue drifts slightly and the radial
+    /// shading varies brightness; entries are interleaved so neighbours differ.
     static let topHues: [Double] = [
-        0.96,  // blush rose
-        0.55,  // sky blue
-        0.08,  // peach
-        0.72,  // lavender
-        0.14,  // butter
-        0.48,  // mint
-        0.86,  // lilac
-        0.58,  // powder blue
-        0.03,  // coral
-        0.78,  // soft violet
-        0.42,  // sage
-        0.17,  // warm sand
+        0.510,  // electric cyan (signature)
+        0.575,  // azure
+        0.480,  // turquoise
+        0.620,  // blue
+        0.540,  // sky
+        0.500,  // bright cyan
+        0.600,  // cornflower
+        0.490,  // aqua
+        0.560,  // cerulean
+        0.530,  // cyan
+        0.470,  // teal-cyan
+        0.590,  // periwinkle blue
     ]
 
     // MARK: - Wedge colours
 
-    /// HSB-based wedge colour for legend/icon swatches. Kept soft and pastel —
-    /// low saturation, high brightness — to match the chart. depth 0 = innermost.
+    /// HSB-based wedge colour for legend/icon swatches — vivid electric blue,
+    /// deepening a touch with depth. depth 0 = innermost.
     static func wedgeColor(hue: Double, depth: Int) -> Color {
-        let saturation = max(0.16, 0.34 - Double(depth) * 0.04)
-        let brightness  = min(0.97, 0.86 + Double(depth) * 0.02)
+        let saturation = min(0.95, 0.62 + Double(depth) * 0.06)
+        let brightness  = max(0.78, 0.98 - Double(depth) * 0.04)
         return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 
-    /// Coherent pastel radial palette for a wedge, lit from the chart centre:
-    /// luminous and near-white on the inner edge, gently deepening toward the
-    /// rim. Paired with a `GraphicsContext` radial shading centred on the hub so
-    /// every ring shares ONE light direction. Saturation rises only slightly
-    /// outward — just enough to separate adjacent rings — keeping the whole chart
-    /// light, flowy and glassy rather than vivid.
+    /// Coherent electric-blue radial palette for a wedge, lit from the chart
+    /// centre: a luminous near-white-cyan inner edge deepening to saturated
+    /// electric blue at the rim. Paired with a `GraphicsContext` radial shading
+    /// centred on the hub so every ring shares ONE light direction — vivid and
+    /// glassy rather than flat.
     static func wedgeRadialGradient(hue: Double) -> Gradient {
         Gradient(stops: [
-            .init(color: Color(hue: hue, saturation: 0.22, brightness: 0.99), location: 0.00),
-            .init(color: Color(hue: hue, saturation: 0.34, brightness: 0.93), location: 0.50),
-            .init(color: Color(hue: hue, saturation: 0.46, brightness: 0.84), location: 1.00),
+            .init(color: Color(hue: hue, saturation: 0.45, brightness: 1.00), location: 0.00),
+            .init(color: Color(hue: hue, saturation: 0.72, brightness: 0.96), location: 0.50),
+            .init(color: Color(hue: hue, saturation: 0.95, brightness: 0.82), location: 1.00),
         ])
     }
 
@@ -53,7 +72,7 @@ enum Theme {
     /// drawn as a stroke in the Canvas for a refracted-glass lip.
     static func wedgeRim(hue: Double, depth: Int) -> Color {
         Color(hue: hue,
-              saturation: max(0.04, 0.16 - Double(depth) * 0.03),
+              saturation: max(0.06, 0.22 - Double(depth) * 0.03),
               brightness: 1.0)
     }
 
@@ -69,8 +88,14 @@ enum Theme {
         NSColor(calibratedWhite: 0.72, alpha: 0.24)
     )
 
-    /// Soft pastel cyan for online-only cloud-storage boundary nodes.
-    static let cloudColor: Color = Color(hue: 0.54, saturation: 0.24, brightness: 0.98)
+    /// Pale, desaturated electric-cyan for online-only cloud-storage boundary
+    /// nodes — same family as the wedges but washed-out so it reads as "not local".
+    static let cloudColor: Color = Color(hue: electricBlueHue, saturation: 0.20, brightness: 1.0)
+
+    /// Amber for cross-mounted volumes (Simulator runtimes, mounted images) — a
+    /// distinct, slightly warning-ish hue so this reclaimable-but-not-a-file space
+    /// stands apart from both real files and grey hidden space.
+    static let crossVolumeColor: Color = Color(hue: 0.10, saturation: 0.55, brightness: 1.0)
 
     // MARK: - Glass tints & strokes
 
@@ -84,9 +109,9 @@ enum Theme {
         )
     }
 
-    /// A subtle tint used to brighten selected glass (selection = brighter glass,
-    /// not an opaque fill).
-    static let selectionTint = Color.accentColor.opacity(0.22)
+    /// A subtle electric-blue tint used to brighten selected glass (selection =
+    /// brighter glass, not an opaque fill).
+    static let selectionTint = electricBlue.opacity(0.22)
 
     // MARK: - Formatting
 
@@ -103,8 +128,9 @@ enum Theme {
         case .hiddenSpace: return "eye.slash.fill"
         case .aggregate:   return "ellipsis.circle.fill"
         case .cloudOnlyStorage: return "icloud.fill"
+        case .crossVolume: return "externaldrive.fill"
         case .package:
-            let ext = node.url.pathExtension.lowercased()
+            let ext = (node.name as NSString).pathExtension.lowercased()
             switch ext {
             case "app":       return "app.fill"
             case "framework", "dylib", "bundle": return "shippingbox.fill"
@@ -113,7 +139,7 @@ enum Theme {
             }
         case .regular:
             if node.isDirectory { return "folder.fill" }
-            let ext = node.url.pathExtension.lowercased()
+            let ext = (node.name as NSString).pathExtension.lowercased()
             return iconForExtension(ext)
         }
     }

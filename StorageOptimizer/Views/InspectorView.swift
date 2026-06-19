@@ -2,41 +2,26 @@ import SwiftUI
 
 struct InspectorView: View {
     @ObservedObject var vm: ScanViewModel
-    @State private var showDeleteConfirm = false
-    @State private var deleteError: String?
 
     private var inspectedNode: FileNode? {
         vm.hoveredNode ?? vm.selectedNode ?? vm.currentRoot
     }
 
     var body: some View {
+        // The inspector is now focused purely on the selected item. Cleanup and the
+        // duplicate finder live in the top action bar (see CleanupActionBar).
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 detailsSection
-                collectorSection
             }
-            .padding(14)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .confirmationDialog(
-            "Move to Trash?",
-            isPresented: $showDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Move \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s") to Trash", role: .destructive) {
-                performDelete()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will free \(Theme.format(vm.collectorTotalSize)). Items can be restored from the Trash.")
-        }
-        .alert("Move to Trash Failed", isPresented: Binding(
-            get: { deleteError != nil },
-            set: { if !$0 { deleteError = nil } }
-        )) {
-            Button("OK") { deleteError = nil }
-        } message: {
-            Text(deleteError ?? "")
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Full-height glass rail mirroring the sidebar — same behind-window panel
+        // treatment, flush top and edges — so the left and right rails read as a
+        // symmetric pair instead of a short inset card floating against the edge.
+        .desktopGlassPanel(cornerRadius: 24, shadowRadius: 28, shadowY: 16)
     }
 
     // MARK: - Details Section
@@ -47,17 +32,24 @@ struct InspectorView: View {
 
             if let node = inspectedNode {
                 nodeHeader(node)
-                pathRow(node)
-                if node.isDirectory && !node.sortedChildren.isEmpty {
-                    topChildrenList(node)
+                if node.kind == .hiddenSpace {
+                    HiddenSpaceView(vm: vm, hiddenBytes: node.size)
+                } else {
+                    pathRow(node)
+                    if node.isDirectory && !node.sortedChildren.isEmpty {
+                        topChildrenList(node)
+                    }
+                    actionButtons(node)
+                    // On-device AI explainer for real folders. Only surfaces when
+                    // the model is downloaded and ready; otherwise it stays hidden.
+                    if node.isDirectory, !node.isSynthetic {
+                        FolderExplainerSection(node: node)
+                    }
                 }
-                actionButtons(node)
             } else {
                 emptyDetailsPlaceholder
             }
         }
-        .padding(16)
-        .modifier(GlassCard())
     }
 
     @ViewBuilder
@@ -191,68 +183,6 @@ struct InspectorView: View {
             .multilineTextAlignment(.center)
     }
 
-    // MARK: - Collector Section
-
-    private var collectorSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                sectionLabel("Collector")
-                if !vm.collector.isEmpty {
-                    Text("· \(vm.collector.count) · \(Theme.format(vm.collectorTotalSize))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if !vm.collector.isEmpty {
-                    Button("Clear") { vm.clearCollector() }
-                        .buttonStyle(.glass)
-                        .controlSize(.small)
-                        .font(.caption.weight(.medium))
-                }
-            }
-
-            if vm.collector.isEmpty {
-                Text("Right-click items in the chart to collect them.")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                    .multilineTextAlignment(.center)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(vm.collector.enumerated()), id: \.element.id) { index, node in
-                        if index > 0 {
-                            Divider().opacity(0.4)
-                        }
-                        CollectorRow(node: node) {
-                            vm.removeFromCollector(node)
-                        }
-                    }
-                }
-
-                if let errMsg = deleteError {
-                    Text(errMsg)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 4)
-                }
-
-                Button(role: .destructive) {
-                    showDeleteConfirm = true
-                } label: {
-                    Label("Move to Trash…", systemImage: "trash")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(.red)
-                .padding(.top, 6)
-            }
-        }
-        .padding(16)
-        .modifier(GlassCard())
-    }
-
     // MARK: - Helpers
 
     @ViewBuilder
@@ -268,68 +198,96 @@ struct InspectorView: View {
         case .hiddenSpace: return Theme.hiddenSpaceColor
         case .aggregate:   return Theme.aggregateColor
         case .cloudOnlyStorage: return Theme.cloudColor
+        case .crossVolume: return Theme.crossVolumeColor
         default:
             let hue = Theme.topHues[abs(node.name.hashValue) % Theme.topHues.count]
             return Theme.wedgeColor(hue: hue, depth: 0)
         }
     }
-
-    private func performDelete() {
-        deleteError = nil
-        do {
-            try vm.deleteCollector()
-        } catch {
-            deleteError = error.localizedDescription
-        }
-    }
 }
 
-// MARK: - Collector Row
-
-private struct CollectorRow: View {
+// MARK: - Folder AI explainer
+//
+// Asks the on-device model to describe the selected folder. Shown only while the
+// model is ready (LocalAI.isAvailable). State is keyed to the node's identity, so
+// selecting a different folder resets back to the idle "Explain" affordance.
+private struct FolderExplainerSection: View {
     let node: FileNode
-    let onRemove: () -> Void
+
+    @ObservedObject private var manager = MLXModelManager.shared
+
+    private enum Phase: Equatable {
+        case idle
+        case loading
+        case explained(String)
+        case unavailable   // model returned nothing usable
+    }
+
+    @State private var phase: Phase = .idle
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: Theme.icon(for: node))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
+        // The model must be downloaded and ready before we offer the affordance.
+        if manager.isReady {
+            VStack(alignment: .leading, spacing: 8) {
+                FeatureSectionLabel("What is this folder?", ai: true)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(node.name)
-                    .font(.subheadline)
-                    .lineLimit(1)
-                Text(Theme.format(node.size))
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                switch phase {
+                case .idle:
+                    Button {
+                        explain()
+                    } label: {
+                        Label("Explain (AI)", systemImage: "sparkles")
+                            .font(.subheadline)
+                    }
+                    .buttonStyle(.glass)
+
+                case .loading:
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Thinking, on-device…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+
+                case .explained(let text):
+                    Text(text)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                case .unavailable:
+                    Text("The on-device model didn't have anything to add about this folder. Try again, or check the Details above.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-
-            Spacer()
-
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.tertiary)
-                    .font(.subheadline)
-            }
-            .buttonStyle(.plain)
+            .padding(.top, 6)
+            // Reset whenever the inspected folder changes so a stale explanation
+            // never lingers under the wrong selection.
+            .onChange(of: node.id) { _, _ in phase = .idle }
         }
-        .padding(.vertical, 7)
+    }
+
+    private func explain() {
+        phase = .loading
+        let target = node
+        Task {
+            let result = await FolderExplainer.explain(node: target)
+            // Guard against a late response after the selection moved on.
+            await MainActor.run {
+                guard target.id == node.id else { return }
+                if let result {
+                    phase = .explained(result)
+                } else {
+                    phase = .unavailable
+                }
+            }
+        }
     }
 }
 
-// MARK: - Glass card finish
-
-/// Shared translucent glass card surface for inspector sections. Uses a light
-/// SwiftUI within-window material so each card only lightly frosts the strongly
-/// blurred window base — a hint of what's behind shows through while the text
-/// stays crisp — consistent with the other panels.
-private struct GlassCard: ViewModifier {
-    private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
-    func body(content: Content) -> some View {
-        content
-            .background(GlassTuning.cardMaterial, in: shape)
-            .liquidGlassDepth(shape, shadowRadius: 22, shadowY: 12)
-    }
-}

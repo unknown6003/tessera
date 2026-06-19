@@ -10,6 +10,9 @@ struct EntryInfo {
     var linkCount: UInt32
     var allocatedSize: Int64
     var flags: UInt32
+    /// Directory modification time (tv_sec). Bumps when entries are added/removed/
+    /// renamed — the version signal for incremental re-scan.
+    var modTime: Int64 = 0
 
     /// SF_DATALESS (0x40000000): the item is online-only / not materialized.
     /// For files this means ~0 local disk; for directories it means descending
@@ -28,10 +31,38 @@ private let packageExtensions: Set<String> = [
     "driver", "dext", "systemextension", "appex",
 ]
 
+// MARK: - BulkScratch
+
+/// Per-thread reusable buffers for one directory enumeration. Allocated once and
+/// reused across every directory a thread visits, so the scan stops paying a
+/// fresh ~MB allocation (and the page faults that come with touching cold pages)
+/// for each of a million directories. One instance per worker; never shared
+/// between threads concurrently.
+final class BulkScratch {
+    /// Max entries returned per directory before falling back to readdir+lstat.
+    /// Almost all directories are far smaller; the few that aren't are rare
+    /// enough that the slow fallback is acceptable.
+    static let entryCapacity = 8192
+    /// Kernel listing buffer for getattrlistbulk. Larger = fewer syscalls.
+    static let readBufferBytes = 512 * 1024
+
+    let entryBuffer: UnsafeMutableBufferPointer<BREntry>
+    let readBuffer: UnsafeMutableRawPointer
+
+    init() {
+        entryBuffer = UnsafeMutableBufferPointer<BREntry>.allocate(capacity: BulkScratch.entryCapacity)
+        readBuffer = UnsafeMutableRawPointer.allocate(byteCount: BulkScratch.readBufferBytes, alignment: 16)
+    }
+
+    deinit {
+        entryBuffer.deallocate()
+        readBuffer.deallocate()
+    }
+}
+
 // MARK: - BulkDirScanner
 
 enum BulkDirScanner {
-    private static let maxEntriesPerDir = 4096
 
     // MARK: - Test seams (test-only)
     //
@@ -114,15 +145,17 @@ enum BulkDirScanner {
     ///
     /// MUST be called from a dedicated worker thread, never the Swift cooperative
     /// pool: the deadline path blocks the calling thread while it waits.
-    static func workerEntries(atPath path: String) -> [EntryInfo]? {
+    static func workerEntries(atPath path: String, scratch: BulkScratch) -> [EntryInfo]? {
         if seamsActive {
             let timeout = _timeoutSecondsOverride ?? (isHangProne(path) ? 10 : 5)
             return entriesWithDeadline(atPath: path, timeoutSeconds: timeout)
         }
         if isHangProne(path) {
+            // Cloud/FileProvider dir: run on a sacrificial thread with its own
+            // buffers (can't reuse this worker's scratch across that boundary).
             return entriesWithDeadline(atPath: path, timeoutSeconds: 10)
         }
-        return entries(atPath: path)
+        return entries(atPath: path, scratch: scratch)
     }
 
     /// Synchronous, worker-thread-callable enumeration with a hard deadline.
@@ -154,13 +187,20 @@ enum BulkDirScanner {
         packageExtensions.contains((name as NSString).pathExtension.lowercased())
     }
 
+    /// Convenience for callers without a reusable scratch (tests, the cloud
+    /// deadline path). Allocates a one-shot scratch; the hot scan path uses
+    /// `entries(atPath:scratch:)` with a per-worker buffer instead.
     static func entries(atPath path: String) -> [EntryInfo] {
+        entries(atPath: path, scratch: BulkScratch())
+    }
+
+    static func entries(atPath path: String, scratch: BulkScratch) -> [EntryInfo] {
         // Test-only delay hook (see `_testDelay`).
         if let delay = _testDelay, path.hasSuffix(delay.pathSuffix) {
             Thread.sleep(forTimeInterval: delay.seconds)
         }
 
-        let list = rawEntries(atPath: path)
+        let list = rawEntries(atPath: path, scratch: scratch)
 
         // Test-only dataless hook (see `_testDatalessSuffix`): force the
         // SF_DATALESS bit on any entry whose name matches, so the cloud logic can
@@ -175,18 +215,16 @@ enum BulkDirScanner {
         }
     }
 
-    private static func rawEntries(atPath path: String) -> [EntryInfo] {
-        // Try getattrlistbulk via C bridge.
-        // Allocate without zero-fill — only indices 0..<count are read, and the C
-        // side fully populates each written entry. Deallocated unconditionally.
-        let cEntries = UnsafeMutableBufferPointer<BREntry>.allocate(capacity: maxEntriesPerDir)
-        defer { cEntries.deallocate() }
-
-        let count = br_scan_directory(path, cEntries.baseAddress, Int32(maxEntriesPerDir))
+    private static func rawEntries(atPath path: String, scratch: BulkScratch) -> [EntryInfo] {
+        // getattrlistbulk via C bridge, using the caller's reusable buffers so
+        // there is no per-directory allocation.
+        let cEntries = scratch.entryBuffer
+        let count = br_scan_directory(path, cEntries.baseAddress, Int32(BulkScratch.entryCapacity),
+                                      scratch.readBuffer, Int32(BulkScratch.readBufferBytes))
         if count >= 0 {
             // A completely full buffer may mean the directory was truncated;
             // re-read with the unbounded fallback to avoid silently dropping entries.
-            if Int(count) == maxEntriesPerDir {
+            if Int(count) == BulkScratch.entryCapacity {
                 return fallbackEntries(atPath: path)
             }
             return (0 ..< Int(count)).compactMap { swiftEntry(from: cEntries[$0]) }
@@ -221,7 +259,8 @@ enum BulkDirScanner {
             device: c.devid,
             linkCount: c.nlink,
             allocatedSize: c.alloc_size,
-            flags: c.flags
+            flags: c.flags,
+            modTime: c.mod_time
         )
     }
 
@@ -253,7 +292,8 @@ enum BulkDirScanner {
                 device: UInt32(bitPattern: sb.st_dev),
                 linkCount: UInt32(sb.st_nlink),
                 allocatedSize: Int64(sb.st_blocks) * 512,
-                flags: sb.st_flags
+                flags: sb.st_flags,
+                modTime: Int64(sb.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(sb.st_mtimespec.tv_nsec)
             )
         }
     }

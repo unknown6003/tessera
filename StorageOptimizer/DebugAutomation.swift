@@ -10,6 +10,28 @@ import AppKit
 enum DebugAutomation {
     static func runIfRequested(vm: ScanViewModel) {
         let env = ProcessInfo.processInfo.environment
+
+        // Single-threaded scan benchmark:
+        //   SO_BENCH=<path>           measure single-threaded scanSerial of <path>
+        //   SO_BENCH_REPEATS=<n>      timed runs after a warm-up (default 3)
+        //   SO_BENCH_PARALLEL=1       also time the parallel scan for comparison
+        //   SO_AUTOQUIT=1             terminate when done
+        if let benchPath = env["SO_BENCH"] {
+            runBench(path: benchPath,
+                     repeats: Int(env["SO_BENCH_REPEATS"] ?? "") ?? 3,
+                     alsoParallel: env["SO_BENCH_PARALLEL"] == "1",
+                     autoQuit: env["SO_AUTOQUIT"] == "1")
+            return
+        }
+
+        // Incremental re-scan benchmark: full parallel scan, then a re-scan reusing
+        // the prior tree (unchanged subtrees skipped).
+        //   SO_BENCH_RESCAN=<path>   SO_AUTOQUIT=1
+        if let benchPath = env["SO_BENCH_RESCAN"] {
+            runRescanBench(path: benchPath, autoQuit: env["SO_AUTOQUIT"] == "1")
+            return
+        }
+
         guard let scanPath = env["SO_AUTOSCAN"] else { return }
         let snapshotDir = env["SO_SNAPSHOT_DIR"]
         let autoQuit = env["SO_AUTOQUIT"] == "1"
@@ -41,6 +63,47 @@ enum DebugAutomation {
             log("scan finished: root=\(vm.rootNode?.size ?? -1) error=\(vm.errorMessage ?? "none") " +
                 "cancelled=\(vm.scanTaskWasCancelled) dirs \(p.dirsScanned)/\(p.dirsDiscovered) " +
                 "elapsed=\(String(format: "%.2f", elapsed))s rate=\(rate) dirs/s")
+            // Cleanup classification is published async after the tree is built;
+            // poll up to ~6s for it to land.
+            var waited = 0
+            while vm.cleanupReport == nil && waited < 6000 {
+                try? await Task.sleep(for: .milliseconds(200)); waited += 200
+            }
+            if let report = vm.cleanupReport {
+                log("cleanup: safe=\(Theme.format(report.safeTotalBytes)) in \(report.safeGroups.count) groups, \(report.reviewGroups.count) review groups")
+                for g in report.groups {
+                    log("  [\(g.category.confidence == .safeRegenerable ? "safe" : "review")] \(g.category.title): \(Theme.format(g.totalBytes)) (\(g.nodes.count))")
+                }
+            } else {
+                log("cleanup: no report")
+            }
+
+            // Smart (on-device LLM) suggestions run async after the rule report.
+            log("smart: available=\(SmartCleanupClassifier.isAvailable)")
+            var swaited = 0
+            while (vm.isClassifyingSmart || vm.smartSuggestions.isEmpty) && swaited < 40000 {
+                try? await Task.sleep(for: .milliseconds(500)); swaited += 500
+                if !vm.isClassifyingSmart && !vm.smartSuggestions.isEmpty { break }
+                if !vm.isClassifyingSmart && swaited > 2000 { break }
+            }
+            for s in vm.smartSuggestions.prefix(12) {
+                log("  smart[\(s.confidence)%] \(s.category): \(s.node.name) (\(Theme.format(s.node.size)))")
+            }
+            log("collector after auto-stage: \(vm.collector.count) items, \(Theme.format(vm.collectorTotalSize))")
+
+            // Duplicate-finder benchmark (SO_DUPE_BENCH=1).
+            if env["SO_DUPE_BENCH"] == "1", let root = vm.rootNode {
+                let t0 = DispatchTime.now()
+                let groups = await withCheckedContinuation { (cont: CheckedContinuation<[DuplicateGroup], Never>) in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        cont.resume(returning: DuplicateFinder.find(root: root) { _ in })
+                    }
+                }
+                let dt = Double(DispatchTime.now().uptimeNanoseconds &- t0.uptimeNanoseconds) / 1e9
+                let reclaim = groups.reduce(Int64(0)) { $0 + $1.reclaimableBytes }
+                log(String(format: "DUPES: %.2fs — %d sets, %@ reclaimable", dt, groups.count, Theme.format(reclaim)))
+            }
+
             // Let the wedge sweep-in animation settle
             try? await Task.sleep(for: .milliseconds(1200))
             if let dir = snapshotDir {
@@ -53,6 +116,101 @@ enum DebugAutomation {
             } else {
                 prepareForCapture()
             }
+        }
+    }
+
+    /// Single-threaded scan benchmark. Warms the metadata cache once, then times
+    /// `FileScanner.scanSerial` so the number reflects per-entry CPU cost (the
+    /// thing we optimize) rather than cold-disk latency. Reports entries/sec and
+    /// projects a 1 TB disk (~5.78M entries, from ~5,650 entries/GB measured on a
+    /// real full-disk scan).
+    private static func runBench(path: String, repeats: Int, alsoParallel: Bool, autoQuit: Bool) {
+        Task.detached(priority: .userInitiated) {
+            let url = URL(fileURLWithPath: path)
+            log("BENCH single-threaded scanSerial of \(path)")
+
+            // Warm-up pass: prime the kernel's metadata cache so timed runs are
+            // CPU-bound, isolating the per-entry cost from one-time cold I/O.
+            let warm = FileScanner.scanSerial(url: url)
+            log("BENCH warm-up: dirs=\(warm.stats.dirs) files=\(warm.stats.files)")
+
+            var best = Double.greatestFiniteMagnitude
+            var stats = warm.stats
+            for i in 0 ..< max(1, repeats) {
+                let t0 = DispatchTime.now()
+                let r = FileScanner.scanSerial(url: url)
+                let dt = Double(DispatchTime.now().uptimeNanoseconds &- t0.uptimeNanoseconds) / 1e9
+                stats = r.stats
+                best = min(best, dt)
+                let entries = Double(r.stats.dirs + r.stats.files)
+                log(String(format: "BENCH serial run %d: %.3fs  %.0f entries/s  (%d dirs, %d files, %@)",
+                           i + 1, dt, entries / dt, r.stats.dirs, r.stats.files, Theme.format(r.stats.bytes)))
+                log(String(format: "         breakdown: enumerate %.2fs  build %.2fs  recompute %.2fs",
+                           Double(r.stats.enumerateNanos) / 1e9,
+                           Double(r.stats.buildNanos) / 1e9,
+                           Double(r.stats.recomputeNanos) / 1e9))
+                log(String(format: "         syscalls:  open %.2fs  getattrlistbulk %.2fs  close %.2fs",
+                           Double(r.stats.openNanos) / 1e9,
+                           Double(r.stats.bulkNanos) / 1e9,
+                           Double(r.stats.closeNanos) / 1e9))
+                let wall = Double(r.stats.enumerateNanos) / 1e9
+                let cpu = Double(r.stats.cpuNanos) / 1e9
+                log(String(format: "         thread CPU %.2fs of %.2fs wall → %.0f%% on-CPU (rest = I/O-blocked)",
+                           cpu, wall, wall > 0 ? cpu / wall * 100 : 0))
+            }
+
+            let entries = Double(stats.dirs + stats.files)
+            let eps = entries / best
+            let entriesFor1TB = 5_780_000.0
+            log(String(format: "BENCH serial BEST: %.3fs  %.0f entries/s  →  1 TB (~5.78M entries) projects to %.1fs single-threaded",
+                       best, eps, entriesFor1TB / eps))
+
+            if alsoParallel {
+                // Warm-up parallel pass first (re-primes the cache the serial runs
+                // may have churned), then a timed pass — so parallel is measured
+                // under the same warm conditions as the serial best.
+                _ = try? await FileScanner.scan(url: url) { _ in }
+                var pbest = Double.greatestFiniteMagnitude
+                for _ in 0 ..< 2 {
+                    let t0 = DispatchTime.now()
+                    let root = try? await FileScanner.scan(url: url) { _ in }
+                    let dt = Double(DispatchTime.now().uptimeNanoseconds &- t0.uptimeNanoseconds) / 1e9
+                    pbest = min(pbest, dt)
+                    _ = root
+                }
+                let entries = Double(stats.dirs + stats.files)
+                let speedup = pbest > 0 ? best / pbest : 0
+                log(String(format: "BENCH parallel BEST: %.3fs  %.0f entries/s  (%.1fx vs single-thread)  →  1 TB projects to %.1fs",
+                           pbest, entries / pbest, speedup, 5_780_000.0 / (entries / pbest)))
+            }
+
+            if autoQuit { await MainActor.run { NSApp.terminate(nil) } }
+        }
+    }
+
+    /// Incremental re-scan benchmark: warm, full scan, then a re-scan that reuses
+    /// the prior tree for unchanged subtrees. Reports both times + a correctness
+    /// check that the incremental total matches the full total.
+    private static func runRescanBench(path: String, autoQuit: Bool) {
+        Task.detached(priority: .userInitiated) {
+            let url = URL(fileURLWithPath: path)
+            log("RESCAN bench: \(path)")
+            _ = try? await FileScanner.scan(url: url) { _ in }   // warm caches
+
+            let t1 = DispatchTime.now()
+            let r1 = try? await FileScanner.scan(url: url) { _ in }
+            let dt1 = Double(DispatchTime.now().uptimeNanoseconds &- t1.uptimeNanoseconds) / 1e9
+
+            let t2 = DispatchTime.now()
+            let r2 = try? await FileScanner.scan(url: url, cache: r1) { _ in }
+            let dt2 = Double(DispatchTime.now().uptimeNanoseconds &- t2.uptimeNanoseconds) / 1e9
+
+            let speedup = dt2 > 0 ? dt1 / dt2 : 0
+            log(String(format: "RESCAN full=%.3fs  incremental=%.3fs  →  %.1fx faster", dt1, dt2, speedup))
+            log("RESCAN correctness: full=\(r1?.size ?? -1)  incremental=\(r2?.size ?? -1)  " +
+                "\(r1?.size == r2?.size ? "MATCH ✓" : "MISMATCH ✗")")
+
+            if autoQuit { await MainActor.run { NSApp.terminate(nil) } }
         }
     }
 
@@ -97,7 +255,8 @@ enum DebugAutomation {
         let chart = SunburstChart(
             root: root, hoveredNode: nil, selectedNode: nil,
             onHover: { _ in }, onSelect: { _ in }, onZoomIn: { _ in },
-            onZoomOut: {}, onAddToCollector: { _ in }, onRevealInFinder: { _ in }
+            onZoomOut: {}, onAddToCollector: { _ in }, onRevealInFinder: { _ in },
+            drag: CollectorDragController(), onDrop: { _ in }
         )
         .frame(width: 900, height: 900)
         // Offscreen renders have no desktop behind them; a neutral grey stands in
@@ -127,7 +286,7 @@ enum DebugAutomation {
         log("layout dumped: \(path) (\(wedges.count) wedges)")
     }
 
-    private static func log(_ message: String) {
+    nonisolated private static func log(_ message: String) {
         let line = "[DebugAutomation] \(message)\n"
         FileHandle.standardError.write(Data(line.utf8))
         if let dir = ProcessInfo.processInfo.environment["SO_SNAPSHOT_DIR"],

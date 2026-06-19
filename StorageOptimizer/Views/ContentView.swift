@@ -3,21 +3,45 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var vm = ScanViewModel()
+    /// Drives drag-and-drop of chart wedges into the bottom dock.
+    @StateObject private var drag = CollectorDragController()
+
+    /// Whether the "permanently delete the whole collector" confirmation is showing.
+    @State private var showDeleteAllConfirm = false
+    /// Title for the failure alert ("Move to Trash Failed" / "Delete Failed").
+    @State private var deleteErrorTitle = "Couldn’t Remove Items"
+    @State private var deleteError: String?
 
     var body: some View {
         // No GlassEffectContainer here. It merges every `.glassEffect` surface
         // within its spacing into ONE shared layer — which flattened the three
         // panels + the prominent Scan button into a single frosted sheet, exactly
         // the "glass on top of the sidebar" wash. Each panel now owns its glass.
-        HStack(spacing: 18) {
-            Sidebar(vm: vm)
-                .frame(width: 252)
+        VStack(spacing: 18) {
+            HStack(spacing: 18) {
+                Sidebar(vm: vm)
+                    .frame(width: 252)
 
-            centerArea
+                VStack(spacing: 12) {
+                    if vm.rootNode != nil {
+                        CleanupActionBar(vm: vm)
+                    }
+                    centerArea
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            InspectorView(vm: vm)
-                .frame(width: 296)
+                InspectorView(vm: vm)
+                    .frame(width: 296)
+            }
+
+            // Full-width collector dock + trash drop-zone, shown once there's a
+            // chart to drag from.
+            if vm.rootNode != nil {
+                CollectorDock(vm: vm, drag: drag,
+                              onTrashAll: { performTrash(vm.collector) },
+                              onDeleteAll: { showDeleteAllConfirm = true })
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .padding(18)
         .frame(minWidth: 920, minHeight: 600)
@@ -32,13 +56,31 @@ struct ContentView: View {
             ZStack {
                 DesktopGlass(material: GlassTuning.baseMaterial, blendingMode: .behindWindow,
                              emphasized: GlassTuning.baseEmphasized, cornerRadius: 18)
-                Color.black.opacity(GlassTuning.baseTint)
+                // Electric-blue-tinted wash (not flat grey) — ties the frost to
+                // the accent.
+                Theme.windowTint.opacity(GlassTuning.baseTint)
             }
             .ignoresSafeArea()
         )
         .background(TransparentWindowConfigurator())
         .background(KeyboardShortcuts(vm: vm))
+        .tint(Theme.electricBlue)
         .preferredColorScheme(.dark)
+        // Suppress the keyboard focus ring app-wide. Tabbing still moves focus
+        // logically, but the default highlight is visually noisy here; a more
+        // deliberate focus treatment can be reintroduced later.
+        .focusEffectDisabled()
+        // Shared coordinate space so the chart's drag location and the dock's drop
+        // zones are measured against the same origin.
+        .coordinateSpace(.named(CollectorDragController.appSpace))
+        // Floating chip that follows the cursor mid-drag.
+        .overlay {
+            if let node = drag.node {
+                DragPreview(node: node)
+                    .position(drag.location)
+                    .allowsHitTesting(false)
+            }
+        }
         .overlay {
             if vm.showFDAOnboarding {
                 FullDiskAccessOnboarding(vm: vm)
@@ -46,13 +88,63 @@ struct ContentView: View {
             }
         }
         .animation(.smooth(duration: 0.3), value: vm.showFDAOnboarding)
+        .animation(.smooth(duration: 0.3), value: vm.rootNode != nil)
+        .confirmationDialog(
+            "Permanently Delete \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s")?",
+            isPresented: $showDeleteAllConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s") Permanently", role: .destructive) {
+                performDelete(vm.collector)
+            }
+            Button("Move to Trash Instead") {
+                performTrash(vm.collector)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This frees \(Theme.format(vm.collectorTotalSize)) immediately and cannot be undone. To keep the option to restore, move the items to the Trash instead.")
+        }
+        .alert(deleteErrorTitle, isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK") { deleteError = nil }
+        } message: {
+            Text(deleteError ?? "")
+        }
         .onAppear {
             vm.refreshFullDiskAccessStatus()
+            // Expose this window's single VM to the Finder Service provider, and run
+            // any scan it requested before the window existed (cold launch).
+            SharedScanContext.shared.register(vm)
             DebugAutomation.runIfRequested(vm: vm)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             // Returning from System Settings after granting access auto-dismisses.
             vm.refreshFullDiskAccessStatus()
+        }
+    }
+
+    /// Move `nodes` to the Trash (recoverable), surfacing any failure as an alert.
+    /// The default action — no confirmation needed since it can be undone in Finder.
+    private func performTrash(_ nodes: [FileNode]) {
+        deleteError = nil
+        do {
+            try vm.moveToTrash(nodes)
+        } catch {
+            deleteErrorTitle = "Move to Trash Failed"
+            deleteError = error.localizedDescription
+        }
+    }
+
+    /// Permanently delete `nodes`, surfacing any failure as an alert.
+    private func performDelete(_ nodes: [FileNode]) {
+        deleteError = nil
+        do {
+            try vm.deletePermanently(nodes)
+        } catch {
+            deleteErrorTitle = "Delete Failed"
+            deleteError = error.localizedDescription
         }
     }
 
@@ -93,7 +185,9 @@ struct ContentView: View {
             onAddToCollector: { vm.addToCollector($0) },
             onRevealInFinder: { node in
                 NSWorkspace.shared.activateFileViewerSelecting([node.url])
-            }
+            },
+            drag: drag,
+            onDrop: { node in vm.addToCollector(node) }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Breadcrumb floats over the TOP edge only. Previously it was a

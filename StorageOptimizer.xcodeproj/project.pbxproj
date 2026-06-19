@@ -11,9 +11,38 @@
 		0547D783C2969C03E9AE4A9B /* SunburstChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22799EC27F3878A28E92A74 /* SunburstChart.swift */; };
 		0C3CC5F272C51E2D497C0B54 /* FileScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14BECC25C32D412C2DB15599 /* FileScanner.swift */; };
 		31FAFF8A0D0CDF349F90577F /* GlassSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDF8B61DD701FAE1208BB3C8 /* GlassSurfaces.swift */; };
+		FACADE000000000000000002 /* CollectorDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000001 /* CollectorDock.swift */; };
+		FACADE000000000000000004 /* StorageSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000003 /* StorageSources.swift */; };
+		FACADE000000000000000006 /* CleanupSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000005 /* CleanupSuggestions.swift */; };
+		FACADE000000000000000008 /* CleanupSuggestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000007 /* CleanupSuggestionsView.swift */; };
+		FACADE00000000000000000A /* SmartCleanupClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000009 /* SmartCleanupClassifier.swift */; };
+		FACADE00000000000000000E /* CleanupQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000000D /* CleanupQuery.swift */; };
+		FACADE000000000000000010 /* IntentPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000000F /* IntentPlanner.swift */; };
+		FACADE000000000000000012 /* NaturalLanguageCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000011 /* NaturalLanguageCleanupView.swift */; };
+		FACADE000000000000000014 /* DuplicateFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000013 /* DuplicateFinder.swift */; };
+		FACADE000000000000000020 /* LocalAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000001F /* LocalAI.swift */; };
+		FACADE000000000000000022 /* CleanupActionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000021 /* CleanupActionBar.swift */; };
+		FACADE000000000000000024 /* MLXRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000023 /* MLXRunner.swift */; };
+		FACADE000000000000000026 /* HiddenSpace.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000025 /* HiddenSpace.swift */; };
+		FACADE000000000000000028 /* HiddenSpaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000027 /* HiddenSpaceView.swift */; };
+		FACADE00000000000000002A /* FileKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000029 /* FileKind.swift */; };
+		FACADE00000000000000002C /* ByKindView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000002B /* ByKindView.swift */; };
+		FACADE00000000000000002E /* LargeOldFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000002D /* LargeOldFiles.swift */; };
+		FACADE000000000000000030 /* LargeOldFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000002F /* LargeOldFilesView.swift */; };
+		FACADE000000000000000032 /* FileSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000031 /* FileSearch.swift */; };
+		FACADE000000000000000034 /* FileSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000033 /* FileSearchView.swift */; };
+		FACADE000000000000000036 /* AppUninstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000035 /* AppUninstaller.swift */; };
+		FACADE000000000000000038 /* AppUninstallerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000037 /* AppUninstallerView.swift */; };
+		FACADE00000000000000003A /* FolderExplainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000039 /* FolderExplainer.swift */; };
+		FACADE00000000000000003C /* FinderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000003B /* FinderService.swift */; };
+		FACADE000000000000000111 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = FACADE000000000000000101 /* MLXLLM */; };
+		FACADE000000000000000112 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = FACADE000000000000000102 /* MLXLMCommon */; };
+		FACADE000000000000000018 /* PremiumUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000017 /* PremiumUI.swift */; };
+		FACADE00000000000000001A /* DuplicateFinderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE000000000000000019 /* DuplicateFinderView.swift */; };
+		FACADE00000000000000001C /* SmartSuggestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACADE00000000000000001B /* SmartSuggestionsView.swift */; };
 		60ADFADC631518C7D4917629 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136FA6DA4546458D405F4D38 /* InspectorView.swift */; };
 		63BDE4AC31181AF946BB6324 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7F392BD6C036181ABA6E22 /* ViewModelTests.swift */; };
-		66464E106EA850FA6B7F855F /* TrashService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7926B52A79D2A820F25AF809 /* TrashService.swift */; };
+		66464E106EA850FA6B7F855F /* DeletionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7926B52A79D2A820F25AF809 /* DeletionService.swift */; };
 		7D339ADA7F390D9F34F7A4D1 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E34A8E0B2233C2B5EA9FFE1 /* Theme.swift */; };
 		90D0AECEE8DAE38C1F5E301E /* BulkReader.c in Sources */ = {isa = PBXBuildFile; fileRef = EA25F9BF10EDE58E854FE0E6 /* BulkReader.c */; };
 		A3AA97208A6C81E052A0ECBB /* Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B75DFA4820FD837D699B3F /* Sidebar.swift */; };
@@ -45,7 +74,7 @@
 		52D17682C03471DB6FE5BAC9 /* DebugAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugAutomation.swift; sourceTree = "<group>"; };
 		5DC066D847E641A17B0DB6AF /* BulkReader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BulkReader.h; sourceTree = "<group>"; };
 		6420CDE63EFE0F46919442BC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		7926B52A79D2A820F25AF809 /* TrashService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashService.swift; sourceTree = "<group>"; };
+		7926B52A79D2A820F25AF809 /* DeletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeletionService.swift; sourceTree = "<group>"; };
 		79C1D1444458486D1635EA98 /* StorageOptimizerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StorageOptimizerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		85B75DFA4820FD837D699B3F /* Sidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sidebar.swift; sourceTree = "<group>"; };
 		8A7F392BD6C036181ABA6E22 /* ViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelTests.swift; sourceTree = "<group>"; };
@@ -56,6 +85,33 @@
 		ACFDCAB20E8FA97583AD2706 /* EngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTests.swift; sourceTree = "<group>"; };
 		C5954AC735E1A8256EDFDE1D /* StorageOptimizerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageOptimizerApp.swift; sourceTree = "<group>"; };
 		CDF8B61DD701FAE1208BB3C8 /* GlassSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassSurfaces.swift; sourceTree = "<group>"; };
+		FACADE000000000000000001 /* CollectorDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectorDock.swift; sourceTree = "<group>"; };
+		FACADE000000000000000003 /* StorageSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageSources.swift; sourceTree = "<group>"; };
+		FACADE000000000000000005 /* CleanupSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSuggestions.swift; sourceTree = "<group>"; };
+		FACADE000000000000000007 /* CleanupSuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSuggestionsView.swift; sourceTree = "<group>"; };
+		FACADE000000000000000009 /* SmartCleanupClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartCleanupClassifier.swift; sourceTree = "<group>"; };
+		FACADE00000000000000000D /* CleanupQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupQuery.swift; sourceTree = "<group>"; };
+		FACADE00000000000000000F /* IntentPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentPlanner.swift; sourceTree = "<group>"; };
+		FACADE000000000000000011 /* NaturalLanguageCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageCleanupView.swift; sourceTree = "<group>"; };
+		FACADE000000000000000013 /* DuplicateFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinder.swift; sourceTree = "<group>"; };
+		FACADE00000000000000001F /* LocalAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAI.swift; sourceTree = "<group>"; };
+		FACADE000000000000000021 /* CleanupActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupActionBar.swift; sourceTree = "<group>"; };
+		FACADE000000000000000023 /* MLXRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXRunner.swift; sourceTree = "<group>"; };
+		FACADE000000000000000025 /* HiddenSpace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSpace.swift; sourceTree = "<group>"; };
+		FACADE000000000000000027 /* HiddenSpaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSpaceView.swift; sourceTree = "<group>"; };
+		FACADE000000000000000029 /* FileKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileKind.swift; sourceTree = "<group>"; };
+		FACADE00000000000000002B /* ByKindView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ByKindView.swift; sourceTree = "<group>"; };
+		FACADE00000000000000002D /* LargeOldFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeOldFiles.swift; sourceTree = "<group>"; };
+		FACADE00000000000000002F /* LargeOldFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeOldFilesView.swift; sourceTree = "<group>"; };
+		FACADE000000000000000031 /* FileSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSearch.swift; sourceTree = "<group>"; };
+		FACADE000000000000000033 /* FileSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSearchView.swift; sourceTree = "<group>"; };
+		FACADE000000000000000035 /* AppUninstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstaller.swift; sourceTree = "<group>"; };
+		FACADE000000000000000037 /* AppUninstallerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstallerView.swift; sourceTree = "<group>"; };
+		FACADE000000000000000039 /* FolderExplainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderExplainer.swift; sourceTree = "<group>"; };
+		FACADE00000000000000003B /* FinderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderService.swift; sourceTree = "<group>"; };
+		FACADE000000000000000017 /* PremiumUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumUI.swift; sourceTree = "<group>"; };
+		FACADE000000000000000019 /* DuplicateFinderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinderView.swift; sourceTree = "<group>"; };
+		FACADE00000000000000001B /* SmartSuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartSuggestionsView.swift; sourceTree = "<group>"; };
 		D4949ABD498D6E2BD6A2FBCD /* StorageOptimizer-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "StorageOptimizer-Bridging-Header.h"; sourceTree = "<group>"; };
 		EA25F9BF10EDE58E854FE0E6 /* BulkReader.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BulkReader.c; sourceTree = "<group>"; };
 		ED0D3ED4A340442D741C40C6 /* BulkDirScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BulkDirScanner.swift; sourceTree = "<group>"; };
@@ -86,6 +142,19 @@
 			isa = PBXGroup;
 			children = (
 				F655824E790F4A1A9FCB19B2 /* ContentView.swift */,
+				FACADE000000000000000001 /* CollectorDock.swift */,
+				FACADE000000000000000003 /* StorageSources.swift */,
+				FACADE000000000000000007 /* CleanupSuggestionsView.swift */,
+				FACADE000000000000000011 /* NaturalLanguageCleanupView.swift */,
+				FACADE000000000000000017 /* PremiumUI.swift */,
+				FACADE000000000000000019 /* DuplicateFinderView.swift */,
+				FACADE000000000000000021 /* CleanupActionBar.swift */,
+				FACADE000000000000000027 /* HiddenSpaceView.swift */,
+				FACADE00000000000000002B /* ByKindView.swift */,
+				FACADE00000000000000002F /* LargeOldFilesView.swift */,
+				FACADE000000000000000033 /* FileSearchView.swift */,
+				FACADE000000000000000037 /* AppUninstallerView.swift */,
+				FACADE00000000000000001B /* SmartSuggestionsView.swift */,
 				CDF8B61DD701FAE1208BB3C8 /* GlassSurfaces.swift */,
 				136FA6DA4546458D405F4D38 /* InspectorView.swift */,
 				85B75DFA4820FD837D699B3F /* Sidebar.swift */,
@@ -102,7 +171,20 @@
 				EA25F9BF10EDE58E854FE0E6 /* BulkReader.c */,
 				5DC066D847E641A17B0DB6AF /* BulkReader.h */,
 				14BECC25C32D412C2DB15599 /* FileScanner.swift */,
-				7926B52A79D2A820F25AF809 /* TrashService.swift */,
+				FACADE000000000000000005 /* CleanupSuggestions.swift */,
+				FACADE000000000000000009 /* SmartCleanupClassifier.swift */,
+				FACADE00000000000000000D /* CleanupQuery.swift */,
+				FACADE00000000000000000F /* IntentPlanner.swift */,
+				FACADE000000000000000013 /* DuplicateFinder.swift */,
+				FACADE00000000000000001F /* LocalAI.swift */,
+				FACADE000000000000000023 /* MLXRunner.swift */,
+				FACADE000000000000000025 /* HiddenSpace.swift */,
+				FACADE000000000000000029 /* FileKind.swift */,
+				FACADE00000000000000002D /* LargeOldFiles.swift */,
+				FACADE000000000000000031 /* FileSearch.swift */,
+				FACADE000000000000000035 /* AppUninstaller.swift */,
+				FACADE000000000000000039 /* FolderExplainer.swift */,
+				7926B52A79D2A820F25AF809 /* DeletionService.swift */,
 			);
 			path = Engine;
 			sourceTree = "<group>";
@@ -136,6 +218,7 @@
 			isa = PBXGroup;
 			children = (
 				52D17682C03471DB6FE5BAC9 /* DebugAutomation.swift */,
+				FACADE00000000000000003B /* FinderService.swift */,
 				6420CDE63EFE0F46919442BC /* Info.plist */,
 				D4949ABD498D6E2BD6A2FBCD /* StorageOptimizer-Bridging-Header.h */,
 				4D9B500016263ACA4BF78C4B /* StorageOptimizer.entitlements */,
@@ -150,12 +233,25 @@
 		};
 /* End PBXGroup section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		FACADE000000000000000110 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FACADE000000000000000111 /* MLXLLM in Frameworks */,
+				FACADE000000000000000112 /* MLXLMCommon in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXNativeTarget section */
 		59466466AA65229C3DE4171F /* StorageOptimizer */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 265F36D6363AB13664EF9E1B /* Build configuration list for PBXNativeTarget "StorageOptimizer" */;
 			buildPhases = (
 				28DA5A5BBDB727D10E12FD62 /* Sources */,
+				FACADE000000000000000110 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -163,6 +259,8 @@
 			);
 			name = StorageOptimizer;
 			packageProductDependencies = (
+				FACADE000000000000000101 /* MLXLLM */,
+				FACADE000000000000000102 /* MLXLMCommon */,
 			);
 			productName = StorageOptimizer;
 			productReference = 123BE699CC4659B27483C5FA /* StorageOptimizer.app */;
@@ -193,7 +291,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1700;
+				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					59466466AA65229C3DE4171F = {
 						DevelopmentTeam = "";
@@ -214,6 +312,9 @@
 			);
 			mainGroup = 169D8B8E62A6EC830C871F5C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				FACADE000000000000000100 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5F5F62128C67BA8480F01135 /* Products */;
 			projectDirPath = "";
@@ -233,6 +334,33 @@
 				D0A4691F818CD85261FE23E1 /* BulkDirScanner.swift in Sources */,
 				90D0AECEE8DAE38C1F5E301E /* BulkReader.c in Sources */,
 				C7C1B88B99DBF460C480265D /* ContentView.swift in Sources */,
+				FACADE000000000000000002 /* CollectorDock.swift in Sources */,
+				FACADE000000000000000004 /* StorageSources.swift in Sources */,
+				FACADE000000000000000006 /* CleanupSuggestions.swift in Sources */,
+				FACADE000000000000000008 /* CleanupSuggestionsView.swift in Sources */,
+				FACADE00000000000000000A /* SmartCleanupClassifier.swift in Sources */,
+				FACADE00000000000000000E /* CleanupQuery.swift in Sources */,
+				FACADE000000000000000010 /* IntentPlanner.swift in Sources */,
+				FACADE000000000000000012 /* NaturalLanguageCleanupView.swift in Sources */,
+				FACADE000000000000000014 /* DuplicateFinder.swift in Sources */,
+				FACADE000000000000000020 /* LocalAI.swift in Sources */,
+				FACADE000000000000000022 /* CleanupActionBar.swift in Sources */,
+				FACADE000000000000000024 /* MLXRunner.swift in Sources */,
+				FACADE000000000000000026 /* HiddenSpace.swift in Sources */,
+				FACADE000000000000000028 /* HiddenSpaceView.swift in Sources */,
+				FACADE00000000000000002A /* FileKind.swift in Sources */,
+				FACADE00000000000000002C /* ByKindView.swift in Sources */,
+				FACADE00000000000000002E /* LargeOldFiles.swift in Sources */,
+				FACADE000000000000000030 /* LargeOldFilesView.swift in Sources */,
+				FACADE000000000000000032 /* FileSearch.swift in Sources */,
+				FACADE000000000000000034 /* FileSearchView.swift in Sources */,
+				FACADE000000000000000036 /* AppUninstaller.swift in Sources */,
+				FACADE000000000000000038 /* AppUninstallerView.swift in Sources */,
+				FACADE00000000000000003A /* FolderExplainer.swift in Sources */,
+				FACADE00000000000000003C /* FinderService.swift in Sources */,
+				FACADE000000000000000018 /* PremiumUI.swift in Sources */,
+				FACADE00000000000000001A /* DuplicateFinderView.swift in Sources */,
+				FACADE00000000000000001C /* SmartSuggestionsView.swift in Sources */,
 				B2D1E7189A4AACB33905A70A /* DebugAutomation.swift in Sources */,
 				AD90F8F4C988E9F06DDAB873 /* FileNode.swift in Sources */,
 				0C3CC5F272C51E2D497C0B54 /* FileScanner.swift in Sources */,
@@ -243,7 +371,7 @@
 				B40DF85044A12E2F7076BB03 /* StorageOptimizerApp.swift in Sources */,
 				0547D783C2969C03E9AE4A9B /* SunburstChart.swift in Sources */,
 				7D339ADA7F390D9F34F7A4D1 /* Theme.swift in Sources */,
-				66464E106EA850FA6B7F855F /* TrashService.swift in Sources */,
+				66464E106EA850FA6B7F855F /* DeletionService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -272,6 +400,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -302,9 +431,11 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -325,6 +456,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -337,6 +469,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -356,6 +489,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -386,9 +520,11 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -402,6 +538,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -415,6 +552,7 @@
 				CODE_SIGN_ENTITLEMENTS = StorageOptimizer/StorageOptimizer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
@@ -442,6 +580,7 @@
 				CODE_SIGN_ENTITLEMENTS = StorageOptimizer/StorageOptimizer.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
@@ -467,6 +606,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -513,6 +653,30 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FACADE000000000000000100 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-examples.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.29.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FACADE000000000000000101 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FACADE000000000000000100 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
+			productName = MLXLLM;
+		};
+		FACADE000000000000000102 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FACADE000000000000000100 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
+			productName = MLXLMCommon;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 18ABA8804E1728C9F6F6602D /* Project object */;
 }
