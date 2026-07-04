@@ -1,8 +1,8 @@
 import SwiftUI
 
 @main
-struct StorageOptimizerApp: App {
-    // Hosts the Finder "Analyze with Storage Optimizer" Service provider (registered
+struct TesseraApp: App {
+    // Hosts the Finder "Analyze with Tessera" Service provider (registered
     // in applicationDidFinishLaunching). See FinderService.swift.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 

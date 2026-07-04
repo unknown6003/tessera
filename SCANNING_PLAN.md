@@ -1,4 +1,4 @@
-# Storage Optimizer — Fast Scanner Design
+# Tessera — Fast Scanner Design
 
 ## Problem
 

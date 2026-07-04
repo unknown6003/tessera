@@ -484,7 +484,7 @@ private struct FullDiskAccessOnboarding: View {
 
     private let steps: [(symbol: String, text: String)] = [
         ("1.circle.fill", "Click **Open System Settings** below."),
-        ("2.circle.fill", "Find **Storage Optimizer** in the list and turn it on."),
+        ("2.circle.fill", "Find **Tessera** in the list and turn it on."),
         ("3.circle.fill", "Return here — scanning unlocks automatically."),
     ]
 
@@ -517,7 +517,7 @@ private struct FullDiskAccessOnboarding: View {
             VStack(spacing: 10) {
                 Text("Grant Full Disk Access")
                     .font(.title.weight(.semibold))
-                Text("Storage Optimizer needs Full Disk Access to measure every folder on your Mac. Grant it once and you're set — no more per-folder prompts.")
+                Text("Tessera needs Full Disk Access to measure every folder on your Mac. Grant it once and you're set — no more per-folder prompts.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

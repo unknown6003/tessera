@@ -1,0 +1,630 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		01A1EDF5C3A8C5EA493E0833 /* LayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F9F8EE494536E6D60A0EF7 /* LayoutTests.swift */; };
+		1285C7D048927D3F501ACA4B /* FileScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ADC5E2A519E8B06A59D6A6 /* FileScanner.swift */; };
+		19C4B41A4E1DE326BAF2FD72 /* IntentPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6739AA906C9386CDAD6CABCA /* IntentPlanner.swift */; };
+		3178E746E20291A959280423 /* EngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A2977CEFF62446F6A2B8229 /* EngineTests.swift */; };
+		31B85271447955AABAC39E35 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAD75D8D3A699C6CAC73BF50 /* ContentView.swift */; };
+		3376EFBDE885FB836AE0E133 /* FileKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE064FB9566A005D1E820D12 /* FileKind.swift */; };
+		39B4BFDBC15F9F14C3FCDB59 /* BulkDirScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55994D41465F62E491B791E /* BulkDirScanner.swift */; };
+		3EB8E5035DD786A5B4BE2D70 /* DeletionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0E699226977E2FBED65D11 /* DeletionService.swift */; };
+		42C1B4FB228187DEB1051142 /* LargeOldFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5691D716AB4B79199173B5B0 /* LargeOldFiles.swift */; };
+		46B529D2A399551ED883B637 /* FileSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD992FF2C17E5E434A22816C /* FileSearch.swift */; };
+		49079A901FD000D845684640 /* FinderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD93DB369E567A271AF7A2B /* FinderService.swift */; };
+		4F41A917CD7F8E4A150FAA6D /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD61FC42129768C2D708D049 /* Updater.swift */; };
+		658A8D75F654091578130385 /* FileSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9858C35A10F0446E345ED1B7 /* FileSearchView.swift */; };
+		67CC542526304CABB27C2EB0 /* AppUninstallerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C92F3884B3AFA20530F6CB1E /* AppUninstallerView.swift */; };
+		72A65621C943F40F95BAFC27 /* LocalAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4490062E06ABA05A438CF0E8 /* LocalAI.swift */; };
+		7B0FFDFA7B8FAEF3702E82A8 /* PremiumUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8C594760CC03D8F61C37F35 /* PremiumUI.swift */; };
+		8EDB933616F4EDCAB1E7FEEF /* CleanupSuggestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A1DD2627F8678EEA4331F3 /* CleanupSuggestionsView.swift */; };
+		9773936B9376C537CD2F72C7 /* CleanupActionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72189C376ED30D5C2749D641 /* CleanupActionBar.swift */; };
+		98CABB3984CBF322572D7110 /* DuplicateFinderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3565E04F0E1EF1B54F0B2C3F /* DuplicateFinderView.swift */; };
+		9AD0AF78D25BE7954C1844AB /* BulkReader.c in Sources */ = {isa = PBXBuildFile; fileRef = 39C2F6679360731E0939FFAF /* BulkReader.c */; };
+		9DFDF06E16774445AB11695B /* AppUninstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7783A3E0F7481BB892D8C3B5 /* AppUninstaller.swift */; };
+		A6DB7F0BFC745373C6E6B824 /* DuplicateFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4502D891C71E712849FCD74 /* DuplicateFinder.swift */; };
+		AF2C75006152503D65614035 /* FolderExplainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1696FC471C86C941F9A3E8 /* FolderExplainer.swift */; };
+		B40BF4AE03A2D4DF75A758E6 /* SunburstChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A701090383E02B16B6DBD75 /* SunburstChart.swift */; };
+		B94A70DD417D3D73C2F461A7 /* CleanupSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90FC7801DE1B8A634C6D50F9 /* CleanupSuggestions.swift */; };
+		BBF6C11499A2051F19A51A32 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3ECFBAA621B8B148DF14243 /* InspectorView.swift */; };
+		BDBBA1BCB1D76D94C5568BFB /* HiddenSpace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC2C5FDB9C072774D1CD7A2 /* HiddenSpace.swift */; };
+		C1B8C93B2D80441E835564CC /* MLXRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6868CC3A3C6ED3AB3F9B163F /* MLXRunner.swift */; };
+		CE7ACBF3C228D1BE4C210873 /* NaturalLanguageCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4424E3249F8D30A48A6F678 /* NaturalLanguageCleanupView.swift */; };
+		D42EE3EE17112BE0CD728480 /* LargeOldFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71535F903DFC65553307F3D4 /* LargeOldFilesView.swift */; };
+		DB0EEFB8FA9587A0B5B703D3 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B407A2C36685BFC42FB865F2 /* ViewModelTests.swift */; };
+		DCAAF304ED728CBAA8FF69FF /* HiddenSpaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A61E79802366BF80F58FF30 /* HiddenSpaceView.swift */; };
+		DE652D89FDD8766F7D965A16 /* FileNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9B716FCD647B9A1DA56071F /* FileNode.swift */; };
+		E099C59FFB1AA8A3340AC803 /* DebugAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8FD42B9720491DD4E44D68D /* DebugAutomation.swift */; };
+		E3037E9E61140A7930CD49A4 /* ByKindView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4B95F848065C032F636BC1 /* ByKindView.swift */; };
+		E3B9D87B3D2C1D2CC39CA83E /* SmartCleanupClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71C0A6CBFFE8617B998B85C /* SmartCleanupClassifier.swift */; };
+		E49690EBDF19F3214558AB3B /* TesseraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A508B99BE481C815C3BB0F /* TesseraApp.swift */; };
+		E6DB05C0B26DDC6FE255DC3F /* CleanupQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E1608315052256A22F738D2 /* CleanupQuery.swift */; };
+		ED2FB1199B644E99AE8D17E1 /* StorageSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E891048BBF025AB8C43712 /* StorageSources.swift */; };
+		EE8FEFA7918ECB868EEFF6E9 /* SmartSuggestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E681485E58BF8436F99B1F9 /* SmartSuggestionsView.swift */; };
+		F77AF2AE48FBFF8726C1473F /* ScanViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B87E4285D46CDC2CB2DA2062 /* ScanViewModel.swift */; };
+		F81F5AC20AF801D2D0C0DDF2 /* Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4EF4374D25FB2778767FF64 /* Sidebar.swift */; };
+		FA73381C4F7A3B3635121CD8 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D412C099EDB447DC4B8320D7 /* Theme.swift */; };
+		FD50B7E63A8FF5B54FB6F31B /* GlassSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3587EDCC419A7294D2021E59 /* GlassSurfaces.swift */; };
+		FE7BDFB9F805B32CBADDB282 /* CollectorDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57125AFC792652056F54941F /* CollectorDock.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		766BE730280F146AF7949C82 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 333D216A6D8399D96BB6FDC7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E7A2C29018472713157B2E67;
+			remoteInfo = Tessera;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0A701090383E02B16B6DBD75 /* SunburstChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunburstChart.swift; sourceTree = "<group>"; };
+		0DC9EEFFB4BD09B1D98FAF6C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		1E1608315052256A22F738D2 /* CleanupQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupQuery.swift; sourceTree = "<group>"; };
+		3565E04F0E1EF1B54F0B2C3F /* DuplicateFinderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinderView.swift; sourceTree = "<group>"; };
+		3587EDCC419A7294D2021E59 /* GlassSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassSurfaces.swift; sourceTree = "<group>"; };
+		39C2F6679360731E0939FFAF /* BulkReader.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BulkReader.c; sourceTree = "<group>"; };
+		3A4B95F848065C032F636BC1 /* ByKindView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ByKindView.swift; sourceTree = "<group>"; };
+		3A61E79802366BF80F58FF30 /* HiddenSpaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSpaceView.swift; sourceTree = "<group>"; };
+		3E681485E58BF8436F99B1F9 /* SmartSuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartSuggestionsView.swift; sourceTree = "<group>"; };
+		43F9F8EE494536E6D60A0EF7 /* LayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutTests.swift; sourceTree = "<group>"; };
+		4490062E06ABA05A438CF0E8 /* LocalAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAI.swift; sourceTree = "<group>"; };
+		4D0E699226977E2FBED65D11 /* DeletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeletionService.swift; sourceTree = "<group>"; };
+		5691D716AB4B79199173B5B0 /* LargeOldFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeOldFiles.swift; sourceTree = "<group>"; };
+		57125AFC792652056F54941F /* CollectorDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectorDock.swift; sourceTree = "<group>"; };
+		5DC2C5FDB9C072774D1CD7A2 /* HiddenSpace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSpace.swift; sourceTree = "<group>"; };
+		6739AA906C9386CDAD6CABCA /* IntentPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentPlanner.swift; sourceTree = "<group>"; };
+		6868CC3A3C6ED3AB3F9B163F /* MLXRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXRunner.swift; sourceTree = "<group>"; };
+		71535F903DFC65553307F3D4 /* LargeOldFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeOldFilesView.swift; sourceTree = "<group>"; };
+		72189C376ED30D5C2749D641 /* CleanupActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupActionBar.swift; sourceTree = "<group>"; };
+		75ADC5E2A519E8B06A59D6A6 /* FileScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileScanner.swift; sourceTree = "<group>"; };
+		7783A3E0F7481BB892D8C3B5 /* AppUninstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstaller.swift; sourceTree = "<group>"; };
+		81A1DD2627F8678EEA4331F3 /* CleanupSuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSuggestionsView.swift; sourceTree = "<group>"; };
+		90FC7801DE1B8A634C6D50F9 /* CleanupSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSuggestions.swift; sourceTree = "<group>"; };
+		9158AB7B1D3C37DD4417D65B /* BulkReader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BulkReader.h; sourceTree = "<group>"; };
+		9858C35A10F0446E345ED1B7 /* FileSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSearchView.swift; sourceTree = "<group>"; };
+		9A2977CEFF62446F6A2B8229 /* EngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTests.swift; sourceTree = "<group>"; };
+		A4424E3249F8D30A48A6F678 /* NaturalLanguageCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageCleanupView.swift; sourceTree = "<group>"; };
+		A4EF4374D25FB2778767FF64 /* Sidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sidebar.swift; sourceTree = "<group>"; };
+		A55994D41465F62E491B791E /* BulkDirScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BulkDirScanner.swift; sourceTree = "<group>"; };
+		AD992FF2C17E5E434A22816C /* FileSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSearch.swift; sourceTree = "<group>"; };
+		AE064FB9566A005D1E820D12 /* FileKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileKind.swift; sourceTree = "<group>"; };
+		B407A2C36685BFC42FB865F2 /* ViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelTests.swift; sourceTree = "<group>"; };
+		B87E4285D46CDC2CB2DA2062 /* ScanViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanViewModel.swift; sourceTree = "<group>"; };
+		B8E891048BBF025AB8C43712 /* StorageSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageSources.swift; sourceTree = "<group>"; };
+		B9B716FCD647B9A1DA56071F /* FileNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNode.swift; sourceTree = "<group>"; };
+		BAD75D8D3A699C6CAC73BF50 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		C3ECFBAA621B8B148DF14243 /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
+		C71C0A6CBFFE8617B998B85C /* SmartCleanupClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartCleanupClassifier.swift; sourceTree = "<group>"; };
+		C89960D68C1DC10502C50DB1 /* Tessera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tessera.entitlements; sourceTree = "<group>"; };
+		C8FD42B9720491DD4E44D68D /* DebugAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugAutomation.swift; sourceTree = "<group>"; };
+		C92F3884B3AFA20530F6CB1E /* AppUninstallerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstallerView.swift; sourceTree = "<group>"; };
+		CD61FC42129768C2D708D049 /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
+		D412C099EDB447DC4B8320D7 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		E3A508B99BE481C815C3BB0F /* TesseraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TesseraApp.swift; sourceTree = "<group>"; };
+		E4502D891C71E712849FCD74 /* DuplicateFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinder.swift; sourceTree = "<group>"; };
+		E87E39B009CEE620FDD3062B /* TesseraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TesseraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EA1696FC471C86C941F9A3E8 /* FolderExplainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderExplainer.swift; sourceTree = "<group>"; };
+		F77526534857E825EE29985F /* Tessera-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Tessera-Bridging-Header.h"; sourceTree = "<group>"; };
+		F8C594760CC03D8F61C37F35 /* PremiumUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumUI.swift; sourceTree = "<group>"; };
+		F9E3D53B6B58506C64CD4A51 /* Tessera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tessera.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FFD93DB369E567A271AF7A2B /* FinderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderService.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		7CA4AF27E4E0E2E09B717289 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F9E3D53B6B58506C64CD4A51 /* Tessera.app */,
+				E87E39B009CEE620FDD3062B /* TesseraTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9A5ECF7A38F63D0EB8C4E006 /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				B9B716FCD647B9A1DA56071F /* FileNode.swift */,
+			);
+			path = Model;
+			sourceTree = "<group>";
+		};
+		A722332B58F7EA10E8178269 = {
+			isa = PBXGroup;
+			children = (
+				EE0A6C1709AA204583254D7B /* Tessera */,
+				F847B361FEC3EA360663E693 /* TesseraTests */,
+				7CA4AF27E4E0E2E09B717289 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B88B30C4A3A6616E31F09A4F /* ViewModel */ = {
+			isa = PBXGroup;
+			children = (
+				B87E4285D46CDC2CB2DA2062 /* ScanViewModel.swift */,
+			);
+			path = ViewModel;
+			sourceTree = "<group>";
+		};
+		C05F919B906B0081F17C98C4 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				C92F3884B3AFA20530F6CB1E /* AppUninstallerView.swift */,
+				3A4B95F848065C032F636BC1 /* ByKindView.swift */,
+				72189C376ED30D5C2749D641 /* CleanupActionBar.swift */,
+				81A1DD2627F8678EEA4331F3 /* CleanupSuggestionsView.swift */,
+				57125AFC792652056F54941F /* CollectorDock.swift */,
+				BAD75D8D3A699C6CAC73BF50 /* ContentView.swift */,
+				3565E04F0E1EF1B54F0B2C3F /* DuplicateFinderView.swift */,
+				9858C35A10F0446E345ED1B7 /* FileSearchView.swift */,
+				3587EDCC419A7294D2021E59 /* GlassSurfaces.swift */,
+				3A61E79802366BF80F58FF30 /* HiddenSpaceView.swift */,
+				C3ECFBAA621B8B148DF14243 /* InspectorView.swift */,
+				71535F903DFC65553307F3D4 /* LargeOldFilesView.swift */,
+				A4424E3249F8D30A48A6F678 /* NaturalLanguageCleanupView.swift */,
+				F8C594760CC03D8F61C37F35 /* PremiumUI.swift */,
+				A4EF4374D25FB2778767FF64 /* Sidebar.swift */,
+				3E681485E58BF8436F99B1F9 /* SmartSuggestionsView.swift */,
+				B8E891048BBF025AB8C43712 /* StorageSources.swift */,
+				0A701090383E02B16B6DBD75 /* SunburstChart.swift */,
+				D412C099EDB447DC4B8320D7 /* Theme.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		E027563B965C80D7A477D413 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				7783A3E0F7481BB892D8C3B5 /* AppUninstaller.swift */,
+				A55994D41465F62E491B791E /* BulkDirScanner.swift */,
+				39C2F6679360731E0939FFAF /* BulkReader.c */,
+				9158AB7B1D3C37DD4417D65B /* BulkReader.h */,
+				1E1608315052256A22F738D2 /* CleanupQuery.swift */,
+				90FC7801DE1B8A634C6D50F9 /* CleanupSuggestions.swift */,
+				4D0E699226977E2FBED65D11 /* DeletionService.swift */,
+				E4502D891C71E712849FCD74 /* DuplicateFinder.swift */,
+				AE064FB9566A005D1E820D12 /* FileKind.swift */,
+				75ADC5E2A519E8B06A59D6A6 /* FileScanner.swift */,
+				AD992FF2C17E5E434A22816C /* FileSearch.swift */,
+				EA1696FC471C86C941F9A3E8 /* FolderExplainer.swift */,
+				5DC2C5FDB9C072774D1CD7A2 /* HiddenSpace.swift */,
+				6739AA906C9386CDAD6CABCA /* IntentPlanner.swift */,
+				5691D716AB4B79199173B5B0 /* LargeOldFiles.swift */,
+				4490062E06ABA05A438CF0E8 /* LocalAI.swift */,
+				6868CC3A3C6ED3AB3F9B163F /* MLXRunner.swift */,
+				C71C0A6CBFFE8617B998B85C /* SmartCleanupClassifier.swift */,
+				CD61FC42129768C2D708D049 /* Updater.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
+		EE0A6C1709AA204583254D7B /* Tessera */ = {
+			isa = PBXGroup;
+			children = (
+				C8FD42B9720491DD4E44D68D /* DebugAutomation.swift */,
+				FFD93DB369E567A271AF7A2B /* FinderService.swift */,
+				0DC9EEFFB4BD09B1D98FAF6C /* Info.plist */,
+				F77526534857E825EE29985F /* Tessera-Bridging-Header.h */,
+				C89960D68C1DC10502C50DB1 /* Tessera.entitlements */,
+				E3A508B99BE481C815C3BB0F /* TesseraApp.swift */,
+				E027563B965C80D7A477D413 /* Engine */,
+				9A5ECF7A38F63D0EB8C4E006 /* Model */,
+				B88B30C4A3A6616E31F09A4F /* ViewModel */,
+				C05F919B906B0081F17C98C4 /* Views */,
+			);
+			path = Tessera;
+			sourceTree = "<group>";
+		};
+		F847B361FEC3EA360663E693 /* TesseraTests */ = {
+			isa = PBXGroup;
+			children = (
+				9A2977CEFF62446F6A2B8229 /* EngineTests.swift */,
+				43F9F8EE494536E6D60A0EF7 /* LayoutTests.swift */,
+				B407A2C36685BFC42FB865F2 /* ViewModelTests.swift */,
+			);
+			path = TesseraTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		703E1734EA18ACB7ACCCDB1E /* TesseraTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE180362D5D2DE14FFDF0C80 /* Build configuration list for PBXNativeTarget "TesseraTests" */;
+			buildPhases = (
+				F7899C540D08E16DD24ACD3D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D0202A63A574B24E626F2265 /* PBXTargetDependency */,
+			);
+			name = TesseraTests;
+			packageProductDependencies = (
+			);
+			productName = TesseraTests;
+			productReference = E87E39B009CEE620FDD3062B /* TesseraTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E7A2C29018472713157B2E67 /* Tessera */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B551177FE9D99586570BF0C6 /* Build configuration list for PBXNativeTarget "Tessera" */;
+			buildPhases = (
+				3BF564653DBB67EAEEAC8714 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Tessera;
+			packageProductDependencies = (
+			);
+			productName = Tessera;
+			productReference = F9E3D53B6B58506C64CD4A51 /* Tessera.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		333D216A6D8399D96BB6FDC7 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1700;
+				TargetAttributes = {
+					703E1734EA18ACB7ACCCDB1E = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					E7A2C29018472713157B2E67 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 128AE504440213CBAA04347F /* Build configuration list for PBXProject "Tessera" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = A722332B58F7EA10E8178269;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 7CA4AF27E4E0E2E09B717289 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E7A2C29018472713157B2E67 /* Tessera */,
+				703E1734EA18ACB7ACCCDB1E /* TesseraTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3BF564653DBB67EAEEAC8714 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9DFDF06E16774445AB11695B /* AppUninstaller.swift in Sources */,
+				67CC542526304CABB27C2EB0 /* AppUninstallerView.swift in Sources */,
+				39B4BFDBC15F9F14C3FCDB59 /* BulkDirScanner.swift in Sources */,
+				9AD0AF78D25BE7954C1844AB /* BulkReader.c in Sources */,
+				E3037E9E61140A7930CD49A4 /* ByKindView.swift in Sources */,
+				9773936B9376C537CD2F72C7 /* CleanupActionBar.swift in Sources */,
+				E6DB05C0B26DDC6FE255DC3F /* CleanupQuery.swift in Sources */,
+				B94A70DD417D3D73C2F461A7 /* CleanupSuggestions.swift in Sources */,
+				8EDB933616F4EDCAB1E7FEEF /* CleanupSuggestionsView.swift in Sources */,
+				FE7BDFB9F805B32CBADDB282 /* CollectorDock.swift in Sources */,
+				31B85271447955AABAC39E35 /* ContentView.swift in Sources */,
+				E099C59FFB1AA8A3340AC803 /* DebugAutomation.swift in Sources */,
+				3EB8E5035DD786A5B4BE2D70 /* DeletionService.swift in Sources */,
+				A6DB7F0BFC745373C6E6B824 /* DuplicateFinder.swift in Sources */,
+				98CABB3984CBF322572D7110 /* DuplicateFinderView.swift in Sources */,
+				3376EFBDE885FB836AE0E133 /* FileKind.swift in Sources */,
+				DE652D89FDD8766F7D965A16 /* FileNode.swift in Sources */,
+				1285C7D048927D3F501ACA4B /* FileScanner.swift in Sources */,
+				46B529D2A399551ED883B637 /* FileSearch.swift in Sources */,
+				658A8D75F654091578130385 /* FileSearchView.swift in Sources */,
+				49079A901FD000D845684640 /* FinderService.swift in Sources */,
+				AF2C75006152503D65614035 /* FolderExplainer.swift in Sources */,
+				FD50B7E63A8FF5B54FB6F31B /* GlassSurfaces.swift in Sources */,
+				BDBBA1BCB1D76D94C5568BFB /* HiddenSpace.swift in Sources */,
+				DCAAF304ED728CBAA8FF69FF /* HiddenSpaceView.swift in Sources */,
+				BBF6C11499A2051F19A51A32 /* InspectorView.swift in Sources */,
+				19C4B41A4E1DE326BAF2FD72 /* IntentPlanner.swift in Sources */,
+				42C1B4FB228187DEB1051142 /* LargeOldFiles.swift in Sources */,
+				D42EE3EE17112BE0CD728480 /* LargeOldFilesView.swift in Sources */,
+				72A65621C943F40F95BAFC27 /* LocalAI.swift in Sources */,
+				C1B8C93B2D80441E835564CC /* MLXRunner.swift in Sources */,
+				CE7ACBF3C228D1BE4C210873 /* NaturalLanguageCleanupView.swift in Sources */,
+				7B0FFDFA7B8FAEF3702E82A8 /* PremiumUI.swift in Sources */,
+				F77AF2AE48FBFF8726C1473F /* ScanViewModel.swift in Sources */,
+				F81F5AC20AF801D2D0C0DDF2 /* Sidebar.swift in Sources */,
+				E3B9D87B3D2C1D2CC39CA83E /* SmartCleanupClassifier.swift in Sources */,
+				EE8FEFA7918ECB868EEFF6E9 /* SmartSuggestionsView.swift in Sources */,
+				ED2FB1199B644E99AE8D17E1 /* StorageSources.swift in Sources */,
+				B40BF4AE03A2D4DF75A758E6 /* SunburstChart.swift in Sources */,
+				E49690EBDF19F3214558AB3B /* TesseraApp.swift in Sources */,
+				FA73381C4F7A3B3635121CD8 /* Theme.swift in Sources */,
+				4F41A917CD7F8E4A150FAA6D /* Updater.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F7899C540D08E16DD24ACD3D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3178E746E20291A959280423 /* EngineTests.swift in Sources */,
+				01A1EDF5C3A8C5EA493E0833 /* LayoutTests.swift in Sources */,
+				DB0EEFB8FA9587A0B5B703D3 /* ViewModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D0202A63A574B24E626F2265 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E7A2C29018472713157B2E67 /* Tessera */;
+			targetProxy = 766BE730280F146AF7949C82 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0D9B64E4603AB0E8E0D5B8DC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		58A436553019B9067BC00479 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.abdwy.TesseraTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tessera.app/Contents/MacOS/Tessera";
+			};
+			name = Release;
+		};
+		686CFDF37DB6E9FF19839698 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Tessera/Tessera.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 3;
+				INFOPLIST_FILE = Tessera/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.abdwy.Tessera;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "Tessera/Tessera-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		6E82C020FF8F1B3812517821 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Tessera/Tessera.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GCC_OPTIMIZATION_LEVEL = 3;
+				INFOPLIST_FILE = Tessera/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.abdwy.Tessera;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "Tessera/Tessera-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		9F2093A3CF140A75A32E11CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.abdwy.TesseraTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Tessera.app/Contents/MacOS/Tessera";
+			};
+			name = Debug;
+		};
+		D5AD07989C2FC28BAD6F2451 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		128AE504440213CBAA04347F /* Build configuration list for PBXProject "Tessera" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0D9B64E4603AB0E8E0D5B8DC /* Debug */,
+				D5AD07989C2FC28BAD6F2451 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B551177FE9D99586570BF0C6 /* Build configuration list for PBXNativeTarget "Tessera" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				686CFDF37DB6E9FF19839698 /* Debug */,
+				6E82C020FF8F1B3812517821 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FE180362D5D2DE14FFDF0C80 /* Build configuration list for PBXNativeTarget "TesseraTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9F2093A3CF140A75A32E11CB /* Debug */,
+				58A436553019B9067BC00479 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 333D216A6D8399D96BB6FDC7 /* Project object */;
+}

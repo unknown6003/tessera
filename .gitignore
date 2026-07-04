@@ -11,3 +11,7 @@ backend/
 
 # Release artifacts (signed builds, appcast) produced by release.sh
 dist/
+
+# Landing site lives in its own private repo (unknown6003/tessera-web).
+# Kept out of the app repo entirely.
+web/

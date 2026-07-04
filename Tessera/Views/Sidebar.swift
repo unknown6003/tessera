@@ -85,7 +85,7 @@ struct Sidebar: View {
                 .background(Circle().fill(.tint.opacity(0.16)))
                 .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 1))
             VStack(alignment: .leading, spacing: 1) {
-                Text("Storage Optimizer")
+                Text("Tessera")
                     .font(.headline.smallCaps())
                     .tracking(0.5)
                 Text("Disk Space Visualizer")

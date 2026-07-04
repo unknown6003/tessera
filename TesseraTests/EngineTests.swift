@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import StorageOptimizer
+@testable import Tessera
 
 // MARK: - Helpers
 

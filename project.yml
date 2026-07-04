@@ -1,4 +1,4 @@
-name: StorageOptimizer
+name: Tessera
 options:
   bundleIdPrefix: com.abdwy
   deploymentTarget:
@@ -10,20 +10,20 @@ settings:
   SWIFT_VERSION: "6.0"
 
 targets:
-  StorageOptimizer:
+  Tessera:
     type: application
     platform: macOS
     deploymentTarget: "14.0"
     sources:
-      - StorageOptimizer
+      - Tessera
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.abdwy.StorageOptimizer
-        INFOPLIST_FILE: StorageOptimizer/Info.plist
-        CODE_SIGN_ENTITLEMENTS: StorageOptimizer/StorageOptimizer.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.abdwy.Tessera
+        INFOPLIST_FILE: Tessera/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Tessera/Tessera.entitlements
         ENABLE_APP_SANDBOX: NO
         SWIFT_VERSION: "6.0"
-        SWIFT_OBJC_BRIDGING_HEADER: StorageOptimizer/StorageOptimizer-Bridging-Header.h
+        SWIFT_OBJC_BRIDGING_HEADER: Tessera/Tessera-Bridging-Header.h
         GCC_OPTIMIZATION_LEVEL: "3"
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         CODE_SIGN_STYLE: Automatic
@@ -38,32 +38,32 @@ targets:
           SWIFT_OPTIMIZATION_LEVEL: "-O"
           DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
 
-  StorageOptimizerTests:
+  TesseraTests:
     type: bundle.unit-test
     platform: macOS
     deploymentTarget: "26.0"
     sources:
-      - StorageOptimizerTests
+      - TesseraTests
     dependencies:
-      - target: StorageOptimizer
+      - target: Tessera
     settings:
       base:
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/StorageOptimizer.app/Contents/MacOS/StorageOptimizer"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Tessera.app/Contents/MacOS/Tessera"
         BUNDLE_LOADER: "$(TEST_HOST)"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
 
 schemes:
-  StorageOptimizer:
+  Tessera:
     build:
       targets:
-        StorageOptimizer: all
-        StorageOptimizerTests: [test]
+        Tessera: all
+        TesseraTests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - StorageOptimizerTests
+        - TesseraTests

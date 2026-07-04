@@ -1,28 +1,31 @@
 #!/usr/bin/env bash
 #
-# One-command release: build → Developer ID sign → notarize → staple → Sparkle-sign
-# → appcast → (optional) GitHub Release. Run from the repo root.
+# One-command release: build → Developer ID sign → notarize → staple → DMG →
+# Sparkle-sign → appcast → (optional) GitHub Release. Run from the repo root.
+#
+# The app ships as a signed+notarized .dmg (drag-to-Applications). Sparkle
+# delivers the same .dmg for over-the-air updates.
 #
 # Prerequisites (one-time):
 #   • A "Developer ID Application" certificate in your login Keychain
 #     (Xcode ▸ Settings ▸ Accounts ▸ Manage Certificates ▸ + ▸ Developer ID Application).
 #   • A notarytool credential profile:
-#       xcrun notarytool store-credentials "SO_NOTARY" \
+#       xcrun notarytool store-credentials "TESSERA_NOTARY" \
 #         --apple-id you@example.com --team-id TEAMID --password app-specific-pw
 #   • The Sparkle signing key (ALREADY GENERATED — private key is in this Mac's
 #     Keychain; public key is in Info.plist).
 #
 # Usage:
-#   ./release.sh                       # build, sign, notarize, appcast (no upload)
+#   ./release.sh                       # build, sign, notarize, dmg, appcast (no upload)
 #   ./release.sh --publish             # also create the GitHub Release
-#   NOTARY_PROFILE=SO_NOTARY ./release.sh --publish
+#   NOTARY_PROFILE=TESSERA_NOTARY ./release.sh --publish
 set -euo pipefail
 
-REPO="unknown6003/storage-optimizer"
-SCHEME="StorageOptimizer"
-PROJECT="StorageOptimizer.xcodeproj"
-INFO_PLIST="StorageOptimizer/Info.plist"
-NOTARY_PROFILE="${NOTARY_PROFILE:-SO_NOTARY}"
+REPO="unknown6003/tessera"
+SCHEME="Tessera"
+PROJECT="Tessera.xcodeproj"
+INFO_PLIST="Tessera/Info.plist"
+NOTARY_PROFILE="${NOTARY_PROFILE:-TESSERA_NOTARY}"
 PUBLISH=0
 [[ "${1:-}" == "--publish" ]] && PUBLISH=1
 
@@ -45,6 +48,8 @@ step "Releasing $SCHEME $VERSION   (identity: $DEV_ID)"
 
 DIST="dist"; rm -rf "$DIST"; mkdir -p "$DIST"
 DERIVED="$DIST/build"
+UPDATES="$DIST/updates"; mkdir -p "$UPDATES"   # only release archives live here (appcast source)
+TMP="$DIST/tmp"; mkdir -p "$TMP"
 
 step "Release build"
 xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
@@ -52,31 +57,39 @@ xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
 APP="$DERIVED/Build/Products/Release/$SCHEME.app"
 [[ -d "$APP" ]] || fail "build produced no app at $APP"
 
-step "Code-sign (Developer ID, hardened runtime)"
+step "Code-sign the app (Developer ID, hardened runtime)"
 codesign --force --deep --options runtime --timestamp --sign "$DEV_ID" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
-step "Notarize + staple"
-ditto -c -k --keepParent "$APP" "$DIST/notarize.zip"
-xcrun notarytool submit "$DIST/notarize.zip" --keychain-profile "$NOTARY_PROFILE" --wait
+step "Notarize + staple the app (offline-verifiable after drag-install)"
+ditto -c -k --keepParent "$APP" "$TMP/notarize-app.zip"
+xcrun notarytool submit "$TMP/notarize-app.zip" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$APP"
-spctl -a -vvv "$APP" 2>&1 | grep -i "accepted\|notarized" || true
 
-step "Package + Sparkle-sign the update"
-ZIP="$DIST/$SCHEME-$VERSION.zip"
-ditto -c -k --keepParent "$APP" "$ZIP"
-"$TOOLS/sign_update" "$ZIP"
+step "Build the .dmg (drag-to-Applications)"
+DMG="$UPDATES/$SCHEME-$VERSION.dmg"
+STAGE="$TMP/dmg"; mkdir -p "$STAGE"
+cp -R "$APP" "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+hdiutil create -volname "$SCHEME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 
-step "Generate appcast"
-"$TOOLS/generate_appcast" "$DIST"
-ls -1 "$DIST"/appcast.xml >/dev/null || fail "appcast.xml not generated"
-echo "  → $DIST/appcast.xml  +  $ZIP"
+step "Code-sign, notarize + staple the .dmg"
+codesign --force --sign "$DEV_ID" --timestamp "$DMG"
+xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+xcrun stapler staple "$DMG"
+spctl -a -t open --context context:primary-signature -vvv "$DMG" 2>&1 | grep -i "accepted\|notarized" || true
+
+step "Generate appcast (Sparkle EdDSA-signs the .dmg)"
+"$TOOLS/generate_appcast" "$UPDATES"
+[[ -f "$UPDATES/appcast.xml" ]] || fail "appcast.xml not generated"
+rm -rf "$TMP"
+echo "  → $UPDATES/appcast.xml  +  $DMG"
 
 if [[ "$PUBLISH" == "1" ]]; then
   step "Publish GitHub Release v$VERSION"
-  gh release create "v$VERSION" "$ZIP" "$DIST/appcast.xml" \
+  gh release create "v$VERSION" "$DMG" "$UPDATES/appcast.xml" \
      --repo "$REPO" --title "$VERSION" --generate-notes
   echo "  Published. SUFeedURL (releases/latest/download/appcast.xml) now serves $VERSION."
 else
-  printf "\n\033[1;32m✓ Built, signed, notarized, appcast ready in %s/. Re-run with --publish to upload.\033[0m\n" "$DIST"
+  printf "\n\033[1;32m✓ Built, signed, notarized, .dmg + appcast ready in %s/. Re-run with --publish to upload.\033[0m\n" "$UPDATES"
 fi

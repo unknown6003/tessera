@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Finder integration — "Analyze with Storage Optimizer".
+/// Finder integration — "Analyze with Tessera".
 ///
 /// This is implemented as a macOS **Services** entry (declared under `NSServices`
 /// in Info.plist), NOT a Finder Sync extension. A true contextual right-click item
@@ -117,7 +117,7 @@ final class FinderServiceProvider: NSObject {
 }
 
 /// Registers the Services provider once the app finishes launching. Bridged into
-/// SwiftUI via `@NSApplicationDelegateAdaptor` in `StorageOptimizerApp`.
+/// SwiftUI via `@NSApplicationDelegateAdaptor` in `TesseraApp`.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Retained for the app's lifetime — `NSApp.servicesProvider` holds it weakly.
     private let serviceProvider = FinderServiceProvider()

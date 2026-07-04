@@ -1,4 +1,4 @@
-# Storage Optimizer
+# Tessera
 
 A fast, private, native macOS disk visualizer and cleaner. Scan any disk, cloud
 folder, or network share; see exactly what's using space in an interactive Liquid
@@ -45,8 +45,8 @@ no telemetry, analytics, or cloud processing.
 ## Building
 
 ```sh
-xcodebuild -project StorageOptimizer.xcodeproj -scheme StorageOptimizer -configuration Debug build
-xcodebuild -project StorageOptimizer.xcodeproj -scheme StorageOptimizer -configuration Debug test
+xcodebuild -project Tessera.xcodeproj -scheme Tessera -configuration Debug build
+xcodebuild -project Tessera.xcodeproj -scheme Tessera -configuration Debug test
 ```
 
 First build only: if you hit `missing Metal Toolchain`, run
@@ -55,5 +55,8 @@ First build only: if you hit `missing Metal Toolchain`, run
 ## Distribution
 
 Distributed directly (not the Mac App Store — full-disk scanning and `tmutil` use
-are incompatible with the App Sandbox), Developer ID–signed and notarized, with
-Sparkle for over-the-air updates. See [RELEASING.md](RELEASING.md).
+are incompatible with the App Sandbox) as a Developer ID–signed, notarized **`.dmg`**,
+with Sparkle for over-the-air updates. See [RELEASING.md](RELEASING.md).
+
+Windows and Linux builds (via winget and Linux package managers) are planned; the
+packaging plan lives in [DISTRIBUTION.md](DISTRIBUTION.md).
