@@ -9,6 +9,14 @@ options:
 settings:
   SWIFT_VERSION: "6.0"
 
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.9.0"
+  MLXSwiftExamples:
+    url: https://github.com/ml-explore/mlx-swift-examples
+    from: "2.29.0"
+
 targets:
   Tessera:
     type: application
@@ -16,6 +24,13 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - Tessera
+    dependencies:
+      - package: Sparkle
+        product: Sparkle
+      - package: MLXSwiftExamples
+        product: MLXLLM
+      - package: MLXSwiftExamples
+        product: MLXLMCommon
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.abdwy.Tessera

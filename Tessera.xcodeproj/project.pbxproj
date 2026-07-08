@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0125A7EC59A9232B10825377 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F1EEFFAA7B03D5E8C79142F7 /* Sparkle */; };
 		01A1EDF5C3A8C5EA493E0833 /* LayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F9F8EE494536E6D60A0EF7 /* LayoutTests.swift */; };
+		01FF63F1E4D93546EB12A378 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 6066DFABC9CE01099C34E515 /* MLXLLM */; };
 		1285C7D048927D3F501ACA4B /* FileScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ADC5E2A519E8B06A59D6A6 /* FileScanner.swift */; };
 		19C4B41A4E1DE326BAF2FD72 /* IntentPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6739AA906C9386CDAD6CABCA /* IntentPlanner.swift */; };
 		3178E746E20291A959280423 /* EngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A2977CEFF62446F6A2B8229 /* EngineTests.swift */; };
@@ -19,6 +21,7 @@
 		46B529D2A399551ED883B637 /* FileSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD992FF2C17E5E434A22816C /* FileSearch.swift */; };
 		49079A901FD000D845684640 /* FinderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD93DB369E567A271AF7A2B /* FinderService.swift */; };
 		4F41A917CD7F8E4A150FAA6D /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD61FC42129768C2D708D049 /* Updater.swift */; };
+		538FF8A6F19E060BEAFDAE51 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = C1B726D896CB461691751D86 /* MLXLMCommon */; };
 		658A8D75F654091578130385 /* FileSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9858C35A10F0446E345ED1B7 /* FileSearchView.swift */; };
 		67CC542526304CABB27C2EB0 /* AppUninstallerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C92F3884B3AFA20530F6CB1E /* AppUninstallerView.swift */; };
 		72A65621C943F40F95BAFC27 /* LocalAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4490062E06ABA05A438CF0E8 /* LocalAI.swift */; };
@@ -117,6 +120,19 @@
 		F9E3D53B6B58506C64CD4A51 /* Tessera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tessera.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FFD93DB369E567A271AF7A2B /* FinderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CEA2F14398AE3575A281BB96 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0125A7EC59A9232B10825377 /* Sparkle in Frameworks */,
+				01FF63F1E4D93546EB12A378 /* MLXLLM in Frameworks */,
+				538FF8A6F19E060BEAFDAE51 /* MLXLMCommon in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		7CA4AF27E4E0E2E09B717289 /* Products */ = {
@@ -258,6 +274,7 @@
 			buildConfigurationList = B551177FE9D99586570BF0C6 /* Build configuration list for PBXNativeTarget "Tessera" */;
 			buildPhases = (
 				3BF564653DBB67EAEEAC8714 /* Sources */,
+				CEA2F14398AE3575A281BB96 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -265,6 +282,9 @@
 			);
 			name = Tessera;
 			packageProductDependencies = (
+				F1EEFFAA7B03D5E8C79142F7 /* Sparkle */,
+				6066DFABC9CE01099C34E515 /* MLXLLM */,
+				C1B726D896CB461691751D86 /* MLXLMCommon */,
 			);
 			productName = Tessera;
 			productReference = F9E3D53B6B58506C64CD4A51 /* Tessera.app */;
@@ -298,6 +318,10 @@
 			);
 			mainGroup = A722332B58F7EA10E8178269;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				EC4E63B4AEAAEE51CA07E714 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */,
+				6FA28A3C43F2739266F76DC9 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7CA4AF27E4E0E2E09B717289 /* Products */;
 			projectDirPath = "";
@@ -625,6 +649,43 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		6FA28A3C43F2739266F76DC9 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.0;
+			};
+		};
+		EC4E63B4AEAAEE51CA07E714 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-examples";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.29.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6066DFABC9CE01099C34E515 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EC4E63B4AEAAEE51CA07E714 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
+			productName = MLXLLM;
+		};
+		C1B726D896CB461691751D86 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EC4E63B4AEAAEE51CA07E714 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
+			productName = MLXLMCommon;
+		};
+		F1EEFFAA7B03D5E8C79142F7 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6FA28A3C43F2739266F76DC9 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 333D216A6D8399D96BB6FDC7 /* Project object */;
 }
