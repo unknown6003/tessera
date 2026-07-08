@@ -12,12 +12,6 @@ enum Theme {
     /// wedge palette band.
     static let electricBlueHue: Double = 183.5 / 360.0
 
-    /// Signature gradient for everything premium / AI — the visual marker that
-    /// separates paid AI features from the free, built-in tools.
-    static let aiGradient = LinearGradient(
-        colors: [electricBlue, Color(red: 0.62, green: 0.35, blue: 1.0)],
-        startPoint: .leading, endPoint: .trailing)
-
     /// Deep electric-blue-tinted wash laid over the frosted window base. Gives the
     /// glass a cool cyan cast instead of a flat grey, tying the whole pane to the
     /// accent. Applied at low opacity (see `GlassTuning.baseTint`).

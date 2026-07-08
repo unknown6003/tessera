@@ -5,8 +5,7 @@ import AppKit
 /// Add/Added toggle so the user picks exactly what to stage — just caches, builds
 /// without downloads, whatever. A convenience button stages all safe groups at
 /// once. Nothing here deletes anything — the user reviews the collector and
-/// confirms deletion through the existing flow. The AI tier lives separately in
-/// SmartSuggestionsView.
+/// confirms deletion through the existing flow.
 struct CleanupSuggestionsView: View {
     @ObservedObject var vm: ScanViewModel
 

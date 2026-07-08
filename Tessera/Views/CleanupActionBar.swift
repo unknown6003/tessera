@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Top action bar over the chart. Holds the scan-wide tools — Clean Up (rule-based
-/// suggestions + on-device AI) and Find Duplicates — as buttons that open popovers,
-/// so the inspector can stay focused on the selected item and these tools are one
-/// click away instead of buried in a long sidebar scroll.
+/// suggestions) and Find Duplicates — as buttons that open popovers, so the
+/// inspector can stay focused on the selected item and these tools are one click
+/// away instead of buried in a long sidebar scroll.
 struct CleanupActionBar: View {
     @ObservedObject var vm: ScanViewModel
     @State private var showCleanup = false
@@ -42,13 +42,7 @@ struct CleanupActionBar: View {
         .controlSize(.regular)
         .popover(isPresented: $showCleanup, arrowEdge: .top) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    AIModelStatusView()
-                    NaturalLanguageCleanupView(vm: vm)
-                    CleanupSuggestionsView(vm: vm)
-                    SmartSuggestionsView(vm: vm)
-                }
-                .padding(16)
+                CleanupSuggestionsView(vm: vm).padding(16)
             }
             .frame(width: 380, height: 520)
         }
@@ -142,11 +136,7 @@ struct CleanupActionBar: View {
         .controlSize(.regular)
         .popover(isPresented: $showSearch, arrowEdge: .top) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    AIModelStatusView()
-                    FileSearchView(vm: vm)
-                }
-                .padding(16)
+                FileSearchView(vm: vm).padding(16)
             }
             .frame(width: 420, height: 520)
         }

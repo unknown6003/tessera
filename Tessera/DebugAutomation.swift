@@ -78,18 +78,7 @@ enum DebugAutomation {
                 log("cleanup: no report")
             }
 
-            // Smart (on-device LLM) suggestions run async after the rule report.
-            log("smart: available=\(SmartCleanupClassifier.isAvailable)")
-            var swaited = 0
-            while (vm.isClassifyingSmart || vm.smartSuggestions.isEmpty) && swaited < 40000 {
-                try? await Task.sleep(for: .milliseconds(500)); swaited += 500
-                if !vm.isClassifyingSmart && !vm.smartSuggestions.isEmpty { break }
-                if !vm.isClassifyingSmart && swaited > 2000 { break }
-            }
-            for s in vm.smartSuggestions.prefix(12) {
-                log("  smart[\(s.confidence)%] \(s.category): \(s.node.name) (\(Theme.format(s.node.size)))")
-            }
-            log("collector after auto-stage: \(vm.collector.count) items, \(Theme.format(vm.collectorTotalSize))")
+            log("collector: \(vm.collector.count) items, \(Theme.format(vm.collectorTotalSize))")
 
             // Duplicate-finder benchmark (SO_DUPE_BENCH=1).
             if env["SO_DUPE_BENCH"] == "1", let root = vm.rootNode {

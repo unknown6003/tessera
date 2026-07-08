@@ -12,8 +12,8 @@ import Sparkle
 // (Info.plist) and verifies every update's EdDSA signature against `SUPublicEDKey`
 // before installing — so a tampered or unsigned build can never be installed.
 //
-// This is the ONLY auto-update mechanism and, alongside the opt-in on-device model
-// download, the only network traffic the app performs. No user data is ever sent.
+// This is the ONLY auto-update mechanism and the only network traffic the app
+// performs on its own. No user data is ever sent.
 
 @MainActor
 final class UpdaterController: ObservableObject {

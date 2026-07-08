@@ -1,13 +1,11 @@
 import Foundation
 
-// MARK: - Natural-language file search
+// MARK: - Keyword file search
 //
 // Turns a free-text query ("videos over 1gb in downloads older than 6 months")
 // into a structured filter and runs it over the already-scanned tree, returning
-// the matching regular files. The built-in keyword parser (FileSearchParser) is
-// the always-available fallback; when the on-device MLX model is downloaded it
-// handles nuanced phrasing the keywords can't, returning the SAME filter as JSON
-// (mirrors the IntentPlanner pattern).
+// the matching regular files. The built-in keyword parser (FileSearchParser)
+// handles the common phrasings.
 //
 // Like every other tool here it only *finds*; nothing is deleted, and a match
 // becomes actionable only once the user stages it in the collector.
@@ -15,8 +13,7 @@ import Foundation
 // `modTime` is epoch NANOSECONDS (0 = unknown); age filtering compares against a
 // nanosecond cutoff and excludes unknown-mtime files whenever an age filter is set.
 //
-// PRIVACY: everything runs locally. The model (when used) sees only the typed
-// query + today's date — never paths, sizes, or contents.
+// PRIVACY: everything runs locally — nothing about the user's files is sent.
 
 enum FileSearch {
 
@@ -112,72 +109,6 @@ enum FileSearch {
         if matches.count > limit { matches.removeLast(matches.count - limit) }
         return matches
     }
-
-    // MARK: - Planner (on-device AI with keyword fallback)
-
-    struct Plan: Sendable {
-        let filter: Filter
-        /// True when the on-device model produced this filter (vs the keyword parser).
-        let usedAI: Bool
-    }
-
-    /// Resolve `query` into a Filter. When the on-device model is available it's
-    /// asked to return the filter as JSON; on nil/failure/trivial output it falls
-    /// back to the deterministic keyword parser. Mirrors IntentPlanner.plan.
-    static func plan(query: String) async -> Plan {
-        let local = FileSearchParser.parse(query)
-
-        let instructions = """
-        You convert a macOS user's plain-language file-search query into a JSON filter. \
-        Reply with ONLY a JSON object, no prose, of exactly this shape:
-        {"nameContains":[string],"location":string,"kind":string,"minSizeMB":int,"maxSizeMB":int,"maxAgeDays":int}
-        Rules: "nameContains" are lowercased filename substrings the user named (else []). \
-        "location" is one of "downloads","desktop","documents","movies","music","pictures", \
-        or "" if none. "kind" is one of "image","video","audio","document","archive","app", \
-        "code", or "" if none. Use 0 for any numeric field that doesn't apply. minSizeMB/maxSizeMB \
-        are megabytes; maxAgeDays means "older than N days".
-        """
-        let prompt = "Query: \(query)"
-
-        guard let text = await LocalAI.generateText(instructions: instructions, prompt: prompt),
-              let filter = parse(text, fallback: local) else {
-            return Plan(filter: local, usedAI: false)
-        }
-        return Plan(filter: filter, usedAI: true)
-    }
-
-    /// Parse the model's JSON into a Filter. Pure — unit-testable. Returns the
-    /// non-trivial keyword `fallback` if the model produced nothing actionable.
-    static func parse(_ text: String, fallback: Filter) -> Filter? {
-        guard let json = LocalAI.extractJSONObject(text),
-              let data = json.data(using: .utf8),
-              let wire = try? JSONDecoder().decode(Wire.self, from: data) else { return nil }
-
-        var f = Filter.empty
-        f.nameContains = (wire.nameContains ?? [])
-            .map { $0.lowercased().trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        if let loc = wire.location?.lowercased(), let hint = FileSearchParser.locationHint(loc) {
-            f.pathContains = [hint]
-        }
-        if let k = wire.kind, !k.isEmpty { f.kind = FileKind(rawValue: k.lowercased()) }
-        f.minSizeBytes = (wire.minSizeMB ?? 0) > 0 ? Int64(wire.minSizeMB!) * 1024 * 1024 : nil
-        f.maxSizeBytes = (wire.maxSizeMB ?? 0) > 0 ? Int64(wire.maxSizeMB!) * 1024 * 1024 : nil
-        f.maxAgeDays = (wire.maxAgeDays ?? 0) > 0 ? wire.maxAgeDays : nil
-
-        // If the model returned nothing actionable, prefer a non-trivial keyword parse.
-        if f.isTrivial { return fallback.isTrivial ? nil : fallback }
-        return f
-    }
-
-    private struct Wire: Decodable {
-        let nameContains: [String]?
-        let location: String?
-        let kind: String?
-        let minSizeMB: Int?
-        let maxSizeMB: Int?
-        let maxAgeDays: Int?
-    }
 }
 
 // MARK: - Built-in keyword parser
@@ -235,7 +166,7 @@ enum FileSearchParser {
     }
 
     /// Map a location word to the lowercased path fragment used for matching, or
-    /// nil if it isn't a recognized location. Shared with the AI parse path.
+    /// nil if it isn't a recognized location.
     static func locationHint(_ word: String) -> String? {
         for (needles, hint) in locationKeywords where needles.contains(word) {
             return hint
@@ -342,7 +273,7 @@ enum FileSearchParser {
         return needles.filter { seen.insert($0).inserted }
     }
 
-    // MARK: Number extraction (mirrors CleanupQueryParser)
+    // MARK: Number extraction
 
     private static let sizeUnits: Set<String> = ["tb", "gb", "mb", "kb", "t", "g", "m", "k", "b", "bytes"]
 

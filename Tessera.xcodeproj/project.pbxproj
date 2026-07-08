@@ -9,9 +9,7 @@
 /* Begin PBXBuildFile section */
 		0125A7EC59A9232B10825377 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = F1EEFFAA7B03D5E8C79142F7 /* Sparkle */; };
 		01A1EDF5C3A8C5EA493E0833 /* LayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F9F8EE494536E6D60A0EF7 /* LayoutTests.swift */; };
-		01FF63F1E4D93546EB12A378 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 6066DFABC9CE01099C34E515 /* MLXLLM */; };
 		1285C7D048927D3F501ACA4B /* FileScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75ADC5E2A519E8B06A59D6A6 /* FileScanner.swift */; };
-		19C4B41A4E1DE326BAF2FD72 /* IntentPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6739AA906C9386CDAD6CABCA /* IntentPlanner.swift */; };
 		3178E746E20291A959280423 /* EngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A2977CEFF62446F6A2B8229 /* EngineTests.swift */; };
 		31B85271447955AABAC39E35 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAD75D8D3A699C6CAC73BF50 /* ContentView.swift */; };
 		3376EFBDE885FB836AE0E133 /* FileKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE064FB9566A005D1E820D12 /* FileKind.swift */; };
@@ -21,10 +19,8 @@
 		46B529D2A399551ED883B637 /* FileSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD992FF2C17E5E434A22816C /* FileSearch.swift */; };
 		49079A901FD000D845684640 /* FinderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD93DB369E567A271AF7A2B /* FinderService.swift */; };
 		4F41A917CD7F8E4A150FAA6D /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD61FC42129768C2D708D049 /* Updater.swift */; };
-		538FF8A6F19E060BEAFDAE51 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = C1B726D896CB461691751D86 /* MLXLMCommon */; };
 		658A8D75F654091578130385 /* FileSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9858C35A10F0446E345ED1B7 /* FileSearchView.swift */; };
 		67CC542526304CABB27C2EB0 /* AppUninstallerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C92F3884B3AFA20530F6CB1E /* AppUninstallerView.swift */; };
-		72A65621C943F40F95BAFC27 /* LocalAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4490062E06ABA05A438CF0E8 /* LocalAI.swift */; };
 		7B0FFDFA7B8FAEF3702E82A8 /* PremiumUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8C594760CC03D8F61C37F35 /* PremiumUI.swift */; };
 		8EDB933616F4EDCAB1E7FEEF /* CleanupSuggestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A1DD2627F8678EEA4331F3 /* CleanupSuggestionsView.swift */; };
 		9773936B9376C537CD2F72C7 /* CleanupActionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72189C376ED30D5C2749D641 /* CleanupActionBar.swift */; };
@@ -32,24 +28,18 @@
 		9AD0AF78D25BE7954C1844AB /* BulkReader.c in Sources */ = {isa = PBXBuildFile; fileRef = 39C2F6679360731E0939FFAF /* BulkReader.c */; };
 		9DFDF06E16774445AB11695B /* AppUninstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7783A3E0F7481BB892D8C3B5 /* AppUninstaller.swift */; };
 		A6DB7F0BFC745373C6E6B824 /* DuplicateFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4502D891C71E712849FCD74 /* DuplicateFinder.swift */; };
-		AF2C75006152503D65614035 /* FolderExplainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1696FC471C86C941F9A3E8 /* FolderExplainer.swift */; };
 		B40BF4AE03A2D4DF75A758E6 /* SunburstChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A701090383E02B16B6DBD75 /* SunburstChart.swift */; };
 		B94A70DD417D3D73C2F461A7 /* CleanupSuggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90FC7801DE1B8A634C6D50F9 /* CleanupSuggestions.swift */; };
 		BBF6C11499A2051F19A51A32 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3ECFBAA621B8B148DF14243 /* InspectorView.swift */; };
 		BDBBA1BCB1D76D94C5568BFB /* HiddenSpace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC2C5FDB9C072774D1CD7A2 /* HiddenSpace.swift */; };
-		C1B8C93B2D80441E835564CC /* MLXRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6868CC3A3C6ED3AB3F9B163F /* MLXRunner.swift */; };
-		CE7ACBF3C228D1BE4C210873 /* NaturalLanguageCleanupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4424E3249F8D30A48A6F678 /* NaturalLanguageCleanupView.swift */; };
 		D42EE3EE17112BE0CD728480 /* LargeOldFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71535F903DFC65553307F3D4 /* LargeOldFilesView.swift */; };
 		DB0EEFB8FA9587A0B5B703D3 /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B407A2C36685BFC42FB865F2 /* ViewModelTests.swift */; };
 		DCAAF304ED728CBAA8FF69FF /* HiddenSpaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A61E79802366BF80F58FF30 /* HiddenSpaceView.swift */; };
 		DE652D89FDD8766F7D965A16 /* FileNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9B716FCD647B9A1DA56071F /* FileNode.swift */; };
 		E099C59FFB1AA8A3340AC803 /* DebugAutomation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8FD42B9720491DD4E44D68D /* DebugAutomation.swift */; };
 		E3037E9E61140A7930CD49A4 /* ByKindView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4B95F848065C032F636BC1 /* ByKindView.swift */; };
-		E3B9D87B3D2C1D2CC39CA83E /* SmartCleanupClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C71C0A6CBFFE8617B998B85C /* SmartCleanupClassifier.swift */; };
 		E49690EBDF19F3214558AB3B /* TesseraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A508B99BE481C815C3BB0F /* TesseraApp.swift */; };
-		E6DB05C0B26DDC6FE255DC3F /* CleanupQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E1608315052256A22F738D2 /* CleanupQuery.swift */; };
 		ED2FB1199B644E99AE8D17E1 /* StorageSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E891048BBF025AB8C43712 /* StorageSources.swift */; };
-		EE8FEFA7918ECB868EEFF6E9 /* SmartSuggestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E681485E58BF8436F99B1F9 /* SmartSuggestionsView.swift */; };
 		F77AF2AE48FBFF8726C1473F /* ScanViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B87E4285D46CDC2CB2DA2062 /* ScanViewModel.swift */; };
 		F81F5AC20AF801D2D0C0DDF2 /* Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4EF4374D25FB2778767FF64 /* Sidebar.swift */; };
 		FA73381C4F7A3B3635121CD8 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D412C099EDB447DC4B8320D7 /* Theme.swift */; };
@@ -70,21 +60,16 @@
 /* Begin PBXFileReference section */
 		0A701090383E02B16B6DBD75 /* SunburstChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunburstChart.swift; sourceTree = "<group>"; };
 		0DC9EEFFB4BD09B1D98FAF6C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		1E1608315052256A22F738D2 /* CleanupQuery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupQuery.swift; sourceTree = "<group>"; };
 		3565E04F0E1EF1B54F0B2C3F /* DuplicateFinderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinderView.swift; sourceTree = "<group>"; };
 		3587EDCC419A7294D2021E59 /* GlassSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassSurfaces.swift; sourceTree = "<group>"; };
 		39C2F6679360731E0939FFAF /* BulkReader.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BulkReader.c; sourceTree = "<group>"; };
 		3A4B95F848065C032F636BC1 /* ByKindView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ByKindView.swift; sourceTree = "<group>"; };
 		3A61E79802366BF80F58FF30 /* HiddenSpaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSpaceView.swift; sourceTree = "<group>"; };
-		3E681485E58BF8436F99B1F9 /* SmartSuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartSuggestionsView.swift; sourceTree = "<group>"; };
 		43F9F8EE494536E6D60A0EF7 /* LayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutTests.swift; sourceTree = "<group>"; };
-		4490062E06ABA05A438CF0E8 /* LocalAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAI.swift; sourceTree = "<group>"; };
 		4D0E699226977E2FBED65D11 /* DeletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeletionService.swift; sourceTree = "<group>"; };
 		5691D716AB4B79199173B5B0 /* LargeOldFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeOldFiles.swift; sourceTree = "<group>"; };
 		57125AFC792652056F54941F /* CollectorDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectorDock.swift; sourceTree = "<group>"; };
 		5DC2C5FDB9C072774D1CD7A2 /* HiddenSpace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSpace.swift; sourceTree = "<group>"; };
-		6739AA906C9386CDAD6CABCA /* IntentPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentPlanner.swift; sourceTree = "<group>"; };
-		6868CC3A3C6ED3AB3F9B163F /* MLXRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLXRunner.swift; sourceTree = "<group>"; };
 		71535F903DFC65553307F3D4 /* LargeOldFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeOldFilesView.swift; sourceTree = "<group>"; };
 		72189C376ED30D5C2749D641 /* CleanupActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupActionBar.swift; sourceTree = "<group>"; };
 		75ADC5E2A519E8B06A59D6A6 /* FileScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileScanner.swift; sourceTree = "<group>"; };
@@ -94,7 +79,6 @@
 		9158AB7B1D3C37DD4417D65B /* BulkReader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BulkReader.h; sourceTree = "<group>"; };
 		9858C35A10F0446E345ED1B7 /* FileSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSearchView.swift; sourceTree = "<group>"; };
 		9A2977CEFF62446F6A2B8229 /* EngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineTests.swift; sourceTree = "<group>"; };
-		A4424E3249F8D30A48A6F678 /* NaturalLanguageCleanupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NaturalLanguageCleanupView.swift; sourceTree = "<group>"; };
 		A4EF4374D25FB2778767FF64 /* Sidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sidebar.swift; sourceTree = "<group>"; };
 		A55994D41465F62E491B791E /* BulkDirScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BulkDirScanner.swift; sourceTree = "<group>"; };
 		AD992FF2C17E5E434A22816C /* FileSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSearch.swift; sourceTree = "<group>"; };
@@ -105,7 +89,6 @@
 		B9B716FCD647B9A1DA56071F /* FileNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNode.swift; sourceTree = "<group>"; };
 		BAD75D8D3A699C6CAC73BF50 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		C3ECFBAA621B8B148DF14243 /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
-		C71C0A6CBFFE8617B998B85C /* SmartCleanupClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartCleanupClassifier.swift; sourceTree = "<group>"; };
 		C89960D68C1DC10502C50DB1 /* Tessera.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tessera.entitlements; sourceTree = "<group>"; };
 		C8FD42B9720491DD4E44D68D /* DebugAutomation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugAutomation.swift; sourceTree = "<group>"; };
 		C92F3884B3AFA20530F6CB1E /* AppUninstallerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstallerView.swift; sourceTree = "<group>"; };
@@ -114,7 +97,6 @@
 		E3A508B99BE481C815C3BB0F /* TesseraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TesseraApp.swift; sourceTree = "<group>"; };
 		E4502D891C71E712849FCD74 /* DuplicateFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinder.swift; sourceTree = "<group>"; };
 		E87E39B009CEE620FDD3062B /* TesseraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TesseraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		EA1696FC471C86C941F9A3E8 /* FolderExplainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderExplainer.swift; sourceTree = "<group>"; };
 		F77526534857E825EE29985F /* Tessera-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Tessera-Bridging-Header.h"; sourceTree = "<group>"; };
 		F8C594760CC03D8F61C37F35 /* PremiumUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PremiumUI.swift; sourceTree = "<group>"; };
 		F9E3D53B6B58506C64CD4A51 /* Tessera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tessera.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -127,8 +109,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				0125A7EC59A9232B10825377 /* Sparkle in Frameworks */,
-				01FF63F1E4D93546EB12A378 /* MLXLLM in Frameworks */,
-				538FF8A6F19E060BEAFDAE51 /* MLXLMCommon in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -184,10 +164,8 @@
 				3A61E79802366BF80F58FF30 /* HiddenSpaceView.swift */,
 				C3ECFBAA621B8B148DF14243 /* InspectorView.swift */,
 				71535F903DFC65553307F3D4 /* LargeOldFilesView.swift */,
-				A4424E3249F8D30A48A6F678 /* NaturalLanguageCleanupView.swift */,
 				F8C594760CC03D8F61C37F35 /* PremiumUI.swift */,
 				A4EF4374D25FB2778767FF64 /* Sidebar.swift */,
-				3E681485E58BF8436F99B1F9 /* SmartSuggestionsView.swift */,
 				B8E891048BBF025AB8C43712 /* StorageSources.swift */,
 				0A701090383E02B16B6DBD75 /* SunburstChart.swift */,
 				D412C099EDB447DC4B8320D7 /* Theme.swift */,
@@ -202,20 +180,14 @@
 				A55994D41465F62E491B791E /* BulkDirScanner.swift */,
 				39C2F6679360731E0939FFAF /* BulkReader.c */,
 				9158AB7B1D3C37DD4417D65B /* BulkReader.h */,
-				1E1608315052256A22F738D2 /* CleanupQuery.swift */,
 				90FC7801DE1B8A634C6D50F9 /* CleanupSuggestions.swift */,
 				4D0E699226977E2FBED65D11 /* DeletionService.swift */,
 				E4502D891C71E712849FCD74 /* DuplicateFinder.swift */,
 				AE064FB9566A005D1E820D12 /* FileKind.swift */,
 				75ADC5E2A519E8B06A59D6A6 /* FileScanner.swift */,
 				AD992FF2C17E5E434A22816C /* FileSearch.swift */,
-				EA1696FC471C86C941F9A3E8 /* FolderExplainer.swift */,
 				5DC2C5FDB9C072774D1CD7A2 /* HiddenSpace.swift */,
-				6739AA906C9386CDAD6CABCA /* IntentPlanner.swift */,
 				5691D716AB4B79199173B5B0 /* LargeOldFiles.swift */,
-				4490062E06ABA05A438CF0E8 /* LocalAI.swift */,
-				6868CC3A3C6ED3AB3F9B163F /* MLXRunner.swift */,
-				C71C0A6CBFFE8617B998B85C /* SmartCleanupClassifier.swift */,
 				CD61FC42129768C2D708D049 /* Updater.swift */,
 			);
 			path = Engine;
@@ -283,8 +255,6 @@
 			name = Tessera;
 			packageProductDependencies = (
 				F1EEFFAA7B03D5E8C79142F7 /* Sparkle */,
-				6066DFABC9CE01099C34E515 /* MLXLLM */,
-				C1B726D896CB461691751D86 /* MLXLMCommon */,
 			);
 			productName = Tessera;
 			productReference = F9E3D53B6B58506C64CD4A51 /* Tessera.app */;
@@ -319,7 +289,6 @@
 			mainGroup = A722332B58F7EA10E8178269;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				EC4E63B4AEAAEE51CA07E714 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */,
 				6FA28A3C43F2739266F76DC9 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -344,7 +313,6 @@
 				9AD0AF78D25BE7954C1844AB /* BulkReader.c in Sources */,
 				E3037E9E61140A7930CD49A4 /* ByKindView.swift in Sources */,
 				9773936B9376C537CD2F72C7 /* CleanupActionBar.swift in Sources */,
-				E6DB05C0B26DDC6FE255DC3F /* CleanupQuery.swift in Sources */,
 				B94A70DD417D3D73C2F461A7 /* CleanupSuggestions.swift in Sources */,
 				8EDB933616F4EDCAB1E7FEEF /* CleanupSuggestionsView.swift in Sources */,
 				FE7BDFB9F805B32CBADDB282 /* CollectorDock.swift in Sources */,
@@ -359,22 +327,15 @@
 				46B529D2A399551ED883B637 /* FileSearch.swift in Sources */,
 				658A8D75F654091578130385 /* FileSearchView.swift in Sources */,
 				49079A901FD000D845684640 /* FinderService.swift in Sources */,
-				AF2C75006152503D65614035 /* FolderExplainer.swift in Sources */,
 				FD50B7E63A8FF5B54FB6F31B /* GlassSurfaces.swift in Sources */,
 				BDBBA1BCB1D76D94C5568BFB /* HiddenSpace.swift in Sources */,
 				DCAAF304ED728CBAA8FF69FF /* HiddenSpaceView.swift in Sources */,
 				BBF6C11499A2051F19A51A32 /* InspectorView.swift in Sources */,
-				19C4B41A4E1DE326BAF2FD72 /* IntentPlanner.swift in Sources */,
 				42C1B4FB228187DEB1051142 /* LargeOldFiles.swift in Sources */,
 				D42EE3EE17112BE0CD728480 /* LargeOldFilesView.swift in Sources */,
-				72A65621C943F40F95BAFC27 /* LocalAI.swift in Sources */,
-				C1B8C93B2D80441E835564CC /* MLXRunner.swift in Sources */,
-				CE7ACBF3C228D1BE4C210873 /* NaturalLanguageCleanupView.swift in Sources */,
 				7B0FFDFA7B8FAEF3702E82A8 /* PremiumUI.swift in Sources */,
 				F77AF2AE48FBFF8726C1473F /* ScanViewModel.swift in Sources */,
 				F81F5AC20AF801D2D0C0DDF2 /* Sidebar.swift in Sources */,
-				E3B9D87B3D2C1D2CC39CA83E /* SmartCleanupClassifier.swift in Sources */,
-				EE8FEFA7918ECB868EEFF6E9 /* SmartSuggestionsView.swift in Sources */,
 				ED2FB1199B644E99AE8D17E1 /* StorageSources.swift in Sources */,
 				B40BF4AE03A2D4DF75A758E6 /* SunburstChart.swift in Sources */,
 				E49690EBDF19F3214558AB3B /* TesseraApp.swift in Sources */,
@@ -659,27 +620,9 @@
 				minimumVersion = 2.9.0;
 			};
 		};
-		EC4E63B4AEAAEE51CA07E714 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift-examples";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.29.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		6066DFABC9CE01099C34E515 /* MLXLLM */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = EC4E63B4AEAAEE51CA07E714 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
-			productName = MLXLLM;
-		};
-		C1B726D896CB461691751D86 /* MLXLMCommon */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = EC4E63B4AEAAEE51CA07E714 /* XCRemoteSwiftPackageReference "mlx-swift-examples" */;
-			productName = MLXLMCommon;
-		};
 		F1EEFFAA7B03D5E8C79142F7 /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 6FA28A3C43F2739266F76DC9 /* XCRemoteSwiftPackageReference "Sparkle" */;

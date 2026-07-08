@@ -1,31 +1,29 @@
 import SwiftUI
 import AppKit
 
-/// Natural-language file search — type a free-text query ("videos over 1gb in
-/// downloads older than 6 months") and it's turned into a structured filter and
-/// run over the scanned tree. The built-in keyword parser always works; the
-/// on-device model adds nuanced phrasing when downloaded. Results list the
-/// matching files largest-first, each revealable in Finder and stageable into the
-/// collector via the usual review flow. Pure on-device search; nothing leaves your
-/// Mac and nothing is deleted here.
+/// Keyword file search — type a free-text query ("videos over 1gb in downloads
+/// older than 6 months") and it's turned into a structured filter and run over
+/// the scanned tree. Results list the matching files largest-first, each
+/// revealable in Finder and stageable into the collector via the usual review
+/// flow. Pure on-device search; nothing leaves your Mac and nothing is deleted
+/// here.
 struct FileSearchView: View {
     @ObservedObject var vm: ScanViewModel
 
     @State private var query: String = ""
     @State private var result: SearchResult?
     @State private var isSearching = false
-    /// Bumped each time a search starts so a slow (AI) plan that finishes after a
+    /// Bumped each time a search starts so a slow search that finishes after a
     /// newer one is ignored — the last query the user ran wins.
     @State private var runToken = 0
     @FocusState private var focused: Bool
 
-    /// One resolved search: the query, the filter it produced, the matching nodes,
-    /// and whether the on-device model produced the filter.
+    /// One resolved search: the query, the filter it produced, and the matching
+    /// nodes.
     private struct SearchResult {
         let query: String
         let filter: FileSearch.Filter
         let nodes: [FileNode]
-        let usedAI: Bool
         var isEmpty: Bool { nodes.isEmpty }
         var totalBytes: Int64 { nodes.reduce(0) { $0 + $1.size } }
     }
@@ -40,11 +38,9 @@ struct FileSearchView: View {
     var body: some View {
         if vm.rootNode != nil {
             VStack(alignment: .leading, spacing: 12) {
-                // Only badge as AI when the model is ready; the keyword search path
-                // (used when the model isn't downloaded) is deterministic, not AI.
-                FeatureSectionLabel("Search Files", ai: LocalAI.isAvailable)
+                FeatureSectionLabel("Search Files")
 
-                Text("Describe what you're looking for — type, size, age, name, or location. The on-device model reads only your words; the keyword search always works.")
+                Text("Describe what you're looking for — type, size, age, name, or location.")
                     .font(.caption2).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -138,7 +134,7 @@ struct FileSearchView: View {
     private func resultView(_ result: SearchResult) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: result.usedAI ? "wand.and.stars" : "text.magnifyingglass")
+                Image(systemName: "text.magnifyingglass")
                     .font(.caption2).foregroundStyle(Theme.electricBlue)
                 Text(FileSearchParser.describe(result.filter))
                     .font(.caption).foregroundStyle(.secondary)
@@ -226,8 +222,8 @@ struct FileSearchView: View {
 
     // MARK: Actions
 
-    /// Plan the current query (AI when available, keyword fallback otherwise) and
-    /// run the resulting filter over the scanned tree, off the main actor.
+    /// Parse the current query into a filter and run it over the scanned tree,
+    /// off the main actor.
     private func run() {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let root = vm.rootNode else { return }
@@ -236,15 +232,14 @@ struct FileSearchView: View {
         isSearching = true
         result = nil
         let now = Int64(Date().timeIntervalSince1970)
+        let filter = FileSearchParser.parse(trimmed)
         Task {
-            let plan = await FileSearch.plan(query: trimmed)
             let nodes = await Task.detached(priority: .userInitiated) {
-                FileSearch.find(root: root, filter: plan.filter, nowEpochSeconds: now)
+                FileSearch.find(root: root, filter: filter, nowEpochSeconds: now)
             }.value
-            // Ignore a stale plan superseded by a newer search.
+            // Ignore a stale search superseded by a newer one.
             guard token == runToken else { return }
-            result = SearchResult(query: trimmed, filter: plan.filter,
-                                  nodes: nodes, usedAI: plan.usedAI)
+            result = SearchResult(query: trimmed, filter: filter, nodes: nodes)
             isSearching = false
         }
     }

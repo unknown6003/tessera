@@ -56,7 +56,6 @@ must be re-implemented (or abstracted behind a platform interface) before a port
 | Subsystem | macOS today | Port needs |
 |---|---|---|
 | Scan engine | `getattrlistbulk` bulk directory reads, APFS device/firmlink handling | `readdirplus`/`io_uring`/`statx` on Linux; `NtQueryDirectoryFile` / MFT on Windows |
-| On-device AI | Apple `FoundationModels` + MLX/Metal | llama.cpp / ONNX Runtime with CPU/GPU backends |
 | UI | SwiftUI + "Liquid Glass" | a cross-platform UI (e.g. a shared Rust/C++ core with a native or web-tech shell) |
 | Updates | Sparkle | WinSparkle (Windows) / package manager (Linux) |
 | Signing | Apple Developer ID + notarization | Authenticode (Windows) / Flatpak & distro signing (Linux) |

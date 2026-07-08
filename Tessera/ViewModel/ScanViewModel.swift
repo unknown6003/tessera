@@ -12,15 +12,6 @@ final class ScanViewModel: ObservableObject {
     /// Post-scan cleanup suggestions (caches, temp, Adobe media cache, …). Filled
     /// asynchronously after the tree is built; nil until then.
     @Published var cleanupReport: CleanupReport?
-    /// On-device LLM verdicts for the large directories the rules didn't recognize.
-    @Published var smartSuggestions: [SmartCleanupClassifier.Result] = []
-    /// True while the on-device model is judging the long tail.
-    @Published var isClassifyingSmart = false
-    /// Natural-language cleanup: the user's typed goal, the resolved result, and
-    /// whether the planner is currently working.
-    @Published var nlIntent: String = ""
-    @Published var nlResult: NLCleanupResult?
-    @Published var isPlanning = false
     /// Duplicate finder (standard detection + premium AI triage).
     @Published var duplicateGroups: [DuplicateGroup] = []
     @Published var isFindingDuplicates = false
@@ -53,7 +44,6 @@ final class ScanViewModel: ObservableObject {
         let rootNode: FileNode
         let currentRoot: FileNode?
         let cleanupReport: CleanupReport?
-        let smartSuggestions: [SmartCleanupClassifier.Result]
         let duplicateGroups: [DuplicateGroup]
         let didRunDuplicates: Bool
         let collector: [FileNode]
@@ -90,10 +80,6 @@ final class ScanViewModel: ObservableObject {
         selectedNode = nil
         collector = []
         cleanupReport = nil
-        smartSuggestions = []
-        isClassifyingSmart = false
-        nlResult = nil
-        isPlanning = false
         duplicateCancel?.cancel()
         duplicateTask?.cancel()
         duplicateGroups = []
@@ -142,15 +128,6 @@ final class ScanViewModel: ObservableObject {
                     // Suggestions are NOT auto-staged. The user reviews the groups
                     // and chooses what to add — per group, or all-safe at once —
                     // then deletes from the collector behind the usual confirmation.
-
-                    // Smart pass: the on-device model judges the largest directories
-                    // the rules didn't recognize. Its picks are only SUGGESTED for
-                    // the user to add manually — NEVER auto-staged. A small on-device
-                    // model is not reliable enough to stage deletions (it has
-                    // confidently mislabeled iCloud Drive, Messages, and Preferences
-                    // as "cache"), so only the deterministic rule matches above are
-                    // auto-staged; the model just surfaces candidates for review.
-                    await self.classifySmart(root: node, report: report)
                 }
             } catch is CancellationError {
                 // User stopped the scan — not an error.
@@ -177,7 +154,7 @@ final class ScanViewModel: ObservableObject {
         guard let root = rootNode, let url = scannedURL, !isScanning else { return }
         scanCache[url] = CachedScan(
             rootNode: root, currentRoot: currentRoot, cleanupReport: cleanupReport,
-            smartSuggestions: smartSuggestions, duplicateGroups: duplicateGroups,
+            duplicateGroups: duplicateGroups,
             didRunDuplicates: didRunDuplicates, collector: collector, progress: progress)
         touchLRU(url)
         while cacheLRU.count > maxCachedScans {
@@ -203,7 +180,6 @@ final class ScanViewModel: ObservableObject {
         rootNode = cached.rootNode
         currentRoot = cached.currentRoot ?? cached.rootNode
         cleanupReport = cached.cleanupReport
-        smartSuggestions = cached.smartSuggestions
         duplicateGroups = cached.duplicateGroups
         didRunDuplicates = cached.didRunDuplicates
         collector = cached.collector
@@ -213,11 +189,7 @@ final class ScanViewModel: ObservableObject {
 
         hoveredNode = nil
         selectedNode = nil
-        nlResult = nil
-        nlIntent = ""
         isFindingDuplicates = false
-        isClassifyingSmart = false
-        isPlanning = false
         errorMessage = nil
         needsFullDiskAccess = false
         touchLRU(url)
@@ -330,57 +302,6 @@ final class ScanViewModel: ObservableObject {
         return report.safeGroups.allSatisfy { isGroupStaged($0) }
     }
 
-    // MARK: - Natural-language cleanup
-    //
-    // The flagship AI feature. The user's typed goal is turned into a structured
-    // query (by the on-device model when downloaded, or the built-in keyword parser
-    // otherwise) and run entirely on-device against the cleanup report. Matching
-    // items are surfaced for review — staged into the collector, never deleted.
-    // PRIVACY: everything runs locally; nothing about the user's files is sent.
-
-    struct NLCleanupResult: Sendable {
-        let intent: String
-        let query: CleanupQuery
-        let nodes: [FileNode]
-        let usedAI: Bool
-        var totalBytes: Int64 { nodes.reduce(0) { $0 + $1.size } }
-        var isEmpty: Bool { nodes.isEmpty }
-    }
-
-    /// Plan + run the current `nlIntent` against the scan. No-op without a report.
-    func runNaturalLanguageCleanup() {
-        let intent = nlIntent.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !intent.isEmpty, let report = cleanupReport else { return }
-        isPlanning = true
-        nlResult = nil
-        let now = Int64(Date().timeIntervalSince1970)
-        Task {
-            let plan = await IntentPlanner.plan(intent: intent, todayEpoch: now)
-            let nodes = CleanupQueryEngine.execute(plan.query, report: report, nowEpoch: now)
-            self.nlResult = NLCleanupResult(intent: intent, query: plan.query,
-                                            nodes: nodes, usedAI: plan.usedAI)
-            self.isPlanning = false
-        }
-    }
-
-    /// Stage every node the last NL result matched into the collector for review.
-    func stageNLResult() {
-        guard let result = nlResult else { return }
-        for node in result.nodes { addToCollector(node) }
-    }
-
-    /// True once every NL-matched node is staged — drives the Add/Added toggle.
-    var nlResultAllStaged: Bool {
-        guard let result = nlResult, !result.nodes.isEmpty else { return false }
-        return result.nodes.allSatisfy { isCollected($0) }
-    }
-
-    /// Clear the current NL result and input.
-    func clearNLResult() {
-        nlResult = nil
-        nlIntent = ""
-    }
-
     // MARK: - Duplicate finder
     //
     // Fully on-device (DuplicateFinder): detection + keeper heuristic, no network.
@@ -452,31 +373,6 @@ final class ScanViewModel: ObservableObject {
 
     var allDuplicatesStaged: Bool {
         !duplicateGroups.isEmpty && duplicateGroups.allSatisfy { isDuplicateGroupStaged($0) }
-    }
-
-    /// Run the smart (on-device LLM) pass over the long tail the rules didn't
-    /// recognize and publish the suggestions. Picks are review-only — never
-    /// auto-staged. No-op when the on-device model isn't available.
-    func classifySmart(root: FileNode, report: CleanupReport) async {
-        guard SmartCleanupClassifier.isAvailable else { return }
-        isClassifyingSmart = true
-        let matched = Set(report.groups.flatMap(\.nodes).map(\.id))
-        // Collect candidates on the main actor (this walks `FileNode.children`) before
-        // the detached classify task, so the background never traverses the tree while
-        // the collector delete flow can mutate `children` on the main actor.
-        let candidates = SmartCleanupClassifier.candidates(root: root, excluding: matched)
-        let smart = await Task.detached(priority: .utility) {
-            await SmartCleanupClassifier.classify(candidates: candidates)
-        }.value
-        smartSuggestions = smart.filter(\.safeToDelete).sorted { $0.node.size > $1.node.size }
-        isClassifyingSmart = false
-    }
-
-    /// Re-run smart suggestions on the current tree (e.g. right after the user
-    /// activates their subscription) without a full re-scan.
-    func refreshSmartSuggestions() {
-        guard let root = rootNode, let report = cleanupReport else { return }
-        Task { await classifySmart(root: root, report: report) }
     }
 
     // MARK: - App Uninstaller

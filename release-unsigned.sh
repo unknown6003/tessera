@@ -12,14 +12,6 @@ WEB_DOWNLOAD="web/public/download"
 step() { printf "\n\033[1;36m▶ %s\033[0m\n" "$*"; }
 fail() { printf "\n\033[1;31m✗ %s\033[0m\n" "$*" >&2; exit 1; }
 
-# Preflight: the on-device AI (MLX) compiles Metal shaders, which need Xcode 26's
-# separately-downloaded Metal Toolchain component. Without it the build fails deep
-# in mlx-swift with "cannot execute tool 'metal'". Check up front, fix once.
-if ! xcodebuild -showComponent MetalToolchain 2>/dev/null | grep -qi "Status: installed"; then
-  fail "Metal Toolchain not installed (required to build the MLX on-device AI).
-   Install it once:  xcodebuild -downloadComponent MetalToolchain"
-fi
-
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
 step "Building $SCHEME $VERSION  (unsigned / ad-hoc)"
 

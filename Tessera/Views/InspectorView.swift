@@ -40,11 +40,6 @@ struct InspectorView: View {
                         topChildrenList(node)
                     }
                     actionButtons(node)
-                    // On-device AI explainer for real folders. Only surfaces when
-                    // the model is downloaded and ready; otherwise it stays hidden.
-                    if node.isDirectory, !node.isSynthetic {
-                        FolderExplainerSection(node: node)
-                    }
                 }
             } else {
                 emptyDetailsPlaceholder
@@ -202,91 +197,6 @@ struct InspectorView: View {
         default:
             let hue = Theme.topHues[abs(node.name.hashValue) % Theme.topHues.count]
             return Theme.wedgeColor(hue: hue, depth: 0)
-        }
-    }
-}
-
-// MARK: - Folder AI explainer
-//
-// Asks the on-device model to describe the selected folder. Shown only while the
-// model is ready (LocalAI.isAvailable). State is keyed to the node's identity, so
-// selecting a different folder resets back to the idle "Explain" affordance.
-private struct FolderExplainerSection: View {
-    let node: FileNode
-
-    @ObservedObject private var manager = MLXModelManager.shared
-
-    private enum Phase: Equatable {
-        case idle
-        case loading
-        case explained(String)
-        case unavailable   // model returned nothing usable
-    }
-
-    @State private var phase: Phase = .idle
-
-    var body: some View {
-        // The model must be downloaded and ready before we offer the affordance.
-        if manager.isReady {
-            VStack(alignment: .leading, spacing: 8) {
-                FeatureSectionLabel("What is this folder?", ai: true)
-
-                switch phase {
-                case .idle:
-                    Button {
-                        explain()
-                    } label: {
-                        Label("Explain (AI)", systemImage: "sparkles")
-                            .font(.subheadline)
-                    }
-                    .buttonStyle(.glass)
-
-                case .loading:
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Thinking, on-device…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
-
-                case .explained(let text):
-                    Text(text)
-                        .font(.caption)
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                case .unavailable:
-                    Text("The on-device model didn't have anything to add about this folder. Try again, or check the Details above.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(.top, 6)
-            // Reset whenever the inspected folder changes so a stale explanation
-            // never lingers under the wrong selection.
-            .onChange(of: node.id) { _, _ in phase = .idle }
-        }
-    }
-
-    private func explain() {
-        phase = .loading
-        let target = node
-        Task {
-            let result = await FolderExplainer.explain(node: target)
-            // Guard against a late response after the selection moved on.
-            await MainActor.run {
-                guard target.id == node.id else { return }
-                if let result {
-                    phase = .explained(result)
-                } else {
-                    phase = .unavailable
-                }
-            }
         }
     }
 }
