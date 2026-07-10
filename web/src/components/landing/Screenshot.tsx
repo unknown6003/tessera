@@ -1,4 +1,5 @@
 import { Card } from '#/components/ui/card.tsx'
+import { asset } from '#/lib/asset.ts'
 import { cn } from '#/lib/utils.ts'
 
 /**
@@ -26,7 +27,7 @@ export function Screenshot({
       )}
     >
       <img
-        src={src}
+        src={asset(src)}
         alt={alt}
         loading={priority ? 'eager' : 'lazy'}
         decoding="async"
