@@ -53,6 +53,10 @@ jobs:
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v5
+        with:
+          # Auto-enable Pages with the GitHub Actions source on first run, so no
+          # manual Settings → Pages step is needed (repo must already be public).
+          enablement: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
