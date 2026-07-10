@@ -1,0 +1,166 @@
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ *
+ *  Tessera — flat, single-accent dark design system.
+ *
+ *  60-30-10, by area:
+ *    60%  --bg           near-black neutral void (page + large surfaces)
+ *    30%  --card/--border/--foreground  neutral structure (panels, hairlines, text)
+ *    10%  --brand        one electric-cyan accent, used sparingly
+ *
+ *  No gradients, no glows, no frosted glass. Solid fills and hairline
+ *  borders only. The site is always dark.
+ * ------------------------------------------------------------------ */
+:root {
+  color-scheme: dark;
+
+  /* 60% — dominant neutral */
+  --bg: #0a0b0d;
+  /* 30% — secondary neutral structure */
+  --surface: #101216;
+  --card: #131418;
+  --elevated: #17191e;
+  --foreground: #f3f4f6;
+  --muted-foreground: #969ba4;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  /* 10% — the single accent */
+  --brand: #1be6ff;
+  --brand-ink: #04171c;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 24px 60px -30px rgba(0, 0, 0, 0.8);
+
+  /* shadcn semantic tokens, mapped to the flat palette */
+  --background: var(--bg);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-ink);
+  --secondary: #1a1c21;
+  --secondary-foreground: var(--foreground);
+  --muted: var(--card);
+  --accent: #1b1d22;
+  --accent-foreground: var(--foreground);
+  --destructive: #ff5c7a;
+  --destructive-foreground: #fff;
+  --input: rgba(255, 255, 255, 0.12);
+  --ring: var(--brand);
+  --radius: 14px;
+}
+
+@theme inline {
+  --font-sans: -apple-system, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --font-display:
+    'Clash Display', -apple-system, 'SF Pro Display', system-ui, sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* brand + surface utilities: bg-brand, text-brand, bg-surface, ... */
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 3px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 6px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5.5rem;
+  }
+  body {
+    margin: 0;
+    min-height: 100%;
+    background-color: var(--bg);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  .container-wrap {
+    width: min(1140px, calc(100% - 2.5rem));
+    margin-inline: auto;
+  }
+
+  /* small uppercase accent label — the accent used as a wayfinding cue */
+  .kicker {
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-weight: 600;
+    font-size: 0.7rem;
+    color: var(--brand);
+  }
+
+  .section {
+    padding-block: clamp(4rem, 9vw, 7.5rem);
+  }
+}
+
+/* scroll-reveal: gated on html.js so no-JS / prerendered content stays visible */
+html.js .reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+html.js .reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

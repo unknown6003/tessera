@@ -1,0 +1,86 @@
+name: Deploy landing page to GitHub Pages
+
+# Builds the prerendered TanStack Start marketing site in web/ and publishes the
+# static output (web/dist/client) to GitHub Pages. Runs on every push to main
+# that touches the site, plus manual dispatch. Prerequisites (one-time): the
+# repo is PUBLIC (Pages is free only for public repos on the free plan) and Pages
+# is enabled with the "GitHub Actions" source (Settings → Pages → Build and
+# deployment → Source). The Configure Pages step then reads the live base path so
+# assets resolve at the project sub-path (/tessera) today and at a custom domain
+# root later, with no rebuild.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+# Least-privilege token scoped to what the deploy needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel an in-flight production deploy; queue instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      # Resolves the correct asset prefix from the live Pages config: the
+      # project sub-path (/tessera) today, or "/" automatically once a custom
+      # domain is attached — so no rebuild/config change is ever needed.
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build static site
+        env:
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: pnpm build
+
+      - name: Add SPA + Pages fallbacks
+        # 404.html mirrors index.html so client-side routes resolve on Pages,
+        # and .nojekyll stops Pages from dropping files that start with "_".
+        run: |
+          cp dist/client/index.html dist/client/404.html
+          touch dist/client/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist/client
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -48,7 +48,7 @@ processing — and because the source is open, you can verify all of that yourse
 ## Install
 
 Download the latest `Tessera.dmg` from
-[Releases](https://github.com/unknown6003/tessera-releases/releases/latest),
+[Releases](https://github.com/unknown6003/tessera/releases/latest),
 drag Tessera to Applications, then right-click it and choose **Open** the first
 time (the current build is unsigned; you only approve it once).
 
@@ -72,9 +72,12 @@ To produce a distributable unsigned `.dmg`:
 
 Distributed directly (not the Mac App Store — full-disk scanning and `tmutil` use
 are incompatible with the App Sandbox) as a `.dmg`, with Sparkle for over-the-air
-updates. Builds and the Sparkle appcast are published on the public
-[`tessera-releases`](https://github.com/unknown6003/tessera-releases) repo so they
-are anonymously downloadable. See [RELEASING.md](RELEASING.md).
+updates. Builds and the Sparkle appcast are published as GitHub Releases on this
+repo, so they are anonymously downloadable. See [RELEASING.md](RELEASING.md).
+
+The marketing site lives in [`web/`](web/) and deploys to GitHub Pages
+(<https://unknown6003.github.io/tessera/>) via
+[`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
 
 Windows and Linux builds are planned; the packaging plan lives in
 [DISTRIBUTION.md](DISTRIBUTION.md).

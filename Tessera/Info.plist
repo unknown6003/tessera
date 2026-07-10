@@ -63,10 +63,10 @@
         </dict>
     </array>
     <!-- Sparkle OTA auto-update (direct distribution; see RELEASING.md). -->
-    <!-- Appcast + builds are published on the PUBLIC tessera-releases repo so
-         they're anonymously fetchable (the source repo may stay private). -->
+    <!-- Appcast + builds are published as GitHub Releases on this repo, so
+         they're anonymously fetchable now that the repo is public. -->
     <key>SUFeedURL</key>
-    <string>https://github.com/unknown6003/tessera-releases/releases/latest/download/appcast.xml</string>
+    <string>https://github.com/unknown6003/tessera/releases/latest/download/appcast.xml</string>
     <!-- Sparkle EdDSA public key. The matching private key lives in this Mac's
          login Keychain (generated via Sparkle's generate_keys); never commit it.
          Sparkle verifies every downloaded update's signature against this key. -->
