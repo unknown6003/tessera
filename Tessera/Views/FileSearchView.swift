@@ -92,9 +92,9 @@ struct FileSearchView: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(.white.opacity(0.06))
+                .fill(Theme.surface)
                 .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(focused ? Theme.electricBlue.opacity(0.6) : .white.opacity(0.12),
+                    .strokeBorder(focused ? Theme.electricBlue : Theme.border,
                                   lineWidth: focused ? 1.5 : 1))
         )
     }
@@ -110,8 +110,8 @@ struct FileSearchView: View {
                         .font(.caption2)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
-                        .background(Capsule().fill(.white.opacity(0.07)))
-                        .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1))
+                        .background(Capsule().fill(Theme.surface))
+                        .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -170,7 +170,7 @@ struct FileSearchView: View {
             } label: {
                 Label("Add all", systemImage: "tray.and.arrow.down.fill")
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.flatProminent)
             .controlSize(.small)
             .disabled(result.nodes.allSatisfy { vm.isCollected($0) })
         }

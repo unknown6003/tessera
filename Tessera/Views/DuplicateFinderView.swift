@@ -47,7 +47,7 @@ struct DuplicateFinderView: View {
                 Label("Find Duplicates", systemImage: "doc.on.doc")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.flat)
             .controlSize(.large)
         }
     }
@@ -78,12 +78,12 @@ struct DuplicateFinderView: View {
                           systemImage: vm.allDuplicatesStaged ? "checkmark" : "tray.and.arrow.down.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.flatProminent)
                 .controlSize(.regular)
                 .disabled(vm.allDuplicatesStaged)
 
                 Button("Rescan") { vm.findDuplicates() }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.flat)
                     .controlSize(.regular)
             }
         }

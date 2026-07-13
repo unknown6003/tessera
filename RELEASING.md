@@ -122,18 +122,40 @@ Because `SUFeedURL` uses `…/releases/latest/download/appcast.xml`, the newest
 release's `appcast.xml` is what installed apps read on their next check.
 
 ## 6. Verify the update path
-On a machine running the *previous* version, use **Check for Updates…** — Sparkle
-should find 1.0.1, verify the EdDSA signature against `SUPublicEDKey`, download the
-`.dmg`, and install. If it reports a signature error, the archive wasn't signed with
-the key whose public half is in Info.plist.
+On a machine running the *previous* version, wait for a scheduled check or use the
+app-menu item **Check for Updates Now** — Sparkle should find 1.0.1, verify the
+EdDSA signature against `SUPublicEDKey`, download the `.dmg`, install it, and
+relaunch the app by itself. If it reports a signature error, the archive wasn't
+signed with the key whose public half is in Info.plist.
+
+## 7. How updates behave for users (fully automatic)
+
+Updates are **hands-off**: the app checks on a schedule, downloads in the
+background, installs, and **relaunches itself**. The user is never prompted and
+never clicks anything.
+
+- Implemented by a custom `SPUUserDriver` (`SilentUserDriver` in
+  `Tessera/Engine/Updater.swift`) that auto-approves every decision Sparkle would
+  normally show a dialog for.
+- Defaults come from Info.plist: `SUEnableAutomaticChecks` (no first-launch
+  permission prompt), `SUAutomaticallyUpdate` + `SUAllowsAutomaticUpdates`
+  (download+install without asking), `SUScheduledCheckInterval` = 6h.
+- **The self-relaunch is held back while the app is busy** — mid-scan, or with
+  files staged in the Cleanup List (a relaunch would discard that list). The
+  queued update installs the moment the app goes idle, and lands on next launch
+  regardless, since Sparkle installs a downloaded update on quit.
+- The app-menu item doubles as status: *Checking… / Downloading Update… 42% /
+  Installing Update… / Tessera is Up to Date*.
+- Safety is unchanged: Sparkle verifies each update's EdDSA signature against
+  `SUPublicEDKey` before installing, so **silent ≠ unverified** — an unsigned or
+  tampered build cannot install. Guard the private key accordingly (§1).
 
 ---
 
 ### Notes
-- **Icon:** add an `AppIcon` asset (1024px master) before public release; the build
-  currently uses the default icon.
-- **License:** none is committed yet — add `LICENSE` to match your open-source vs
-  proprietary decision before publishing.
+- **Icon:** done — `Tessera/Assets.xcassets/AppIcon.appiconset` is generated from the
+  one brand vector (`cd web && npm run icons`), the same source as the site favicon.
+- **License:** GPL-3.0 (`LICENSE`).
 - **Windows / Linux:** see [DISTRIBUTION.md](DISTRIBUTION.md) for the cross-platform
   packaging plan (winget/MSI, apt/dnf/AUR/Flatpak). Those are future work — today's
   release is macOS-only.

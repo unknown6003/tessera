@@ -56,7 +56,7 @@ struct AppUninstallerView: View {
             Label("Scan installed apps", systemImage: "app.badge")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.flat)
         .controlSize(.large)
     }
 
@@ -124,7 +124,7 @@ struct AppUninstallerView: View {
                 } label: {
                     Text("Add all").font(.system(size: 10, weight: .medium))
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.flat)
                 .controlSize(.small)
                 .disabled(orphans.allSatisfy { vm.isOrphanGroupStaged($0) })
             }
@@ -258,7 +258,7 @@ struct AppUninstallerView: View {
                       systemImage: staged ? "checkmark" : "trash")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.flatProminent)
             .controlSize(.large)
             .disabled(staged)
 

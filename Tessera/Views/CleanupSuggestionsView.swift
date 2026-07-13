@@ -27,7 +27,7 @@ struct CleanupSuggestionsView: View {
                                   systemImage: "sparkles")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.flatProminent)
                         .controlSize(.large)
                         .disabled(vm.safeGroupsAllStaged)
 
@@ -89,7 +89,7 @@ struct CleanupSuggestionsView: View {
                 } label: {
                     Image(systemName: "magnifyingglass")
                 }
-                .buttonStyle(.glass).controlSize(.small)
+                .buttonStyle(.flat).controlSize(.small)
                 .help("Reveal the largest item in Finder")
             }
 
@@ -104,7 +104,7 @@ struct CleanupSuggestionsView: View {
             Label(isAdded ? "Added" : "Add", systemImage: isAdded ? "checkmark" : "plus")
                 .font(.caption.weight(.medium))
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.flat)
         .controlSize(.small)
         .tint(isAdded ? Theme.electricBlue : nil)
     }

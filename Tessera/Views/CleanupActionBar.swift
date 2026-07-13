@@ -38,7 +38,7 @@ struct CleanupActionBar: View {
         Button { showCleanup.toggle() } label: {
             Label(cleanupTitle, systemImage: "sparkles")
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.flat)
         .controlSize(.regular)
         .popover(isPresented: $showCleanup, arrowEdge: .top) {
             ScrollView {
@@ -59,9 +59,9 @@ struct CleanupActionBar: View {
 
     private var appsButton: some View {
         Button { showApps.toggle() } label: {
-            Label("Apps", systemImage: "trash.square")
+            Label("Uninstall Apps", systemImage: "trash.square")
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.flat)
         .controlSize(.regular)
         .popover(isPresented: $showApps, arrowEdge: .top) {
             ScrollView {
@@ -77,7 +77,7 @@ struct CleanupActionBar: View {
         Button { showDuplicates.toggle() } label: {
             Label(duplicatesTitle, systemImage: "doc.on.doc")
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.flat)
         .controlSize(.regular)
         .popover(isPresented: $showDuplicates, arrowEdge: .top) {
             ScrollView {
@@ -98,9 +98,9 @@ struct CleanupActionBar: View {
 
     private var byKindButton: some View {
         Button { showByKind.toggle() } label: {
-            Label("By Kind", systemImage: "square.grid.2x2.fill")
+            Label("Browse by Type", systemImage: "square.grid.2x2.fill")
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.flat)
         .controlSize(.regular)
         .popover(isPresented: $showByKind, arrowEdge: .top) {
             ScrollView {
@@ -114,9 +114,9 @@ struct CleanupActionBar: View {
 
     private var largeOldButton: some View {
         Button { showLargeOld.toggle() } label: {
-            Label("Large & Old", systemImage: "clock.badge.exclamationmark")
+            Label("Big & Old Files", systemImage: "clock.badge.exclamationmark")
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.flat)
         .controlSize(.regular)
         .popover(isPresented: $showLargeOld, arrowEdge: .top) {
             ScrollView {
@@ -130,9 +130,9 @@ struct CleanupActionBar: View {
 
     private var searchButton: some View {
         Button { showSearch.toggle() } label: {
-            Label("Search", systemImage: "magnifyingglass")
+            Label("Search Files", systemImage: "magnifyingglass")
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.flat)
         .controlSize(.regular)
         .popover(isPresented: $showSearch, arrowEdge: .top) {
             ScrollView {

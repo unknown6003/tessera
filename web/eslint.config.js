@@ -15,6 +15,14 @@ export default [
     },
   },
   {
-    ignores: ['eslint.config.js', 'prettier.config.js'],
+    // Plain build/geometry files that live outside the TS project (the typed
+    // parser has no tsconfig entry for them): the icon generator and the shared
+    // brand geometry (typed for importers via brand.d.ts).
+    ignores: [
+      'eslint.config.js',
+      'prettier.config.js',
+      'scripts/**',
+      'src/lib/brand.js',
+    ],
   },
 ]

@@ -50,26 +50,15 @@ struct InspectorView: View {
     @ViewBuilder
     private func nodeHeader(_ node: FileNode) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            // Icon in a luminous glass badge tinted by the node's colour.
+            // Flat icon badge: a solid disc in the node's colour, hairline edge.
             ZStack {
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [iconCircleColor(node).opacity(0.95),
-                                     iconCircleColor(node).opacity(0.45)],
-                            center: .topLeading, startRadius: 2, endRadius: 46
-                        )
-                    )
+                    .fill(iconCircleColor(node))
                     .frame(width: 44, height: 44)
-                    .overlay(
-                        Circle().strokeBorder(Theme.glassHighlightStroke, lineWidth: 1)
-                            .blendMode(.plusLighter)
-                    )
-                    .shadow(color: iconCircleColor(node).opacity(0.5), radius: 8)
+                    .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
                 Image(systemName: Theme.icon(for: node))
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                    .foregroundStyle(Theme.ink(on: iconCircleColor(node)))
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -149,7 +138,7 @@ struct InspectorView: View {
                 Label("Reveal", systemImage: "arrow.right.circle")
                     .font(.subheadline)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.flat)
             .disabled(node.isSynthetic)
 
             Spacer()
@@ -162,7 +151,7 @@ struct InspectorView: View {
                     Label("Collect", systemImage: alreadyCollected ? "checkmark.circle" : "plus.circle")
                         .font(.subheadline)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.flat)
                 .disabled(alreadyCollected)
             }
         }

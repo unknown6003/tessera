@@ -34,10 +34,8 @@ struct Sidebar: View {
     }
 
     var body: some View {
-        // One behind-window glass pane with sharp content layered on top — never
-        // glass-on-glass. The old design stacked a `.glassEffect` carrier under
-        // cards that were themselves glass, and an outer GlassEffectContainer
-        // merged it all into a frosted smear that washed the sidebar out.
+        // A solid panel with sharp content on top. Flat design: one opaque
+        // surface, hairline borders, no vibrancy.
         VStack(spacing: 0) {
             sidebarHeader
 
@@ -255,7 +253,7 @@ struct Sidebar: View {
             Label(scanButtonTitle, systemImage: "magnifyingglass")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.glassProminent)
+        .buttonStyle(.flatProminent)
         .controlSize(.large)
         .disabled(selectedVolumeURL == nil)
         .padding(.horizontal, 14)
@@ -479,9 +477,10 @@ private struct VolumeCard: View {
             // double-blurs the card into the unreadable smear seen before.
             if isSelected {
                 shape.fill(Theme.selectionTint)
-                    .overlay(shape.strokeBorder(.tint.opacity(0.55), lineWidth: 1))
+                    .overlay(shape.strokeBorder(Theme.electricBlue, lineWidth: 1))
             } else {
-                shape.fill(.white.opacity(0.05))
+                shape.fill(Theme.surface)
+                    .overlay(shape.strokeBorder(Theme.border, lineWidth: 1))
             }
         }
         // The scanned source gets a persistent green ring so it stays identifiable
@@ -535,28 +534,14 @@ private struct VolumeCard: View {
         VStack(alignment: .leading, spacing: 3) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
+                    // Flat track + solid fill. Turns red when the disk is nearly
+                    // full — the one place color carries meaning here.
                     Capsule()
-                        .fill(.white.opacity(0.10))
+                        .fill(Theme.surface)
                         .frame(height: 5)
                     Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: fraction > 0.9
-                                    ? [Color(hue: 0.02, saturation: 0.7, brightness: 1.0), .red]
-                                    : [Theme.electricBlue.opacity(0.95), Theme.electricBlue.opacity(0.55)],
-                                startPoint: .leading, endPoint: .trailing
-                            )
-                        )
+                        .fill(fraction > 0.9 ? Theme.danger : Theme.electricBlue)
                         .frame(width: max(5, geo.size.width * fraction), height: 5)
-                        .overlay(
-                            Capsule()
-                                .fill(.white.opacity(0.35))
-                                .frame(height: 1.5)
-                                .padding(.horizontal, 1)
-                                .offset(y: -1),
-                            alignment: .top
-                        )
-                        .frame(width: max(5, geo.size.width * fraction), alignment: .leading)
                 }
             }
             .frame(height: 5)

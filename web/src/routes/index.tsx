@@ -20,8 +20,11 @@ export const Route = createFileRoute('/')({
 function Home() {
   return (
     <>
+      <a href="#main" className="skip-link">
+        Skip to content
+      </a>
       <Header />
-      <main>
+      <main id="main">
         <Hero />
         <Trust />
         <ProductTour />

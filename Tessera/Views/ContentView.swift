@@ -5,6 +5,8 @@ struct ContentView: View {
     @StateObject private var vm = ScanViewModel()
     /// Drives drag-and-drop of chart wedges into the bottom dock.
     @StateObject private var drag = CollectorDragController()
+    /// Auto-updater. We only talk to it to say "don't relaunch right now".
+    @EnvironmentObject private var updater: UpdaterController
 
     /// Whether the "permanently delete the whole collector" confirmation is showing.
     @State private var showDeleteAllConfirm = false
@@ -13,10 +15,6 @@ struct ContentView: View {
     @State private var deleteError: String?
 
     var body: some View {
-        // No GlassEffectContainer here. It merges every `.glassEffect` surface
-        // within its spacing into ONE shared layer — which flattened the three
-        // panels + the prominent Scan button into a single frosted sheet, exactly
-        // the "glass on top of the sidebar" wash. Each panel now owns its glass.
         VStack(spacing: 18) {
             HStack(spacing: 18) {
                 Sidebar(vm: vm)
@@ -46,30 +44,13 @@ struct ContentView: View {
         .padding(18)
         .frame(minWidth: 920, minHeight: 600)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // The whole app is a glass pane over the desktop. A STRONG full-window
-        // frosted base (behind-window vibrancy, full strength) gives the window
-        // clear, obviously-blurred bounds — the desktop reads as heavily frosted
-        // behind it rather than showing through almost untouched. Panels then sit
-        // on top with a light within-window material, frosting THIS base instead
-        // of re-blurring the desktop, so the stacked-card effect stays gentle.
-        .background(
-            ZStack {
-                DesktopGlass(material: GlassTuning.baseMaterial, blendingMode: .behindWindow,
-                             emphasized: GlassTuning.baseEmphasized, cornerRadius: 18)
-                // Electric-blue-tinted wash (not flat grey) — ties the frost to
-                // the accent.
-                Theme.windowTint.opacity(GlassTuning.baseTint)
-            }
-            .ignoresSafeArea()
-        )
+        // Flat, solid near-black background — no vibrancy, no desktop refraction,
+        // so the app renders identically regardless of what sits behind it.
+        .background(Theme.bg.ignoresSafeArea())
         .background(TransparentWindowConfigurator())
         .background(KeyboardShortcuts(vm: vm))
         .tint(Theme.electricBlue)
         .preferredColorScheme(.dark)
-        // Suppress the keyboard focus ring app-wide. Tabbing still moves focus
-        // logically, but the default highlight is visually noisy here; a more
-        // deliberate focus treatment can be reintroduced later.
-        .focusEffectDisabled()
         // Shared coordinate space so the chart's drag location and the dock's drop
         // zones are measured against the same origin.
         .coordinateSpace(.named(CollectorDragController.appSpace))
@@ -89,16 +70,24 @@ struct ContentView: View {
         }
         .animation(.smooth(duration: 0.3), value: vm.showFDAOnboarding)
         .animation(.smooth(duration: 0.3), value: vm.rootNode != nil)
+        // Updates install and relaunch the app on their own — but never mid-scan,
+        // and never while the user has files staged in the Cleanup List (a relaunch
+        // would throw that list away). While either is true the update is held and
+        // applied as soon as the app goes idle.
+        .onChange(of: vm.isScanning, initial: true) { _, _ in syncUpdaterBusy() }
+        .onChange(of: vm.collector.isEmpty) { _, _ in syncUpdaterBusy() }
         .confirmationDialog(
             "Permanently Delete \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s")?",
             isPresented: $showDeleteAllConfirm,
             titleVisibility: .visible
         ) {
-            Button("Delete \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s") Permanently", role: .destructive) {
-                performDelete(vm.collector)
-            }
+            // Safe option first, so it reads as the default/recommended path.
             Button("Move to Trash Instead") {
                 performTrash(vm.collector)
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Delete \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s") Permanently", role: .destructive) {
+                performDelete(vm.collector)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -199,6 +188,33 @@ struct ContentView: View {
                     .padding(.top, 4)
             }
         }
+        // The chart's interactions are otherwise invisible. Say them out loud.
+        .overlay(alignment: .bottom) { chartHints }
+    }
+
+    /// Always-visible, plain-language legend for the chart's three interactions.
+    private var chartHints: some View {
+        HStack(spacing: 14) {
+            hint("cursorarrow.click", "Click a slice to open it")
+            hint("arrow.up.left.circle", "Click the middle to go back")
+            hint("arrow.down.to.line", "Drag a slice to the list below to remove it")
+        }
+        .font(.caption)
+        .foregroundStyle(Theme.mutedForeground)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Theme.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
+        .padding(.bottom, 4)
+        .allowsHitTesting(false)
+    }
+
+    private func hint(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .foregroundStyle(Theme.electricBlue)
+            Text(text)
+        }
     }
 
     // MARK: - Glass card wrapper
@@ -222,11 +238,12 @@ struct ContentView: View {
                 .font(.system(size: 64, weight: .ultraLight))
                 .foregroundStyle(.secondary)
             VStack(spacing: 8) {
-                Text("Ready to Explore")
+                Text("See what's using your disk")
                     .font(.title2.weight(.semibold))
-                Text("Select a volume and press Scan.")
+                Text("Pick a disk in the list on the left, then click the blue **Scan** button at the bottom of that list. Tessera reads the whole drive and maps it — nothing is changed or deleted.")
                     .font(.body)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .multilineTextAlignment(.center)
@@ -250,7 +267,7 @@ struct ContentView: View {
             Button("Open System Settings") {
                 vm.openFullDiskAccessSettings()
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.flatProminent)
             .controlSize(.large)
         }
     }
@@ -270,20 +287,34 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
-            Button("Dismiss") {
-                vm.errorMessage = nil
+            HStack(spacing: 10) {
+                if let url = vm.scannedURL {
+                    Button("Try Again") {
+                        vm.errorMessage = nil
+                        vm.startScan(volumeURL: url)
+                    }
+                    .buttonStyle(.flatProminent)
+                    .controlSize(.large)
+                }
+                Button("Dismiss") {
+                    vm.errorMessage = nil
+                }
+                .buttonStyle(.flat)
+                .controlSize(.large)
             }
-            .buttonStyle(.glass)
-            .controlSize(.large)
         }
+    }
+
+    /// Hold back a self-relaunch while a scan is running or files are staged.
+    private func syncUpdaterBusy() {
+        updater.isBusy = vm.isScanning || !vm.collector.isEmpty
     }
 
     // MARK: - Breadcrumb
 
     private func breadcrumb(for node: FileNode) -> some View {
         let ancestors = ancestorChain(of: node)
-        return GlassEffectContainer {
-            ScrollView(.horizontal, showsIndicators: false) {
+        return ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     Button {
                         vm.zoomToRoot()
@@ -317,11 +348,10 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 9)
-            }
-            .frame(maxWidth: 560)
-            .fixedSize(horizontal: true, vertical: false)
         }
-        .glassEffect(.regular.interactive(), in: Capsule())
+        .frame(maxWidth: 560)
+        .fixedSize(horizontal: true, vertical: false)
+        .background(Theme.elevated, in: Capsule())
         .liquidGlassDepth(Capsule(), highlight: 0.9, shadowRadius: 16, shadowY: 8)
     }
 
@@ -380,7 +410,7 @@ private struct ScanningView: View {
             } label: {
                 Label("Stop", systemImage: "stop.fill")
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.flat)
             .controlSize(.large)
         }
     }
@@ -400,57 +430,37 @@ private struct ScanningView: View {
 
 // MARK: - Pulsing concentric rings
 
+/// Flat indeterminate scan indicator: a hairline track with a single accent arc
+/// sweeping around it, and a solid hub. No gradients, glows, or glass.
 private struct PulsingRings: View {
     var body: some View {
         ZStack {
+            // Static hairline track.
+            Circle()
+                .strokeBorder(Theme.border, lineWidth: 3)
+
+            // One accent arc, rotating steadily — clearly "working", never "stuck".
             TimelineView(.animation) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
-                Canvas { ctx, size in
-                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                    let maxR = min(size.width, size.height) / 2
-
-                    // Expanding luminous rings refracting outward.
-                    let count = 4
-                    for i in 0..<count {
-                        let phase = (t / 1.9 + Double(i) / Double(count)).truncatingRemainder(dividingBy: 1)
-                        let radius = maxR * (0.16 + 0.84 * phase)
-                        let opacity = (1 - phase) * (1 - phase) * 0.6
-                        let hue = (0.58 + 0.12 * phase).truncatingRemainder(dividingBy: 1)
-                        let rect = CGRect(
-                            x: center.x - radius, y: center.y - radius,
-                            width: radius * 2, height: radius * 2
-                        )
-                        ctx.stroke(
-                            Path(ellipseIn: rect),
-                            with: .color(Color(hue: hue, saturation: 0.7, brightness: 1.0).opacity(opacity)),
-                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
-                        )
-                    }
-
-                    // A sweeping specular arc that orbits the core like a glint.
-                    let glintAngle = Angle(degrees: (t * 90).truncatingRemainder(dividingBy: 360))
-                    let glintR = maxR * 0.62
-                    let arc = Path { p in
-                        p.addArc(center: center, radius: glintR,
-                                 startAngle: glintAngle,
-                                 endAngle: glintAngle + .degrees(70),
-                                 clockwise: false)
-                    }
-                    ctx.stroke(arc, with: .color(.white.opacity(0.55)),
-                               style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                }
+                let angle = Angle(degrees: (t * 110).truncatingRemainder(dividingBy: 360))
+                Circle()
+                    .trim(from: 0, to: 0.22)
+                    .stroke(Theme.electricBlue,
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(angle)
+                    .padding(1.5)
             }
 
-            // Glass core hub that refracts the backdrop.
+            // Solid hub.
             Circle()
+                .fill(Theme.card)
                 .frame(width: 46, height: 46)
-                .glassEffect(.regular.interactive(), in: Circle())
+                .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
                 .overlay(
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(Theme.electricBlue)
                 )
-                .liquidGlassDepth(Circle(), highlight: 0.8, shadowRadius: 14, shadowY: 6)
         }
     }
 }
@@ -546,18 +556,18 @@ private struct FullDiskAccessOnboarding: View {
                     Label("Open System Settings", systemImage: "gearshape.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.flatProminent)
                 .controlSize(.large)
 
                 Button("Not Now") {
                     vm.dismissFDAOnboarding()
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.flat)
                 .controlSize(.large)
             }
         }
         .padding(40)
-        .glassEffect(.regular.interactive(), in: shape)
+        .background(Theme.elevated, in: shape)
         .liquidGlassDepth(shape, shadowRadius: 40, shadowY: 22)
     }
 }

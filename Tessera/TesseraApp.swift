@@ -6,21 +6,24 @@ struct TesseraApp: App {
     // in applicationDidFinishLaunching). See FinderService.swift.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
-    // Sparkle OTA auto-updates (direct distribution — see Updater.swift).
+    // Fully automatic Sparkle OTA updates — checks, downloads, installs and
+    // relaunches on its own. See Updater.swift.
     @StateObject private var updater = UpdaterController()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(updater)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1180, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {}
-            // Standard "Check for Updates…" in the app menu, just below About.
+            // Updates are automatic; this just skips the wait for the next
+            // scheduled check. Its title doubles as the updater's status.
             CommandGroup(after: .appInfo) {
-                Button("Check for Updates…") { updater.checkForUpdates() }
-                    .disabled(!updater.canCheckForUpdates)
+                Button(updater.status.menuTitle) { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates || updater.status.isBusy)
             }
         }
     }

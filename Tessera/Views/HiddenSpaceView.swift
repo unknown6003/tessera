@@ -11,6 +11,10 @@ struct HiddenSpaceView: View {
     @State private var report: HiddenSpaceReport?
     @State private var status: String?
     @State private var busyID: String?
+    /// Snapshot deletion is irreversible, so — like every other destructive
+    /// action in the app — it is confirmed first.
+    @State private var confirmDeleteAll = false
+    @State private var snapToDelete: LocalSnapshot?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -40,33 +44,63 @@ struct HiddenSpaceView: View {
             }
         }
         .task(id: hiddenBytes) { await reload() }
+        .confirmationDialog(
+            "Delete all \(report?.snapshots.count ?? 0) local snapshots?",
+            isPresented: $confirmDeleteAll,
+            titleVisibility: .visible
+        ) {
+            Button("Delete All Snapshots", role: .destructive) {
+                Task { await deleteAll() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This frees space immediately and cannot be undone. You won't be able to restore this Mac to these earlier points in time.")
+        }
+        .confirmationDialog(
+            "Delete this snapshot?",
+            isPresented: Binding(
+                get: { snapToDelete != nil },
+                set: { if !$0 { snapToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Snapshot", role: .destructive) {
+                if let snap = snapToDelete {
+                    snapToDelete = nil
+                    Task { await delete(snap) }
+                }
+            }
+            Button("Cancel", role: .cancel) { snapToDelete = nil }
+        } message: {
+            Text("This cannot be undone. You won't be able to restore this Mac to that earlier point in time.")
+        }
     }
 
     // MARK: Rows
 
     @ViewBuilder
     private func purgeableRow(_ r: HiddenSpaceReport) -> some View {
-        categoryRow(icon: "sparkles", color: .cyan, title: "Purgeable caches",
+        categoryRow(icon: "sparkles", color: .cyan, title: "Space macOS frees on its own",
                     detail: Theme.format(r.purgeableBytes),
-                    note: "Reclaimed automatically by macOS when space runs low — nothing to do.")
+                    note: "Caches macOS reclaims automatically when your disk runs low (\"purgeable\" space). Nothing for you to do.")
     }
 
     @ViewBuilder
     private func snapshotsSection(_ r: HiddenSpaceReport) -> some View {
         if r.snapshots.isEmpty {
-            categoryRow(icon: "clock.arrow.circlepath", color: .orange, title: "Local snapshots",
-                        detail: "None", note: "No APFS local Time Machine snapshots on this volume.")
+            categoryRow(icon: "clock.arrow.circlepath", color: .orange, title: "Backup snapshots",
+                        detail: "None", note: "No Time Machine backup snapshots are stored on this disk.")
         } else {
             HStack(spacing: 6) {
                 Image(systemName: "clock.arrow.circlepath").font(.caption).foregroundStyle(.orange).frame(width: 18)
-                Text("Local snapshots").font(.subheadline.weight(.medium))
+                Text("Backup snapshots").font(.subheadline.weight(.medium))
                 Text("\(r.snapshots.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 Spacer()
-                Button("Delete all") { Task { await deleteAll() } }
-                    .buttonStyle(.glass).controlSize(.small)
+                Button("Delete all…") { confirmDeleteAll = true }
+                    .buttonStyle(.flat).controlSize(.small)
                     .disabled(busyID != nil)
             }
-            Text("Time Machine snapshots kept on this disk. Deleting frees space; the latest is usually worth keeping.")
+            Text("Time Machine keeps recent backups on this disk itself. Deleting them frees space, but you lose the ability to roll back to those points in time — keeping the most recent one is usually wise.")
                 .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
             ForEach(r.snapshots) { snap in
                 HStack(spacing: 8) {
@@ -76,11 +110,11 @@ struct HiddenSpaceView: View {
                     if busyID == snap.id {
                         ProgressView().controlSize(.small).scaleEffect(0.7)
                     } else {
-                        Button { Task { await delete(snap) } } label: {
+                        Button { snapToDelete = snap } label: {
                             Image(systemName: "trash").font(.caption2)
                         }
-                        .buttonStyle(.plain).foregroundStyle(.red)
-                        .help("Delete this snapshot")
+                        .buttonStyle(.plain).foregroundStyle(Theme.danger)
+                        .help("Delete this snapshot — cannot be undone")
                         .disabled(busyID != nil)
                     }
                 }
@@ -97,7 +131,7 @@ struct HiddenSpaceView: View {
                 Label("Open Full Disk Access settings", systemImage: "gearshape")
                     .font(.caption.weight(.medium))
             }
-            .buttonStyle(.glass).controlSize(.small)
+            .buttonStyle(.flat).controlSize(.small)
         }
     }
 

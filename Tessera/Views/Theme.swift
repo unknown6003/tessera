@@ -1,111 +1,123 @@
 import SwiftUI
 import AppKit
 
-enum Theme {
+// MARK: - Hex color helper
 
-    // MARK: - Signature colour
-
-    /// The app's signature colour: electric blue (#00F0FF). Drives the global
-    /// tint, selection, progress and the anchor of the chart palette.
-    static let electricBlue = Color(red: 0.0, green: 240.0 / 255.0, blue: 1.0)
-    /// Hue of `electricBlue` in the 0…1 wheel (~183.5°) — the centre of the
-    /// wedge palette band.
-    static let electricBlueHue: Double = 183.5 / 360.0
-
-    /// Deep electric-blue-tinted wash laid over the frosted window base. Gives the
-    /// glass a cool cyan cast instead of a flat grey, tying the whole pane to the
-    /// accent. Applied at low opacity (see `GlassTuning.baseTint`).
-    static let windowTint = Color(hue: electricBlueHue, saturation: 0.65, brightness: 0.11)
-
-    // MARK: - Hues
-
-    /// Electric-blue chart palette for the top ring. Every entry sits in a tight
-    /// cyan→blue band around `electricBlueHue`, so the whole chart reads as one
-    /// coherent electric-blue family rather than the old garish rainbow. Adjacent
-    /// siblings still separate because the hue drifts slightly and the radial
-    /// shading varies brightness; entries are interleaved so neighbours differ.
-    static let topHues: [Double] = [
-        0.510,  // electric cyan (signature)
-        0.575,  // azure
-        0.480,  // turquoise
-        0.620,  // blue
-        0.540,  // sky
-        0.500,  // bright cyan
-        0.600,  // cornflower
-        0.490,  // aqua
-        0.560,  // cerulean
-        0.530,  // cyan
-        0.470,  // teal-cyan
-        0.590,  // periwinkle blue
-    ]
-
-    // MARK: - Wedge colours
-
-    /// HSB-based wedge colour for legend/icon swatches — vivid electric blue,
-    /// deepening a touch with depth. depth 0 = innermost.
-    static func wedgeColor(hue: Double, depth: Int) -> Color {
-        let saturation = min(0.95, 0.62 + Double(depth) * 0.06)
-        let brightness  = max(0.78, 0.98 - Double(depth) * 0.04)
-        return Color(hue: hue, saturation: saturation, brightness: brightness)
-    }
-
-    /// Coherent electric-blue radial palette for a wedge, lit from the chart
-    /// centre: a luminous near-white-cyan inner edge deepening to saturated
-    /// electric blue at the rim. Paired with a `GraphicsContext` radial shading
-    /// centred on the hub so every ring shares ONE light direction — vivid and
-    /// glassy rather than flat.
-    static func wedgeRadialGradient(hue: Double) -> Gradient {
-        Gradient(stops: [
-            .init(color: Color(hue: hue, saturation: 0.45, brightness: 1.00), location: 0.00),
-            .init(color: Color(hue: hue, saturation: 0.72, brightness: 0.96), location: 0.50),
-            .init(color: Color(hue: hue, saturation: 0.95, brightness: 0.82), location: 1.00),
-        ])
-    }
-
-    /// A thin bright "rim light" colour for a wedge's inner specular edge,
-    /// drawn as a stroke in the Canvas for a refracted-glass lip.
-    static func wedgeRim(hue: Double, depth: Int) -> Color {
-        Color(hue: hue,
-              saturation: max(0.06, 0.22 - Double(depth) * 0.03),
-              brightness: 1.0)
-    }
-
-    // MARK: - Synthetic node colours
-
-    /// Translucent frosted neutral for "Hidden Space" (space the scan cannot see).
-    static let hiddenSpaceColor: Color = Color(
-        NSColor(calibratedWhite: 0.80, alpha: 0.32)
-    )
-
-    /// Translucent frosted neutral for aggregated "Other" slices.
-    static let aggregateColor: Color = Color(
-        NSColor(calibratedWhite: 0.72, alpha: 0.24)
-    )
-
-    /// Pale, desaturated electric-cyan for online-only cloud-storage boundary
-    /// nodes — same family as the wedges but washed-out so it reads as "not local".
-    static let cloudColor: Color = Color(hue: electricBlueHue, saturation: 0.20, brightness: 1.0)
-
-    /// Amber for cross-mounted volumes (Simulator runtimes, mounted images) — a
-    /// distinct, slightly warning-ish hue so this reclaimable-but-not-a-file space
-    /// stands apart from both real files and grey hidden space.
-    static let crossVolumeColor: Color = Color(hue: 0.10, saturation: 0.55, brightness: 1.0)
-
-    // MARK: - Glass tints & strokes
-
-    /// Faint top-highlight stroke gradient that gives glass a "thick" refracting
-    /// lip — bright at the top, fading to nothing at the bottom.
-    static var glassHighlightStroke: LinearGradient {
-        LinearGradient(
-            colors: [.white.opacity(0.55), .white.opacity(0.06), .clear],
-            startPoint: .top,
-            endPoint: .bottom
+extension Color {
+    /// Build an opaque sRGB color from a 0xRRGGBB literal.
+    init(hex: UInt32) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255.0,
+            green: Double((hex >> 8) & 0xFF) / 255.0,
+            blue: Double(hex & 0xFF) / 255.0,
+            opacity: 1.0
         )
     }
+}
 
-    /// A subtle electric-blue tint used to brighten selected glass (selection =
-    /// brighter glass, not an opaque fill).
-    static let selectionTint = electricBlue.opacity(0.22)
+enum Theme {
+
+    // MARK: - Flat design tokens
+    //
+    // One flat, single-accent dark system shared with the landing site (see
+    // DESIGN.md). Solid fills + hairline borders only — no gradients, glows, or
+    // frosted materials. 60/30/10 by area: near-black void, neutral structure,
+    // one electric-cyan accent.
+
+    /// 60% — the dominant near-black void (page + largest surfaces).
+    static let bg = Color(hex: 0x0A0B0D)
+    /// Secondary surface: pills, insets, secondary fills.
+    static let surface = Color(hex: 0x101216)
+    /// Panels / cards.
+    static let card = Color(hex: 0x131418)
+    /// Raised panels / popovers.
+    static let elevated = Color(hex: 0x17191E)
+    /// Primary text.
+    static let foreground = Color(hex: 0xF3F4F6)
+    /// Secondary text.
+    static let mutedForeground = Color(hex: 0x969BA4)
+    /// Default 1px hairline border.
+    static let border = Color.white.opacity(0.08)
+    /// Emphasis hairline border.
+    static let borderStrong = Color.white.opacity(0.14)
+
+    // MARK: - Accent
+
+    /// The single accent: electric cyan (#1BE6FF). Drives the global tint,
+    /// selection, progress, and the anchor of the chart palette. (Matches the
+    /// site's `--brand`.)
+    static let electricBlue = Color(hex: 0x1BE6FF)
+    /// Text/icons drawn on top of an accent fill.
+    static let brandInk = Color(hex: 0x04171C)
+    /// Destructive / irreversible actions only.
+    static let danger = Color(hex: 0xFF5C7A)
+
+    /// Hue of `electricBlue` in the 0…1 wheel (~186.6°) — the centre of the
+    /// wedge palette band.
+    static let electricBlueHue: Double = 186.6 / 360.0
+
+    /// Solid window background (kept named `windowTint` for existing call sites).
+    static let windowTint = bg
+
+    // MARK: - Chart palette (flat, solid)
+
+    /// Categorical chart palette for the top ring — the site's sunburst family
+    /// (cyan · teal · blue · violet · green · pink · amber), interleaved so
+    /// neighbours separate. Solid fills; the chart no longer uses glassy radial
+    /// shading.
+    static let sunburstColors: [Color] = [
+        Color(hex: 0x1BE6FF), Color(hex: 0x37E0C8), Color(hex: 0x5B8CFF),
+        Color(hex: 0x9E6BFF), Color(hex: 0x5BE36B), Color(hex: 0xFF5CC8),
+        Color(hex: 0xFFB13C),
+    ]
+
+    /// Hues retained for any HSB-based swatch use; the chart itself now pulls
+    /// solid colors from `sunburstColors` via `wedgeColor`.
+    static let topHues: [Double] = [
+        0.510, 0.575, 0.480, 0.620, 0.540, 0.500,
+        0.600, 0.490, 0.560, 0.530, 0.470, 0.590,
+    ]
+
+    /// Solid categorical wedge color. `hue` selects into the flat palette (its
+    /// index derived from the hue) and `depth` deepens slightly with nesting so
+    /// child rings read as a shade of their parent.
+    static func wedgeColor(hue: Double, depth: Int) -> Color {
+        // Map the legacy hue into a stable palette index.
+        let idx = Int((hue * 1000).rounded()) % sunburstColors.count
+        let base = sunburstColors[(idx + sunburstColors.count) % sunburstColors.count]
+        guard depth > 0 else { return base }
+        // Deepen by compositing toward the void for nested rings.
+        return base.opacity(max(0.55, 1.0 - Double(depth) * 0.12))
+    }
+
+    // MARK: - Synthetic node colours (solid)
+
+    /// Solid neutral for "Hidden Space" (space the scan cannot see).
+    static let hiddenSpaceColor = Color(hex: 0x454B54)
+    /// Solid, darker neutral for aggregated "Other" slices.
+    static let aggregateColor = Color(hex: 0x3A3F47)
+    /// Desaturated cyan for online-only cloud nodes — same family, washed out.
+    static let cloudColor = Color(hex: 0x2E5A66)
+    /// Amber for cross-mounted volumes.
+    static let crossVolumeColor = Color(hex: 0xFFB13C)
+
+    // MARK: - Selection
+
+    /// Selected-state fill: a low-opacity accent wash over a solid panel.
+    static let selectionTint = electricBlue.opacity(0.16)
+
+    // MARK: - Contrast
+
+    /// A readable text/icon colour to draw on top of `background`: dark ink on
+    /// light fills, light text on dark fills. Keeps labels legible across the
+    /// whole categorical palette (bright cyan wedges *and* the dark neutrals used
+    /// for hidden/aggregate/cloud nodes).
+    static func ink(on background: Color) -> Color {
+        guard let c = NSColor(background).usingColorSpace(.sRGB) else { return foreground }
+        let l = 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent
+        return l > 0.55 ? brandInk : foreground
+    }
 
     // MARK: - Formatting
 
@@ -178,12 +190,12 @@ enum Theme {
     }
 }
 
-// MARK: - Glass depth modifiers
+// MARK: - Flat elevation modifier
 
 extension View {
-    /// Adds the "thick Liquid Glass" finish to a shape-clipped surface: a faint
-    /// bright top-highlight lip plus a soft ambient drop shadow for floating
-    /// depth. Apply *after* `.glassEffect(_:in:)` using the same shape.
+    /// Flat elevation: a hairline border on the clipped shape plus a soft,
+    /// neutral drop shadow. Replaces the old "Liquid Glass" highlight lip. Kept
+    /// the name and signature so existing call sites compile unchanged.
     func liquidGlassDepth<S: InsettableShape>(
         _ shape: S,
         highlight: Double = 1.0,
@@ -193,11 +205,78 @@ extension View {
         self
             .overlay(
                 shape
-                    .strokeBorder(Theme.glassHighlightStroke, lineWidth: 1)
-                    .opacity(highlight)
-                    .blendMode(.plusLighter)
+                    .strokeBorder(Theme.border, lineWidth: 1)
                     .allowsHitTesting(false)
             )
-            .shadow(color: .black.opacity(0.28), radius: shadowRadius, y: shadowY)
+            .shadow(color: .black.opacity(0.35), radius: min(shadowRadius, 20), y: min(shadowY, 10))
     }
+}
+
+// MARK: - Flat button styles
+
+/// Padding/rounding that tracks `.controlSize(...)`, so the ~30 existing call
+/// sites that ask for `.small` or `.large` still get the right proportions.
+private struct FlatButtonMetrics {
+    let h: CGFloat, v: CGFloat, radius: CGFloat
+    init(_ size: ControlSize) {
+        switch size {
+        case .mini, .small: self.init(h: 9, v: 4, radius: 7)
+        case .large, .extraLarge: self.init(h: 18, v: 10, radius: 10)
+        default: self.init(h: 14, v: 7, radius: 9)
+        }
+    }
+    private init(h: CGFloat, v: CGFloat, radius: CGFloat) {
+        self.h = h; self.v = v; self.radius = radius
+    }
+}
+
+/// Filled accent button (primary action). Solid cyan, contrast-safe ink.
+/// Deliberately does not set a font — call sites' `.font()` still applies.
+struct FlatProminentButtonStyle: ButtonStyle {
+    var tint: Color = Theme.electricBlue
+    var ink: Color?
+    @Environment(\.controlSize) private var controlSize
+
+    func makeBody(configuration: Configuration) -> some View {
+        let m = FlatButtonMetrics(controlSize)
+        let shape = RoundedRectangle(cornerRadius: m.radius, style: .continuous)
+        return configuration.label
+            .foregroundStyle(ink ?? Theme.ink(on: tint))
+            .padding(.horizontal, m.h)
+            .padding(.vertical, m.v)
+            .background(tint.opacity(configuration.isPressed ? 0.82 : 1.0), in: shape)
+            .contentShape(shape)
+    }
+}
+
+/// Neutral bordered button (secondary action). Transparent fill, hairline border.
+struct FlatButtonStyle: ButtonStyle {
+    var tint: Color = Theme.foreground
+    @Environment(\.controlSize) private var controlSize
+
+    func makeBody(configuration: Configuration) -> some View {
+        let m = FlatButtonMetrics(controlSize)
+        let shape = RoundedRectangle(cornerRadius: m.radius, style: .continuous)
+        return configuration.label
+            .foregroundStyle(tint)
+            .padding(.horizontal, m.h)
+            .padding(.vertical, m.v)
+            .background(Color.white.opacity(configuration.isPressed ? 0.10 : 0.0), in: shape)
+            .overlay(shape.strokeBorder(Theme.border, lineWidth: 1))
+            .contentShape(shape)
+    }
+}
+
+extension ButtonStyle where Self == FlatProminentButtonStyle {
+    /// Primary filled accent button.
+    static var flatProminent: FlatProminentButtonStyle { .init() }
+    static func flatProminent(tint: Color, ink: Color? = nil) -> FlatProminentButtonStyle {
+        .init(tint: tint, ink: ink)
+    }
+}
+
+extension ButtonStyle where Self == FlatButtonStyle {
+    /// Secondary bordered button.
+    static var flat: FlatButtonStyle { .init() }
+    static func flat(tint: Color) -> FlatButtonStyle { .init(tint: tint) }
 }

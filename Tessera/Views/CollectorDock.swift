@@ -84,7 +84,7 @@ struct CollectorDock: View {
         collectorColumn
             .padding(14)
             .frame(maxWidth: .infinity)
-            .background(GlassTuning.cardMaterial, in: shape)
+            .background(Theme.card, in: shape)
             .overlay {
                 // Electric-blue ring when a slice is hovering the collector area.
                 shape.strokeBorder(
@@ -116,41 +116,58 @@ struct CollectorDock: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("COLLECTOR")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .kerning(0.8)
-            if !vm.collector.isEmpty {
-                Text("· \(vm.collector.count) · \(Theme.format(vm.collectorTotalSize))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text("CLEANUP LIST")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .kerning(0.8)
+                    if !vm.collector.isEmpty {
+                        Text("· \(vm.collector.count) · \(Theme.format(vm.collectorTotalSize))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.tint)
+                    }
+                }
+                // Always explain the model — not just when the list is empty.
+                Text("Nothing here is deleted until you click Move to Trash.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
+
             Spacer()
+
             if !vm.collector.isEmpty {
-                Button("Clear") { vm.clearCollector() }
-                    .buttonStyle(.glass)
+                // Says exactly what it does — it empties this list, it does NOT
+                // touch your files. ("Clear" next to "Delete" was a trap.)
+                Button("Empty List") { vm.clearCollector() }
+                    .buttonStyle(.flat)
                     .controlSize(.small)
                     .font(.caption.weight(.medium))
-
-                // Secondary, irreversible escape hatch — clearly labelled and
-                // confirmed before it runs.
-                Button(role: .destructive, action: onDeleteAll) {
-                    Label("Delete Permanently", systemImage: "trash.slash.fill")
-                        .font(.caption.weight(.medium))
-                }
-                .buttonStyle(.glass)
-                .tint(.red)
-                .controlSize(.small)
-                .help("Permanently delete — cannot be undone")
+                    .help("Removes these items from the list. Your files are not deleted.")
 
                 // Primary, recommended action: recoverable from the Finder Trash.
                 Button(action: onTrashAll) {
                     Label("Move to Trash", systemImage: "trash.fill")
                         .font(.caption.weight(.semibold))
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.flatProminent)
                 .controlSize(.small)
-                .help("Move to Trash — restore later from Finder if needed")
+                .help("Move to Trash — you can restore them from Finder if you change your mind")
+
+                // The irreversible action is demoted out of the button row and
+                // into an overflow menu, so it can't be hit by accident.
+                Menu {
+                    Button(role: .destructive, action: onDeleteAll) {
+                        Label("Delete Permanently…", systemImage: "trash.slash.fill")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.caption.weight(.semibold))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("More removal options")
             }
         }
     }
@@ -159,7 +176,7 @@ struct CollectorDock: View {
         HStack(spacing: 8) {
             Image(systemName: "hand.draw")
                 .foregroundStyle(.tint)
-            Text("Drag slices from the chart here to collect them for review, then delete them together.")
+            Text("Drag a slice from the chart down here — or use the tools above — to line up files to remove. You review everything here before anything is deleted.")
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
             Spacer()
@@ -234,8 +251,8 @@ private struct CollectorChip: View {
         .frame(maxWidth: 240)
         .background {
             let s = RoundedRectangle(cornerRadius: 14, style: .continuous)
-            s.fill(.white.opacity(0.06))
-                .overlay(s.strokeBorder(Theme.electricBlue.opacity(0.25), lineWidth: 1))
+            s.fill(Theme.surface)
+                .overlay(s.strokeBorder(Theme.border, lineWidth: 1))
         }
     }
 
@@ -321,16 +338,13 @@ struct DragPreview: View {
                 .font(.system(.caption, design: .monospaced))
                 .opacity(0.8)
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(Theme.brandInk)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: 240)
-        .background {
-            let s = Capsule()
-            s.fill(Theme.electricBlue.opacity(0.85))
-                .overlay(s.strokeBorder(.white.opacity(0.6), lineWidth: 1))
-        }
-        .shadow(color: Theme.electricBlue.opacity(0.6), radius: 14, y: 6)
+        .background(Theme.electricBlue, in: Capsule())
+        // Flat: a neutral drop shadow for lift, never a colored glow.
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 5)
         .allowsHitTesting(false)
     }
 }

@@ -146,7 +146,7 @@ struct LargeOldFilesView: View {
             } label: {
                 Label("Add all", systemImage: "tray.and.arrow.down.fill")
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.flatProminent)
             .controlSize(.small)
             .disabled(matches.isEmpty || matches.allSatisfy { vm.isCollected($0) })
         }

@@ -138,6 +138,53 @@
   .section {
     padding-block: clamp(4rem, 9vw, 7.5rem);
   }
+
+  /* Skip-to-content link — visible only when focused (keyboard users). */
+  .skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 100;
+    transform: translateY(-150%);
+    border-radius: var(--radius-md);
+    background: var(--brand);
+    color: var(--brand-ink);
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: transform 0.15s ease;
+  }
+  .skip-link:focus {
+    transform: translateY(0);
+  }
+}
+
+/* Keyboard focus: a clear brand ring on links/interactive elements that don't
+   already define one (buttons/badges/radix handle their own). Mouse clicks
+   stay clean via :focus-visible. */
+a:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Slow rotation for the brand mark when <Sunburst animate /> is used. */
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin-slow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: spin-slow 48s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin-slow {
+    animation: none;
+  }
 }
 
 /* scroll-reveal: gated on html.js so no-JS / prerendered content stays visible */

@@ -76,7 +76,7 @@ export const content = {
       icon: 'PieChart',
       title: "See exactly what's using your disk",
       description:
-        'A live, multi-color Liquid Glass sunburst maps every file on any drive. Click a wedge to dive in; the biggest space hogs are impossible to miss.',
+        'A live, multi-color sunburst maps every file on any drive. Click a wedge to dive in; the biggest space hogs are impossible to miss.',
     },
     {
       icon: 'Gauge',
@@ -341,38 +341,42 @@ export const content = {
   },
 } as const
 
+// Design tokens — the single flat, single-accent dark system shared by the
+// site and (as a spec) any future cross-platform app build. No "Liquid Glass",
+// no gradients, no glows, no frosted materials: solid fills + hairline borders,
+// so it renders identically on macOS, Windows, and Linux. The live CSS values
+// live in src/styles.css; these mirror them for docs/tooling. See DESIGN.md.
 export const design = {
-  mood: 'Apple-grade dark "Liquid Glass" — a near-black cyan-tinted void (lifted HSB 183.5°/0.65/0.11) as the space, low-saturation surfaces, high contrast for trust. Not a cool SaaS gradient — a calm, premium instrument.',
+  mood: 'Flat, single-accent dark. A near-black neutral void as the canvas, low-saturation surfaces, hairline borders, and one electric-cyan accent used sparingly (~10% of the surface). Calm, premium, legible — an instrument, not a SaaS gradient. Pure tokens, not platform materials, so every OS looks the same.',
   palette: {
-    bg: '#06121A',
-    bgElevated: '#0A1E22',
-    surface: 'rgba(28, 50, 58, 0.60)',
-    surfaceBorder: 'rgba(130, 205, 220, 0.20)',
-    textPrimary: '#EAF6F8',
-    textMuted: '#9FB6BC',
-    primary: '#1BE6FF',
-    primaryText: '#012326',
-    accent: '#37E0C8',
-    accentAlt: '#B583FF',
-    ring: 'rgba(27, 230, 255, 0.55)',
-    success: '#3FD98C',
-    danger: '#FF5C7A',
-    accentAltFill: '#9E59FF',
-    dangerText: '#FF7E96',
-    shadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
-    shadowSoft: '0 2px 10px rgba(0, 0, 0, 0.30)',
+    bg: '#0a0b0d', // 60% — dominant neutral void
+    surface: '#101216', // secondary surfaces / pills
+    card: '#131418', // panels
+    elevated: '#17191e', // raised panels
+    foreground: '#f3f4f6', // primary text
+    mutedForeground: '#969ba4', // secondary text
+    border: 'rgba(255,255,255,0.08)', // hairline
+    borderStrong: 'rgba(255,255,255,0.14)',
+    brand: '#1be6ff', // 10% — the single accent
+    brandInk: '#04171c', // text/icon on top of the accent
+    destructive: '#ff5c7a',
   },
-  heroGradient:
-    'radial-gradient(1200px 600px at 50% -10%, rgba(27,230,255,0.10), transparent 60%)',
+  radius: { sm: '8px', md: '11px', lg: '14px', xl: '20px' },
+  shadow: {
+    sm: '0 1px 2px rgba(0,0,0,0.4)',
+    lg: '0 24px 60px -30px rgba(0,0,0,0.8)',
+  },
+  // Sunburst chart palette. The first four match the app-icon wedges
+  // (src/lib/brand.js) so the product and its icon read as one thing.
   sunburstColors: [
     '#1BE6FF',
     '#37E0C8',
+    '#5B8CFF',
+    '#9E6BFF',
     '#5BE36B',
-    '#3B82F6',
-    '#9E59FF',
     '#FF5CC8',
     '#FFB13C',
   ],
   motion:
-    'Subtle, slow, premium. Honor prefers-reduced-motion: disable sunburst rotation, scroll parallax, bar growth, and fade-up (snap to final state), pause the autoplay loop and show a poster frame; keep only opacity crossfades. Keep all motion subtle and slow — premium calm, not playful.',
+    'Subtle, slow. Honor prefers-reduced-motion: disable sunburst rotation and fade-up (snap to final state); keep only opacity crossfades.',
 } as const

@@ -56,17 +56,8 @@ struct SunburstChart: View {
             let hubRadius = chartRadius * Self.hubFraction
 
             ZStack {
-                // Frosted glass plate beneath the wedges: it frosts the faint
-                // window-base glass (within-window) rather than re-blurring the
-                // desktop a second time, giving the light pastel wedges a
-                // consistent seat so they stay legible over any wallpaper while
-                // keeping the layered frost gentle.
-                DesktopGlass(material: .hudWindow, blendingMode: .withinWindow,
-                             cornerRadius: chartRadius)
-                    .frame(width: chartRadius * 2, height: chartRadius * 2)
-                    .opacity(0.5)
-                    .allowsHitTesting(false)
-
+                // Flat design: the wedges sit directly on the solid window
+                // background. No frosted plate, no vibrancy.
                 canvas(center: center, chartRadius: chartRadius, hubRadius: hubRadius)
                     // Make the entire chart frame hit-testable, including the
                     // transparent gaps between wedges, so hover and taps always land.
@@ -155,40 +146,23 @@ struct SunburstChart: View {
                                      inner: inner, outer: outer,
                                      start: start, end: end)
 
-                // Glassy body fill, lit radially from the hub for coherent depth.
+                // Flat solid fill — one categorical color per wedge.
                 ctx.fill(path, with: wedgeShading(for: wedge, center: center,
                                                   chartRadius: chartRadius, hubRadius: hubRadius))
 
-                // Bright inner specular rim along the inner arc — the refracting
-                // "lip" of glass. Drawn for real (non-synthetic) wedges only.
-                if case .regular = wedge.node.kind { drawRim(ctx, center: center, inner: inner, start: start, end: end, wedge: wedge) }
-                else if case .package = wedge.node.kind { drawRim(ctx, center: center, inner: inner, start: start, end: end, wedge: wedge) }
-
-                // Hairline edge separation between adjacent wedges. Kept airy
-                // (very faint) so the pastel palette stays light and flowy.
-                ctx.stroke(path, with: .color(.black.opacity(0.10)),
-                           style: StrokeStyle(lineWidth: 0.5, lineJoin: .round))
+                // Hairline gap in the background color separates adjacent wedges,
+                // exactly like the tiles in the app icon.
+                ctx.stroke(path, with: .color(Theme.bg),
+                           style: StrokeStyle(lineWidth: 1, lineJoin: .round))
 
                 if isHovered {
-                    // Soft luminous hover glow: a gentle white wash plus a halo —
-                    // restrained so it lifts the pastel wedge without blowing it out.
-                    ctx.fill(path, with: .color(.white.opacity(0.16)))
-                    ctx.drawLayer { layer in
-                        layer.addFilter(.blur(radius: 6))
-                        layer.stroke(path, with: .color(.white.opacity(0.8)),
-                                     style: StrokeStyle(lineWidth: 3, lineJoin: .round))
-                    }
-                    ctx.stroke(path, with: .color(.white.opacity(0.85)),
-                               style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+                    // Flat hover: a plain white wash, no blur/glow.
+                    ctx.fill(path, with: .color(.white.opacity(0.14)))
                 }
                 if isSelected {
-                    // A crisp ink outline reads cleanly against light pastels where
-                    // a plain white stroke would vanish; a thin white inset keeps
-                    // the glassy lip.
-                    ctx.stroke(path, with: .color(.black.opacity(0.55)),
-                               style: StrokeStyle(lineWidth: 2.2, lineJoin: .round))
-                    ctx.stroke(path, with: .color(.white.opacity(0.9)),
-                               style: StrokeStyle(lineWidth: 1.0, lineJoin: .round))
+                    // Flat selection: a crisp accent outline.
+                    ctx.stroke(path, with: .color(Theme.electricBlue),
+                               style: StrokeStyle(lineWidth: 2, lineJoin: .round))
                 }
             }
         }
@@ -197,24 +171,9 @@ struct SunburstChart: View {
         .animation(.easeInOut(duration: 0.35), value: layoutRootID)
     }
 
-    /// Stroke a bright, slightly inset arc along the inner edge of a wedge to
-    /// suggest a refracting glass lip. Purely cosmetic; does not affect hit
-    /// testing.
-    private func drawRim(_ ctx: GraphicsContext, center: CGPoint, inner: CGFloat,
-                         start: Double, end: Double, wedge: Wedge) {
-        let r = inner + 0.75
-        var rim = Path()
-        rim.addArc(center: center, radius: r,
-                   startAngle: Angle(degrees: start),
-                   endAngle: Angle(degrees: end), clockwise: false)
-        let rimColor = Theme.wedgeRim(hue: wedge.hue, depth: wedge.depth)
-        ctx.stroke(rim, with: .color(rimColor.opacity(0.55)),
-                   style: StrokeStyle(lineWidth: 1.0, lineCap: .round))
-    }
-
-    /// Shading for a wedge. Real wedges use a radial gradient centred on the hub
-    /// so the whole chart is lit from one point (glossy inner edge → rich rim),
-    /// keeping every ring's lighting coherent. Synthetic wedges stay flat.
+    /// Shading for a wedge. Flat design: every wedge is a single solid color from
+    /// the categorical palette, deepening slightly with nesting depth. No radial
+    /// lighting, no specular rim.
     private func wedgeShading(for wedge: Wedge, center: CGPoint,
                               chartRadius: CGFloat, hubRadius: CGFloat) -> GraphicsContext.Shading {
         switch wedge.node.kind {
@@ -223,12 +182,7 @@ struct SunburstChart: View {
         case .cloudOnlyStorage: return .color(Theme.cloudColor)
         case .crossVolume:      return .color(Theme.crossVolumeColor)
         case .regular, .package:
-            return .radialGradient(
-                Theme.wedgeRadialGradient(hue: wedge.hue),
-                center: center,
-                startRadius: hubRadius * 0.5,
-                endRadius: chartRadius
-            )
+            return .color(Theme.wedgeColor(hue: wedge.hue, depth: wedge.depth))
         }
     }
 
@@ -270,30 +224,22 @@ struct SunburstChart: View {
         }
         .padding(radius * 0.18)
         .frame(width: radius * 2, height: radius * 2)
-        // Within-window glass so the hub frosts the window-base layer like the
-        // panels do, instead of re-blurring the desktop a second time.
-        .background(DesktopGlass(blendingMode: .withinWindow, cornerRadius: radius))
-        .background(
-            // Soft luminous halo bleeding out behind the hub.
-            Circle()
-                .fill(.white.opacity(0.10))
-                .frame(width: radius * 2.3, height: radius * 2.3)
-                .blur(radius: radius * 0.35)
-        )
+        // Flat: a solid disc with a hairline edge. When the hub is actually
+        // clickable (zoomed in) the edge picks up the accent so it reads as a
+        // button instead of inert decoration.
+        .background(Circle().fill(Theme.card))
         .overlay(
-            // Refracting highlight lip around the glass hub.
             Circle()
-                .strokeBorder(Theme.glassHighlightStroke, lineWidth: 1.2)
-                .blendMode(.plusLighter)
+                .strokeBorder(isZoomed ? Theme.electricBlue : Theme.border,
+                              lineWidth: isZoomed ? 1.5 : 1)
                 .allowsHitTesting(false)
         )
-        .shadow(color: .black.opacity(0.30), radius: radius * 0.22, y: radius * 0.08)
         .contentShape(Circle())
         // Pass hover/clicks through to the wedges below. Only when zoomed in does
         // the hub become an active target (tap = zoom out).
         .allowsHitTesting(isZoomed)
         .onTapGesture { if isZoomed { onZoomOut() } }
-        .help(isZoomed ? "Zoom out" : "")
+        .help(isZoomed ? "Go back up one level" : "")
     }
 
     private var isZoomed: Bool { root?.parent != nil }
@@ -320,13 +266,12 @@ struct SunburstChart: View {
         .padding(.horizontal, 11)
         .padding(.vertical, 8)
         .frame(maxWidth: 240, alignment: .leading)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Theme.glassHighlightStroke, lineWidth: 1)
-                .blendMode(.plusLighter)
+                .strokeBorder(Theme.border, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.3), radius: 14, y: 7)
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
         .fixedSize()
         .onGeometryChange(for: CGSize.self) { $0.size } action: { tooltipSize = $0 }
         .position(tooltipPosition(in: size))

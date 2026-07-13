@@ -72,9 +72,19 @@
          Sparkle verifies every downloaded update's signature against this key. -->
     <key>SUPublicEDKey</key>
     <string>5Fh/ArGlhV1lk+drNjvVxbYEgqTsq5h0pbLFwoDDr+0=</string>
+    <!-- Fully automatic updates. SUEnableAutomaticChecks suppresses Sparkle's
+         first-launch "do you want automatic updates?" prompt; SUAutomaticallyUpdate
+         makes downloading+installing the default. Together with the silent
+         SPUUserDriver in Updater.swift the app checks, downloads, installs and
+         relaunches itself with no user interaction. -->
     <key>SUEnableAutomaticChecks</key>
     <true/>
+    <key>SUAutomaticallyUpdate</key>
+    <true/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <true/>
+    <!-- Check every 6 hours (Sparkle also checks shortly after launch). -->
     <key>SUScheduledCheckInterval</key>
-    <integer>86400</integer>
+    <integer>21600</integer>
 </dict>
 </plist>

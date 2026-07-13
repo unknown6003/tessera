@@ -12,7 +12,7 @@ export const Route = createRootRoute({
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { name: 'color-scheme', content: 'dark' },
-      { name: 'theme-color', content: '#06121A' },
+      { name: 'theme-color', content: '#0a0b0d' },
       { title: seo.title },
       { name: 'description', content: seo.description },
       { property: 'og:type', content: 'website' },
@@ -32,7 +32,13 @@ export const Route = createRootRoute({
       },
       { name: 'twitter:image', content: '/logo512.png' },
     ],
-    links: [{ rel: 'stylesheet', href: appCss }],
+    links: [
+      { rel: 'stylesheet', href: appCss },
+      { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
+      { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
+      { rel: 'apple-touch-icon', href: '/logo192.png' },
+      { rel: 'manifest', href: '/manifest.json' },
+    ],
   }),
   shellComponent: RootDocument,
 })
