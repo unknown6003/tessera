@@ -130,6 +130,8 @@ final class ScanViewModel: ObservableObject {
                 }
                 // Cancellation can race with a scanner completing. Only the most
                 // recently started scan may replace the chart or its source state.
+                // A superseded scan returns here and skips trailing cleanup safely:
+                // that cleanup is guarded by the same generation comparison.
                 guard self.scanGeneration == generation else { return }
                 let treeIsEmpty = node.children.isEmpty
                 let volumePath = volumeURL.path

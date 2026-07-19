@@ -392,9 +392,7 @@ struct ContentView: View {
     }
 
     private func selectBreadcrumbNode(_ node: FileNode) {
-        vm.currentRoot = node
-        vm.selectedNode = node
-        vm.hoveredNode = nil
+        vm.zoomIn(to: node)
     }
 
     private var chevron: some View {
