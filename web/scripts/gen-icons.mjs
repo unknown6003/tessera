@@ -30,7 +30,12 @@ const iconDir = join(repo, 'icon')
 const buildDir = join(iconDir, 'build')
 const iconsetDir = join(iconDir, 'Tessera.iconset')
 const webPublic = join(web, 'public')
-const appIconSet = join(repo, 'Tessera', 'Assets.xcassets', 'AppIcon.appiconset')
+const appIconSet = join(
+  repo,
+  'Tessera',
+  'Assets.xcassets',
+  'AppIcon.appiconset',
+)
 
 const iconSVG = appIconSVG(1024)
 const mark = markSVG(512)

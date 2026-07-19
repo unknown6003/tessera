@@ -43,6 +43,7 @@
 		F77AF2AE48FBFF8726C1473F /* ScanViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B87E4285D46CDC2CB2DA2062 /* ScanViewModel.swift */; };
 		F81F5AC20AF801D2D0C0DDF2 /* Sidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4EF4374D25FB2778767FF64 /* Sidebar.swift */; };
 		FA73381C4F7A3B3635121CD8 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D412C099EDB447DC4B8320D7 /* Theme.swift */; };
+		FC5170378F60F97C2C204178 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 374A47C12AAB2FA9C756172E /* Assets.xcassets */; };
 		FD50B7E63A8FF5B54FB6F31B /* GlassSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3587EDCC419A7294D2021E59 /* GlassSurfaces.swift */; };
 		FE7BDFB9F805B32CBADDB282 /* CollectorDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57125AFC792652056F54941F /* CollectorDock.swift */; };
 /* End PBXBuildFile section */
@@ -62,6 +63,7 @@
 		0DC9EEFFB4BD09B1D98FAF6C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3565E04F0E1EF1B54F0B2C3F /* DuplicateFinderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuplicateFinderView.swift; sourceTree = "<group>"; };
 		3587EDCC419A7294D2021E59 /* GlassSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassSurfaces.swift; sourceTree = "<group>"; };
+		374A47C12AAB2FA9C756172E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		39C2F6679360731E0939FFAF /* BulkReader.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BulkReader.c; sourceTree = "<group>"; };
 		3A4B95F848065C032F636BC1 /* ByKindView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ByKindView.swift; sourceTree = "<group>"; };
 		3A61E79802366BF80F58FF30 /* HiddenSpaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSpaceView.swift; sourceTree = "<group>"; };
@@ -196,6 +198,7 @@
 		EE0A6C1709AA204583254D7B /* Tessera */ = {
 			isa = PBXGroup;
 			children = (
+				374A47C12AAB2FA9C756172E /* Assets.xcassets */,
 				C8FD42B9720491DD4E44D68D /* DebugAutomation.swift */,
 				FFD93DB369E567A271AF7A2B /* FinderService.swift */,
 				0DC9EEFFB4BD09B1D98FAF6C /* Info.plist */,
@@ -246,6 +249,7 @@
 			buildConfigurationList = B551177FE9D99586570BF0C6 /* Build configuration list for PBXNativeTarget "Tessera" */;
 			buildPhases = (
 				3BF564653DBB67EAEEAC8714 /* Sources */,
+				4417E7ED7BD2BD2A7C6E2863 /* Resources */,
 				CEA2F14398AE3575A281BB96 /* Frameworks */,
 			);
 			buildRules = (
@@ -301,6 +305,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4417E7ED7BD2BD2A7C6E2863 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FC5170378F60F97C2C204178 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		3BF564653DBB67EAEEAC8714 /* Sources */ = {

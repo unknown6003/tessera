@@ -114,7 +114,7 @@ final class UpdaterController: ObservableObject {
         driver.onStatusChange = { [weak self] status in self?.status = status }
 
         do {
-            try updater.startUpdater()
+            try updater.start()
         } catch {
             // A failed start is not fatal: the app runs, it just won't self-update.
             status = .failed(error.localizedDescription)
@@ -182,7 +182,7 @@ final class SilentUserDriver: NSObject, SPUUserDriver {
     // Never ask. Automatic checks are on by default (SUEnableAutomaticChecks in
     // Info.plist normally means this is never even called).
     @objc(showUpdatePermissionRequest:reply:)
-    func showUpdatePermissionRequest(
+    func show(
         _ request: SPUUpdatePermissionRequest,
         reply: @escaping (SUUpdatePermissionResponse) -> Void
     ) {
@@ -210,10 +210,10 @@ final class SilentUserDriver: NSObject, SPUUserDriver {
     func showUpdateReleaseNotes(with downloadData: SPUDownloadData) {}
 
     @objc(showUpdateReleaseNotesFailedToDownloadWithError:)
-    func showUpdateReleaseNotesFailedToDownload(withError error: Error) {}
+    func showUpdateReleaseNotesFailedToDownloadWithError(_ error: Error) {}
 
     @objc(showUpdateNotFoundWithError:acknowledgement:)
-    func showUpdateNotFound(withError error: Error, acknowledgement: @escaping () -> Void) {
+    func showUpdateNotFoundWithError(_ error: Error, acknowledgement: @escaping () -> Void) {
         onStatusChange(.upToDate)
         acknowledgement()
     }
@@ -261,7 +261,7 @@ final class SilentUserDriver: NSObject, SPUUserDriver {
     // MARK: Install & relaunch — the only place we ever wait
 
     @objc(showReadyToInstallAndRelaunch:)
-    func showReadyToInstallAndRelaunch(_ reply: @escaping (SPUUserUpdateChoice) -> Void) {
+    func showReady(toInstallAndRelaunch reply: @escaping (SPUUserUpdateChoice) -> Void) {
         // Never relaunch out from under a running scan or a staged Cleanup List.
         // Hold the update; UpdaterController releases it via installIfQueued()
         // as soon as the app is idle. It also lands on next launch regardless,

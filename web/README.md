@@ -27,11 +27,11 @@ Copy `.env.example` → `.env` to override anything locally. All client vars are
 `VITE_`-prefixed and **optional** — each has a sensible default in
 `src/lib/site.ts`, so the site builds and deploys with zero configuration.
 
-| Var                 | Purpose                                                                                                        |
-| ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Var                 | Purpose                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
 | `VITE_DOWNLOAD_URL` | Where the `.dmg` is served. Defaults to the latest GitHub Release asset on the `tessera` repo. |
-| `VITE_GITHUB_URL`   | Source repository (the "Star on GitHub" / source links).                                                       |
-| `VITE_SPONSOR_URL`  | GitHub Sponsors page (the optional "Sponsor" button).                                                          |
+| `VITE_GITHUB_URL`   | Source repository (the "Star on GitHub" / source links).                                       |
+| `VITE_SPONSOR_URL`  | GitHub Sponsors page (the optional "Sponsor" button).                                          |
 
 ## The download artifact
 
