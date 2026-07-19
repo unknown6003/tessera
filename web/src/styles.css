@@ -187,16 +187,9 @@ summary:focus-visible,
   }
 }
 
-/* scroll-reveal: gated on html.js so no-JS / prerendered content stays visible */
-html.js .reveal {
-  opacity: 0;
-  transform: translateY(16px);
-  transition:
-    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: opacity, transform;
-}
-html.js .reveal.in {
+/* Content must never depend on an IntersectionObserver callback to become
+   visible. This explicit baseline also protects prerendered/no-JS output. */
+.reveal {
   opacity: 1;
   transform: none;
 }
@@ -204,10 +197,5 @@ html.js .reveal.in {
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
-  }
-  .reveal {
-    opacity: 1 !important;
-    transform: none !important;
-    transition: none !important;
   }
 }
