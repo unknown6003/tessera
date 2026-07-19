@@ -165,12 +165,13 @@ jobs:
           curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null
 
           for run in 1 2 3; do
-            pnpm dlx lighthouse@13.4.0 http://127.0.0.1:4173/index.html \
+            xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
+              pnpm dlx lighthouse@13.4.0 http://127.0.0.1:4173/index.html \
               --output=json \
               --output-path=".lighthouseci/run-$run.json" \
               --only-categories=performance,accessibility,best-practices,seo \
               --form-factor=mobile \
-              --chrome-flags='--headless=new --no-sandbox --disable-dev-shm-usage --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding' \
+              --chrome-flags='--no-sandbox --disable-dev-shm-usage' \
               --quiet
           done
 
@@ -201,4 +202,5 @@ jobs:
           name: lighthouse-reports
           path: web/.lighthouseci
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 14
