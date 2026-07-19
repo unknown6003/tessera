@@ -258,4 +258,31 @@ struct ViewModelTests {
         // A source we never scanned has no cache.
         #expect(!vm.hasCachedScan(for: try tempDir()))
     }
+
+    @Test("Deleting from a published tree advances the chart content revision")
+    func deletionInvalidatesChartLayout() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory,
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data(repeating: 7, count: 128)
+            .write(to: directory.appendingPathComponent("remove-me.bin"))
+
+        let vm = ScanViewModel()
+        vm.startScan(volumeURL: directory)
+        for _ in 0..<500 where vm.isScanning || vm.rootNode == nil {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        guard let file = vm.rootNode?.children.first(where: { $0.name == "remove-me.bin" }) else {
+            Issue.record("Scanned fixture is missing remove-me.bin")
+            return
+        }
+
+        let revision = vm.chartRevision
+        try vm.deletePermanently([file])
+
+        #expect(vm.chartRevision == (revision &+ 1))
+        #expect(vm.rootNode?.children.contains(where: { $0.id == file.id }) == false)
+    }
 }

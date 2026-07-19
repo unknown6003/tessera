@@ -19,6 +19,10 @@ final class ScanViewModel: ObservableObject {
     @Published var duplicateProgress = DuplicateProgress()
     @Published var isScanning = false
     @Published var progress = ScanProgress()
+    /// Changes when an already-published tree is mutated in place (for example,
+    /// after cleanup). The chart uses this to invalidate angular layout without
+    /// tying expensive layout work to window-size changes.
+    @Published private(set) var chartRevision: UInt64 = 0
     @Published var errorMessage: String?
     @Published var needsFullDiskAccess = false
     /// Drives the first-launch onboarding prompt that asks for Full Disk Access
@@ -578,9 +582,10 @@ final class ScanViewModel: ObservableObject {
             }
         }
 
-        // Force chart redraw with the corrected (and safe) root.
-        currentRoot = nil
+        // Publish the corrected root and separately invalidate the cached angular
+        // layout when the existing tree actually changed.
         currentRoot = correctedRoot
+        if !removed.isEmpty { chartRevision &+= 1 }
 
         if let firstFailure = failures.first {
             throw firstFailure

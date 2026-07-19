@@ -172,6 +172,7 @@ struct ContentView: View {
 
             SunburstChart(
                 root: vm.currentRoot,
+                contentRevision: vm.chartRevision,
                 hoveredNode: vm.hoveredNode,
                 selectedNode: vm.selectedNode,
                 onHover: { vm.hoveredNode = $0 },

@@ -242,7 +242,7 @@ enum DebugAutomation {
     /// rendering can be verified even where window capture is unavailable.
     private static func renderSunburst(root: FileNode?, to path: String) {
         let chart = SunburstChart(
-            root: root, hoveredNode: nil, selectedNode: nil,
+            root: root, contentRevision: 0, hoveredNode: nil, selectedNode: nil,
             onHover: { _ in }, onSelect: { _ in }, onZoomIn: { _ in },
             onZoomOut: {}, onAddToCollector: { _ in }, onRevealInFinder: { _ in },
             drag: CollectorDragController(), onDrop: { _ in }

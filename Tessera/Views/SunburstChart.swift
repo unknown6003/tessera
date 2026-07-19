@@ -4,10 +4,13 @@ import AppKit
 // MARK: - SunburstChart
 
 /// Pure-Canvas sunburst (ring chart) that renders up to five rings around a
-/// central glass hub. Angular layout is precomputed when `root` changes; resizing
-/// only updates the Canvas geometry, while hover/selection vary per frame.
+/// central glass hub. Angular layout is precomputed when `root` or its content
+/// revision changes; resizing only updates Canvas geometry, while hover/selection
+/// vary per frame.
 struct SunburstChart: View {
     let root: FileNode?
+    /// Invalidates cached wedge angles when the same root object is mutated.
+    let contentRevision: UInt64
     let hoveredNode: FileNode?
     let selectedNode: FileNode?
     let onHover: (FileNode?) -> Void
@@ -59,9 +62,10 @@ struct SunburstChart: View {
         )
     }
 
-    // Cached angular layout, recomputed only when the displayed root changes.
+    // Cached angular layout, recomputed only when the displayed tree changes.
     @State private var layout: [Wedge] = []
     @State private var layoutRootID: ObjectIdentifier?
+    @State private var layoutRevision: UInt64?
     @State private var appearProgress: Double = 0          // 0…1 sweep-in
     @State private var cursor: CGPoint = .zero
     @State private var hovering = false
@@ -144,6 +148,7 @@ struct SunburstChart: View {
                 }
                 .onDisappear { removeRightClickMonitor() }
                 .onChange(of: root?.id) { _, _ in rebuild(size: geo.size) }
+                .onChange(of: contentRevision) { _, _ in rebuild(size: geo.size) }
             } else {
                 Color.clear
             }
@@ -502,16 +507,18 @@ struct SunburstChart: View {
             layout = []; return
         }
         let rootChanged = layoutRootID != root.id
+        let contentChanged = layoutRevision != contentRevision
 
         // Wedge angles depend only on the tree. Rebuilding hundreds of paths and
         // synthetic "Other" nodes for every live-resize tick caused avoidable lag;
         // Canvas applies the new center/radii to the same angular layout directly.
-        guard rootChanged || layout.isEmpty else {
+        guard rootChanged || contentChanged || layout.isEmpty else {
             appearProgress = 1
             return
         }
         layout = Self.buildLayout(root: root)
         layoutRootID = root.id
+        layoutRevision = contentRevision
         appearProgress = 0
         withAnimation(.easeInOut(duration: 0.35)) { appearProgress = 1 }
     }
