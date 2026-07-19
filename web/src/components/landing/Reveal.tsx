@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { cn } from '#/lib/utils.ts'
 
 /**
- * Fade-up on scroll into view. No-JS safe (the `.reveal` hidden state is gated
- * on `html.js` in CSS) and honors prefers-reduced-motion.
+ * Fade-up on scroll into view. Prerendered content remains visible until React
+ * mounts, so a delayed or failed hydration can never leave the page blank.
+ * The CSS also honors prefers-reduced-motion.
  */
 export function Reveal({
   children,
@@ -20,6 +21,12 @@ export function Reveal({
   const [shown, setShown] = useState(false)
 
   useEffect(() => {
+    // Enable the hidden pre-reveal state only after the page has produced its
+    // first React-mounted frame. Adding this class synchronously in <head> hid
+    // the hero before first paint and could strand it there when hydration was
+    // delayed, producing a blank page and no First Contentful Paint.
+    document.documentElement.classList.add('js')
+
     const el = ref.current
     if (!el) return
     const io = new IntersectionObserver(
