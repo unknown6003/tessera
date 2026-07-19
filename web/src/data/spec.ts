@@ -222,7 +222,7 @@ export const content = {
       'Duplicate finder (like Gemini)',
       'Cleanup + app uninstaller (like CleanMyMac)',
       'Free and open source under GPL-3.0',
-      'Automatic updates via Sparkle',
+      'Updates itself automatically — no clicks',
       'No account, no telemetry, ever',
     ],
     ctaLabel: 'Download for macOS',
@@ -253,7 +253,7 @@ export const content = {
     },
     {
       q: 'How do updates work?',
-      a: "Tessera checks for updates on its own using Sparkle and installs them in place — no store, no account. It's the only thing the app does on the network without you asking, and you can turn it off.",
+      a: "Automatically, with nothing for you to do. Tessera checks on its own using Sparkle, then downloads, installs and relaunches the new version in the background — no store, no account, no clicks. It waits until you're not mid-scan so it never interrupts you. Every update is cryptographically signed and verified before it installs, so silent doesn't mean unchecked. It's the only thing the app does on the network without you asking.",
     },
     {
       q: 'What are the system requirements?',
