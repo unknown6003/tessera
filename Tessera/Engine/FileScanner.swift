@@ -337,6 +337,10 @@ struct FileScanner: Sendable {
         private var cancelled = false
         private var finished = false       // continuation resumed (single-resume guard)
         private var activeWorkers = 0      // workers currently inside a directory
+        /// Workers authorized to attach an enumeration result. The watchdog may
+        /// only publish the tree when this is zero, otherwise SwiftUI could receive
+        /// a tree while a late worker is mutating it.
+        private var commitsInProgress = 0
         private var seenInodes = Set<DevIno>()
         private var progress: ScanProgress
 
@@ -378,15 +382,13 @@ struct FileScanner: Sendable {
                 self.workerCount = n
             } else {
                 // getattrlistbulk dominates the scan (~71% of single-thread time).
-                // Some oversubscription hides per-read SSD latency, but measurements
-                // show returns go NEGATIVE past ~1.5× cores: on a 10-core machine a
-                // warm 978k-entry scan ran ~12.7s at 14 workers vs ~14.4s at 32 —
-                // extra threads just add lock/disk contention (the "grinds the whole
-                // machine" symptom). So bias to 1.5× logical cores with a tighter cap,
-                // which keeps the cold-latency hiding while staying responsive.
+                // Some parallelism hides per-read SSD latency, but oversubscribing
+                // this sustained, user-initiated work competes with SwiftUI and makes
+                // the window appear hung. One worker per active core (capped at 12)
+                // keeps interaction responsive while still parallelizing metadata I/O.
                 // Override with SO_SCAN_WORKERS.
                 let cores = ProcessInfo.processInfo.activeProcessorCount
-                self.workerCount = min(max(cores * 3 / 2, 8), 24)
+                self.workerCount = min(max(cores, 4), 12)
             }
         }
 
@@ -406,7 +408,9 @@ struct FileScanner: Sendable {
 
             startWatchdog()
             for _ in 0 ..< workerCount {
-                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                // Utility QoS lets AppKit's main-thread resize/hover/scroll work
+                // preempt the sustained disk scan.
+                DispatchQueue.global(qos: .utility).async { [weak self] in
                     self?.workerLoop()
                 }
             }
@@ -453,13 +457,40 @@ struct FileScanner: Sendable {
 
                 let result = enumerate(work, scratch: scratch)
 
-                // Wire children to their parent OFF-lock: this touches only
-                // `work.node` and its freshly-created children (no shared state),
-                // so keeping it out of the critical section cuts lock-hold time —
-                // which is what limits scaling once many workers contend.
+                // Reserve the right to mutate before touching the tree. A watchdog
+                // timeout can happen while this worker is still enumerating; a
+                // result returning after publication must be discarded.
+                cond.lock()
+                guard !cancelled, !finished else {
+                    activeWorkers -= 1
+                    cond.unlock()
+                    if cancelled { resumeThrowing(CancellationError()) }
+                    return
+                }
+                commitsInProgress += 1
+                cond.unlock()
+
+                // This node remains private until merge. The reservation prevents
+                // watchdog publication during parent wiring without putting this
+                // potentially large loop under the shared queue lock.
                 work.node.setChildren(result.children)
 
                 cond.lock()
+                commitsInProgress -= 1
+                if cancelled {
+                    activeWorkers -= 1
+                    cond.broadcast()
+                    cond.unlock()
+                    resumeThrowing(CancellationError())
+                    return
+                }
+                // Defensive invariant: the watchdog cannot set `finished` while a
+                // commit is reserved, but never merge into an abandoned tree.
+                if finished {
+                    activeWorkers -= 1
+                    cond.unlock()
+                    return
+                }
                 merge(result, for: work)
                 activeWorkers -= 1
                 cond.unlock()
@@ -607,7 +638,7 @@ struct FileScanner: Sendable {
             // i.e. the remaining `pending` dirs are all stuck in-flight in workers.
             let stalledNanos = DispatchTime.now().uptimeNanoseconds &- lastAdvanceAt.uptimeNanoseconds
             let stalled = Double(stalledNanos) / 1_000_000_000 >= Self.stallTimeoutSeconds
-            guard stalled, pending > 0, queue.isEmpty else {
+            guard stalled, pending > 0, queue.isEmpty, commitsInProgress == 0 else {
                 cond.unlock()
                 return
             }

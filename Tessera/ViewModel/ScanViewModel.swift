@@ -32,6 +32,11 @@ final class ScanViewModel: ObservableObject {
     @Published private(set) var scannedURL: URL?
 
     private var scanTask: Task<Void, Never>?
+    /// Monotonically identifies the scan allowed to publish into this view model.
+    /// Cancelling a task is cooperative: an older scanner may still deliver a
+    /// progress callback or finish while its replacement is already running.
+    /// Every async publication is therefore gated by this generation.
+    private var scanGeneration: UInt64 = 0
     private var duplicateTask: Task<Void, Never>?
     private var duplicateCancel: DuplicateCancelToken?
     /// The last volume scanned, so a re-scan of the same volume can reuse the
@@ -51,7 +56,11 @@ final class ScanViewModel: ObservableObject {
     }
     private var scanCache: [URL: CachedScan] = [:]
     private var cacheLRU: [URL] = []
-    private let maxCachedScans = 3
+    // A full-disk FileNode tree can contain millions of objects. Keeping the
+    // displayed tree plus three more complete trees caused severe memory pressure
+    // (and eventual OS termination) after switching sources. One warm tree keeps
+    // instant back-navigation without multiplying the scan's peak footprint.
+    private let maxCachedScans = 1
     /// Diagnostic: true when the last scan ended via CancellationError.
     private(set) var scanTaskWasCancelled = false
 
@@ -62,6 +71,8 @@ final class ScanViewModel: ObservableObject {
     // MARK: - Scan
 
     func startScan(volumeURL: URL) {
+        scanGeneration &+= 1
+        let generation = scanGeneration
         scanTask?.cancel()
         // Preserve the scan currently on screen so switching back to it is instant.
         saveCurrentToCache()
@@ -71,6 +82,11 @@ final class ScanViewModel: ObservableObject {
         // via deletions the user just made — has a new modtime, so it's re-scanned
         // for fresh sizes.
         let cache = scanCache[volumeURL]?.rootNode ?? (volumeURL == scannedURL ? rootNode : nil)
+        // The local reference above is all the incremental scanner needs. Do not
+        // retain a second root for the same source in the LRU while rebuilding it;
+        // reused subtrees already stay alive through `cache`.
+        scanCache.removeValue(forKey: volumeURL)
+        cacheLRU.removeAll { $0 == volumeURL }
         lastScannedURL = volumeURL
         scannedURL = nil
         rootNode = nil
@@ -91,11 +107,12 @@ final class ScanViewModel: ObservableObject {
         isScanning = true
         progress = ScanProgress(currentPath: volumeURL.path)
 
-        scanTask = Task {
+        scanTask = Task { [weak self] in
+            guard let self else { return }
             do {
                 let node = try await FileScanner.scan(url: volumeURL, cache: cache) { [weak self] prog in
                     Task { @MainActor [weak self] in
-                        guard let self else { return }
+                        guard let self, self.scanGeneration == generation else { return }
                         // Monotonicity guard: discard stale ticks that arrive out of
                         // order (the @MainActor hop can reorder them). Accept the
                         // final tick, or any tick that advances a monotonic counter.
@@ -107,6 +124,9 @@ final class ScanViewModel: ObservableObject {
                         }
                     }
                 }
+                // Cancellation can race with a scanner completing. Only the most
+                // recently started scan may replace the chart or its source state.
+                guard self.scanGeneration == generation else { return }
                 let treeIsEmpty = node.children.isEmpty
                 let volumePath = volumeURL.path
                 let isVolumeRoot = volumePath == "/"
@@ -123,19 +143,29 @@ final class ScanViewModel: ObservableObject {
                     let report = await Task.detached(priority: .utility) {
                         CleanupClassifier.classify(root: node)
                     }.value
-                    guard let self else { return }
+                    guard let self,
+                          self.scanGeneration == generation,
+                          self.rootNode === node else { return }
                     self.cleanupReport = report
                     // Suggestions are NOT auto-staged. The user reviews the groups
                     // and chooses what to add — per group, or all-safe at once —
                     // then deletes from the collector behind the usual confirmation.
                 }
             } catch is CancellationError {
-                // User stopped the scan — not an error.
-                self.scanTaskWasCancelled = true
+                // User stopped the current scan — not an error. A cancellation
+                // from a superseded scan must not change its replacement's state.
+                if self.scanGeneration == generation {
+                    self.scanTaskWasCancelled = true
+                }
             } catch {
-                self.errorMessage = error.localizedDescription
+                if self.scanGeneration == generation {
+                    self.errorMessage = error.localizedDescription
+                }
             }
-            self.isScanning = false
+            if self.scanGeneration == generation {
+                self.isScanning = false
+                self.scanTask = nil
+            }
         }
     }
 
@@ -172,7 +202,14 @@ final class ScanViewModel: ObservableObject {
     @discardableResult
     func showCachedScanIfAvailable(for url: URL) -> Bool {
         guard url != scannedURL, let cached = scanCache[url] else { return false }
-        if isScanning { scanTask?.cancel(); isScanning = false }
+        if isScanning {
+            // Invalidate every callback/result from the in-flight scan before
+            // restoring the cached tree. Cancellation alone is cooperative.
+            scanGeneration &+= 1
+            scanTask?.cancel()
+            scanTask = nil
+            isScanning = false
+        }
         duplicateTask?.cancel()
         // Preserve what we're leaving, then restore the requested scan.
         saveCurrentToCache()
