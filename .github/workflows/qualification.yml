@@ -151,7 +151,48 @@ jobs:
           test "$css_bytes" -le 100000
 
       - name: Run Lighthouse three times at a mobile viewport
-        run: pnpm dlx @lhci/cli@0.15.1 autorun --config=./lighthouserc.cjs
+        run: |
+          set -euo pipefail
+          mkdir -p .lighthouseci
+          python3 -m http.server 4173 --directory dist/client >.lighthouseci/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          for _ in {1..30}; do
+            curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null
+
+          for run in 1 2 3; do
+            pnpm dlx lighthouse@13.4.0 http://127.0.0.1:4173/index.html \
+              --output=json \
+              --output-path=".lighthouseci/run-$run.json" \
+              --only-categories=performance,accessibility,best-practices,seo \
+              --form-factor=mobile \
+              --chrome-flags='--headless=new --no-sandbox --disable-dev-shm-usage --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding' \
+              --quiet
+          done
+
+          node - .lighthouseci/run-*.json <<'NODE'
+          const fs = require('node:fs')
+          const thresholds = {
+            performance: 0.8,
+            accessibility: 0.9,
+            'best-practices': 0.9,
+            seo: 0.8,
+          }
+          let failed = false
+          for (const filename of process.argv.slice(2)) {
+            const report = JSON.parse(fs.readFileSync(filename, 'utf8'))
+            for (const [category, minimum] of Object.entries(thresholds)) {
+              const score = report.categories[category].score
+              console.log(`${filename}: ${category} ${Math.round(score * 100)} (minimum ${minimum * 100})`)
+              if (score < minimum) failed = true
+            }
+          }
+          if (failed) process.exit(1)
+          NODE
 
       - name: Upload Lighthouse evidence
         if: always()
