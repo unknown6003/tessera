@@ -32,6 +32,15 @@ PUBLISH=0
 step() { printf "\n\033[1;36m▶ %s\033[0m\n" "$*"; }
 fail() { printf "\n\033[1;31m✗ %s\033[0m\n" "$*" >&2; exit 1; }
 
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
+
+# Version 1.0 is a deliberate product milestone, never an accidental bump.
+# Publishing any 1.x release requires an explicit, one-command confirmation.
+if [[ "$PUBLISH" == "1" && "$VERSION" == 1.* && "${CONFIRM_V1_RELEASE:-}" != "YES" ]]; then
+  fail "Refusing to publish v$VERSION without explicit approval.
+   Re-run with CONFIRM_V1_RELEASE=YES only after the owner explicitly directs a v1 launch."
+fi
+
 # --- locate the Developer ID identity ---
 DEV_ID="${DEV_ID:-$(security find-identity -v -p codesigning 2>/dev/null \
   | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')}"
@@ -43,7 +52,6 @@ TOOLS="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path "*artifacts/spar
 TOOLS="$(dirname "${TOOLS:-}")"
 [[ -x "$TOOLS/sign_update" ]] || fail "Sparkle tools not found — build once so SwiftPM resolves Sparkle."
 
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
 step "Releasing $SCHEME $VERSION   (identity: $DEV_ID)"
 
 DIST="dist"; rm -rf "$DIST"; mkdir -p "$DIST"

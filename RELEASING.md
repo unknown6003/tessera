@@ -68,8 +68,12 @@ That works if you attach `appcast.xml` (and the `.dmg`) as assets on each GitHub
 Release. Change it if you host the appcast elsewhere.
 
 ## 1. Bump the version
-In `Tessera/Info.plist`: set `CFBundleShortVersionString` (e.g. `1.0.1`) and
+In `Tessera/Info.plist`: set `CFBundleShortVersionString` (e.g. `0.1.1`) and
 increment `CFBundleVersion` (monotonic build number). Sparkle compares these.
+
+**v1 launch guard:** `release.sh --publish` refuses every `1.x` version unless
+the owner has explicitly directed the v1 launch and the command is rerun with
+`CONFIRM_V1_RELEASE=YES`. Do not set that override preemptively.
 
 ## 2. Build, sign, notarize, staple the app
 ```sh
@@ -96,11 +100,11 @@ xcrun stapler staple "$APP"
 ## 3. Package the .dmg, then sign + notarize it
 ```sh
 STAGE="$(mktemp -d)"; cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "Tessera" -srcfolder "$STAGE" -ov -format UDZO "Tessera-1.0.1.dmg"
+hdiutil create -volname "Tessera" -srcfolder "$STAGE" -ov -format UDZO "Tessera-0.1.1.dmg"
 
-codesign --force --sign "Developer ID Application: Your Name (YOURTEAMID)" --timestamp "Tessera-1.0.1.dmg"
-xcrun notarytool submit "Tessera-1.0.1.dmg" --keychain-profile "TESSERA_NOTARY" --wait
-xcrun stapler staple "Tessera-1.0.1.dmg"
+codesign --force --sign "Developer ID Application: Your Name (YOURTEAMID)" --timestamp "Tessera-0.1.1.dmg"
+xcrun notarytool submit "Tessera-0.1.1.dmg" --keychain-profile "TESSERA_NOTARY" --wait
+xcrun stapler staple "Tessera-0.1.1.dmg"
 ```
 Sparkle delivers this `.dmg` directly (it mounts it and installs the `.app` inside).
 
@@ -114,16 +118,16 @@ Add release notes (an HTML `<description>` or `<sparkle:releaseNotesLink>`) per 
 
 ## 5. Publish the GitHub Release
 ```sh
-gh release create v1.0.1 \
-  Tessera-1.0.1.dmg appcast.xml \
-  --repo unknown6003/tessera --title "1.0.1" --notes "…"
+gh release create v0.1.1 \
+  Tessera-0.1.1.dmg appcast.xml \
+  --repo unknown6003/tessera --title "0.1.1" --notes "…"
 ```
 Because `SUFeedURL` uses `…/releases/latest/download/appcast.xml`, the newest
 release's `appcast.xml` is what installed apps read on their next check.
 
 ## 6. Verify the update path
 On a machine running the *previous* version, wait for a scheduled check or use the
-app-menu item **Check for Updates Now** — Sparkle should find 1.0.1, verify the
+app-menu item **Check for Updates Now** — Sparkle should find 0.1.1, verify the
 EdDSA signature against `SUPublicEDKey`, download the `.dmg`, install it, and
 relaunch the app by itself. If it reports a signature error, the archive wasn't
 signed with the key whose public half is in Info.plist.
