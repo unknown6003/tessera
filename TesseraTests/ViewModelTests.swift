@@ -259,6 +259,46 @@ struct ViewModelTests {
         #expect(!vm.hasCachedScan(for: try tempDir()))
     }
 
+    @Test("Rapid scan replacement always publishes the newest source")
+    func latestScanWinsStress() async throws {
+        let fm = FileManager.default
+        let slow = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let latest = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: slow, withIntermediateDirectories: true)
+        try fm.createDirectory(at: latest, withIntermediateDirectories: true)
+        defer {
+            try? fm.removeItem(at: slow)
+            try? fm.removeItem(at: latest)
+        }
+
+        for directoryIndex in 0 ..< 80 {
+            let directory = slow.appendingPathComponent("directory-\(directoryIndex)")
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            for fileIndex in 0 ..< 25 {
+                try Data([UInt8(fileIndex)])
+                    .write(to: directory.appendingPathComponent("file-\(fileIndex)"))
+            }
+        }
+        try Data("newest".utf8).write(to: latest.appendingPathComponent("latest.marker"))
+
+        let vm = ScanViewModel()
+        for iteration in 0 ..< 12 {
+            vm.startScan(volumeURL: slow)
+            await Task.yield()
+            vm.startScan(volumeURL: latest)
+
+            for _ in 0 ..< 500 where vm.isScanning || vm.rootNode == nil {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+
+            #expect(!vm.isScanning, "Replacement scan timed out on iteration \(iteration)")
+            #expect(vm.scannedURL == latest,
+                    "A stale scan replaced the newest source on iteration \(iteration)")
+            #expect(vm.rootNode?.children.contains { $0.name == "latest.marker" } == true)
+            #expect(vm.rootNode?.children.contains { $0.name == "directory-0" } == false)
+        }
+    }
+
     @Test("Deleting from a published tree advances the chart content revision")
     func deletionInvalidatesChartLayout() async throws {
         let directory = FileManager.default.temporaryDirectory

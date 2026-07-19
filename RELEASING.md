@@ -10,14 +10,26 @@ and a one-time Sparkle signing key.
 
 ## 0. One-time setup
 
-### Sparkle EdDSA signing key — ✅ DONE
+### Sparkle EdDSA signing key — ✅ generated locally; CI secret required
 Already generated. The **private** key is in this Mac's login Keychain and the
-**public** key is in `Tessera/Info.plist` (`SUPublicEDKey`). Don't commit or export
-the private key. To re-print the public key:
+**public** key is in `Tessera/Info.plist` (`SUPublicEDKey`). Don't commit the private
+key or leave exported copies behind. To re-print the public key:
 `<DerivedData>/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -p`.
 ⚠️ Back up the private key (Keychain item "ed25519" / account
 `https://sparkle-project.org`) — if it's lost you can't sign updates that existing
 installs will accept.
+
+GitHub's tag-driven release workflow needs the *same* key as the Actions secret
+`SPARKLE_PRIVATE_KEY`. Export it once on the Mac that created the key, upload the
+file directly to GitHub, then securely delete the exported copy:
+```sh
+TOOLS="<DerivedData>/SourcePackages/artifacts/sparkle/Sparkle/bin"
+"$TOOLS/generate_keys" -x /tmp/tessera-sparkle-private-key
+gh secret set SPARKLE_PRIVATE_KEY < /tmp/tessera-sparkle-private-key
+rm -P /tmp/tessera-sparkle-private-key
+```
+Never generate a replacement key for this workflow: existing installations trust
+the public key already embedded in 0.1.1.
 
 ### Apple Developer ID — ⛔ STILL NEEDED (enroll personal account first)
 `security find-identity -v -p codesigning` currently shows **0 identities**. Being
@@ -60,6 +72,17 @@ ID must be enrolled in the Apple Developer Program first.
 `release.sh` auto-detects the Developer ID identity and the Sparkle tools and reads
 the version from Info.plist. The manual steps below (1–6) are what it automates,
 kept for reference / troubleshooting.
+
+For the current ad-hoc distribution channel, pushing a version tag runs the guarded
+GitHub release workflow after the qualification checks have passed:
+```sh
+git tag v0.1.2
+git push origin v0.1.2
+```
+It refuses a tag/plist mismatch or missing Sparkle key, runs the native suite again,
+creates `Tessera.dmg`, EdDSA-signs the archive in `appcast.xml`, and publishes the
+draft only after every asset has been validated. Developer ID signing/notarization
+remains the production-distribution upgrade described below.
 
 ### Appcast feed URL
 `SUFeedURL` in Info.plist currently points at:

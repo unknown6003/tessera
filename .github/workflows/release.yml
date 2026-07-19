@@ -1,0 +1,155 @@
+name: Publish macOS auto-update release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, Sparkle-sign, and publish
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate release identity
+        env:
+          CONFIRM_V1_RELEASE: ${{ vars.CONFIRM_V1_RELEASE }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Tessera/Info.plist)
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Tessera/Info.plist)
+          expected_tag="v$version"
+          [[ "$GITHUB_REF_NAME" == "$expected_tag" ]] || {
+            echo "Tag $GITHUB_REF_NAME does not match Info.plist version $version" >&2
+            exit 1
+          }
+          [[ "$build" =~ ^[1-9][0-9]*$ ]] || {
+            echo "CFBundleVersion must be a positive integer" >&2
+            exit 1
+          }
+          if [[ "$version" == 1.* && "$CONFIRM_V1_RELEASE" != YES ]]; then
+            echo 'Publishing a 1.x milestone requires repository variable CONFIRM_V1_RELEASE=YES' >&2
+            exit 1
+          fi
+          [[ -n "$SPARKLE_PRIVATE_KEY" ]] || {
+            echo 'Missing SPARKLE_PRIVATE_KEY: export the existing Sparkle key and add it as a repository Actions secret.' >&2
+            exit 1
+          }
+
+      - name: Resolve Swift packages
+        run: >-
+          xcodebuild -resolvePackageDependencies
+          -project Tessera.xcodeproj
+          -scheme Tessera
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+
+      - name: Test
+        run: >-
+          xcodebuild test
+          -project Tessera.xcodeproj
+          -scheme Tessera
+          -configuration Debug
+          -destination 'platform=macOS'
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+
+      - name: Build ad-hoc signed app and disk image
+        env:
+          RELEASE_DIR: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Tessera/Info.plist)
+          xcodebuild build \
+            -project Tessera.xcodeproj \
+            -scheme Tessera \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM=
+
+          app="$RUNNER_TEMP/DerivedData/Build/Products/Release/Tessera.app"
+          [[ -d "$app" ]]
+          codesign --force --deep --sign - --entitlements Tessera/Tessera.entitlements "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+          built_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+          built_key=$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")
+          source_key=$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' Tessera/Info.plist)
+          [[ "$built_version" == "$version" ]]
+          [[ "$built_key" == "$source_key" ]]
+
+          updates="$RELEASE_DIR/updates"
+          stage="$RELEASE_DIR/dmg-stage"
+          mkdir -p "$updates" "$stage"
+          cp -R "$app" "$stage/"
+          ln -s /Applications "$stage/Applications"
+          hdiutil create -volname Tessera -srcfolder "$stage" -ov -format UDZO \
+            "$updates/Tessera-$version.dmg"
+
+      - name: Generate and verify the signed Sparkle appcast
+        env:
+          RELEASE_DIR: ${{ runner.temp }}/release
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Tessera/Info.plist)
+          updates="$RELEASE_DIR/updates"
+          tools=$(find "$RUNNER_TEMP/DerivedData/SourcePackages/artifacts" \
+            -path '*/Sparkle/bin/generate_appcast' -type f -perm -111 -print -quit)
+          [[ -x "$tools" ]] || {
+            echo 'Sparkle generate_appcast tool was not found in resolved package artifacts' >&2
+            exit 1
+          }
+
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$tools" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" \
+            "$updates"
+
+          appcast="$updates/appcast.xml"
+          [[ -s "$appcast" ]]
+          grep -F 'sparkle:edSignature=' "$appcast"
+          grep -F "sparkle:shortVersionString=\"$version\"" "$appcast"
+          grep -F "Tessera-$version.dmg" "$appcast"
+
+          cp "$updates/Tessera-$version.dmg" "$updates/Tessera.dmg"
+          (cd "$updates" && shasum -a 256 Tessera.dmg "Tessera-$version.dmg" appcast.xml > SHA256SUMS)
+
+      - name: Publish release atomically
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_DIR: ${{ runner.temp }}/release
+        run: |
+          set -euo pipefail
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Tessera/Info.plist)
+          updates="$RELEASE_DIR/updates"
+          gh release create "$GITHUB_REF_NAME" \
+            "$updates/Tessera.dmg" \
+            "$updates/Tessera-$version.dmg" \
+            "$updates/appcast.xml" \
+            "$updates/SHA256SUMS" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Tessera $version" \
+            --generate-notes \
+            --draft
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest

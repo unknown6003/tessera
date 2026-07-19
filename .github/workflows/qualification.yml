@@ -1,0 +1,163 @@
+name: Performance and stability qualification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qualification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-stability:
+    name: macOS stress and scanner benchmarks
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve Swift packages
+        run: >-
+          xcodebuild -resolvePackageDependencies
+          -project Tessera.xcodeproj
+          -scheme Tessera
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+
+      - name: Repeat the full native test suite
+        run: >-
+          xcodebuild test
+          -project Tessera.xcodeproj
+          -scheme Tessera
+          -configuration Debug
+          -destination 'platform=macOS'
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+          -test-iterations 5
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+
+      - name: Build benchmark fixture
+        env:
+          BENCHMARK_FIXTURE: ${{ runner.temp }}/tessera-benchmark
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['BENCHMARK_FIXTURE'])
+          root.mkdir(parents=True, exist_ok=True)
+          payload = b'tessera-benchmark\n' * 8
+          for directory_index in range(250):
+              directory = root / f'directory-{directory_index:04d}'
+              directory.mkdir()
+              for file_index in range(80):
+                  (directory / f'file-{file_index:04d}.dat').write_bytes(payload)
+          PY
+
+      - name: Run serial, parallel, and incremental scan benchmarks
+        env:
+          BENCHMARK_FIXTURE: ${{ runner.temp }}/tessera-benchmark
+          BENCHMARK_LOGS: ${{ runner.temp }}/benchmark-logs
+          APP_BINARY: ${{ runner.temp }}/DerivedData/Build/Products/Debug/Tessera.app/Contents/MacOS/Tessera
+        run: |
+          set -euo pipefail
+          mkdir -p "$BENCHMARK_LOGS"
+
+          run_with_watchdog() {
+            local log_file="$1"
+            shift
+            "$@" >"$log_file" 2>&1 &
+            local app_pid=$!
+            (sleep 300; kill -TERM "$app_pid" 2>/dev/null || true) &
+            local watchdog_pid=$!
+            local status=0
+            wait "$app_pid" || status=$?
+            kill "$watchdog_pid" 2>/dev/null || true
+            wait "$watchdog_pid" 2>/dev/null || true
+            if [[ "$status" -ne 0 ]]; then
+              cat "$log_file"
+              return "$status"
+            fi
+          }
+
+          run_with_watchdog "$BENCHMARK_LOGS/scan.log" \
+            env SO_BENCH="$BENCHMARK_FIXTURE" SO_BENCH_REPEATS=5 \
+              SO_BENCH_PARALLEL=1 SO_AUTOQUIT=1 "$APP_BINARY"
+          run_with_watchdog "$BENCHMARK_LOGS/rescan.log" \
+            env SO_BENCH_RESCAN="$BENCHMARK_FIXTURE" SO_AUTOQUIT=1 "$APP_BINARY"
+
+          grep -F 'BENCH serial BEST:' "$BENCHMARK_LOGS/scan.log"
+          grep -F 'BENCH parallel BEST:' "$BENCHMARK_LOGS/scan.log"
+          grep -F 'RESCAN correctness:' "$BENCHMARK_LOGS/rescan.log" | grep -F 'MATCH'
+          if grep -Eiq 'MISMATCH|(^|[^[:alpha:]])(nan|inf)([^[:alpha:]]|$)' "$BENCHMARK_LOGS"/*.log; then
+            cat "$BENCHMARK_LOGS"/*.log
+            exit 1
+          fi
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-benchmark-logs
+          path: ${{ runner.temp }}/benchmark-logs
+          if-no-files-found: warn
+          retention-days: 14
+
+  web-performance:
+    name: Web correctness and Lighthouse budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check, test, and compile
+        run: |
+          pnpm check
+          pnpm lint
+          pnpm test
+          pnpm build
+
+      - name: Enforce production asset budgets
+        run: |
+          js_bytes=$(find dist/client/assets -type f -name '*.js' -printf '%s\n' | awk '{ total += $1 } END { print total + 0 }')
+          css_bytes=$(find dist/client/assets -type f -name '*.css' -printf '%s\n' | awk '{ total += $1 } END { print total + 0 }')
+          echo "JavaScript: $js_bytes bytes (budget: 550000)"
+          echo "CSS: $css_bytes bytes (budget: 100000)"
+          test "$js_bytes" -le 550000
+          test "$css_bytes" -le 100000
+
+      - name: Run Lighthouse three times at a mobile viewport
+        run: pnpm dlx @lhci/cli@0.15.1 autorun --config=./lighthouserc.cjs
+
+      - name: Upload Lighthouse evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lighthouse-reports
+          path: web/.lighthouseci
+          if-no-files-found: warn
+          retention-days: 14
