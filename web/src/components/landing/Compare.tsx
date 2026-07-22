@@ -17,17 +17,28 @@ import { cn } from '#/lib/utils.ts'
 function Value({ value, tessera }: { value: string; tessera: boolean }) {
   if (value === 'Yes')
     return (
-      <Check
-        className={cn(
-          'mx-auto size-5',
-          tessera ? 'text-brand' : 'text-foreground/70',
-        )}
-        strokeWidth={2.4}
-      />
+      <>
+        <Check
+          aria-hidden="true"
+          className={cn(
+            'mx-auto size-5',
+            tessera ? 'text-brand' : 'text-foreground/70',
+          )}
+          strokeWidth={2.4}
+        />
+        <span className="sr-only">Yes</span>
+      </>
     )
   if (value === 'No')
     return (
-      <X className="mx-auto size-4 text-muted-foreground/40" strokeWidth={2} />
+      <>
+        <X
+          aria-hidden="true"
+          className="mx-auto size-4 text-muted-foreground/40"
+          strokeWidth={2}
+        />
+        <span className="sr-only">No</span>
+      </>
     )
   // text values (price, "Partial")
   return (
@@ -57,11 +68,18 @@ export function Compare() {
 
         <Reveal className="mx-auto mt-12 max-w-3xl">
           <Card className="overflow-hidden p-0">
-            <div className="overflow-x-auto">
+            <div
+              className="overflow-x-auto rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              role="region"
+              aria-label="Product comparison table"
+              tabIndex={0}
+            >
               <Table className="min-w-[560px]">
                 <TableHeader>
                   <TableRow className="border-border hover:bg-transparent">
-                    <TableHead className="w-[34%]" />
+                    <TableHead className="w-[34%]">
+                      <span className="sr-only">Feature</span>
+                    </TableHead>
                     {products.map((name, i) => (
                       <TableHead
                         key={name}

@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+early_access: false
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  review_status: true
+  review_details: true
+  commit_status: true
+  fail_commit_status: true
+  collapse_walkthrough: true
+  poem: false
+  in_progress_fortune: false
+  enable_prompt_for_ai_agents: true
+
+  path_filters:
+    - "!web/dist/**"
+    - "!web/src/routeTree.gen.ts"
+    - "!**/*.png"
+    - "!**/*.ico"
+
+  path_instructions:
+    - path: "Tessera/Engine/**/*.swift"
+      instructions: >-
+        Prioritize correctness under cancellation, Swift 6 concurrency isolation,
+        bounded resource use, filesystem race handling, and ensuring no mutable
+        FileNode tree is published while background workers can still mutate it.
+    - path: "Tessera/ViewModel/**/*.swift"
+      instructions: >-
+        Check that asynchronous results are generation-scoped, stale tasks cannot
+        overwrite newer UI state, and all ObservableObject publication is main-actor safe.
+    - path: "Tessera/Views/**/*.swift"
+      instructions: >-
+        Review macOS SwiftUI behavior at the 920x600 minimum window and larger sizes.
+        Flag clipped or inaccessible controls, invalid transient geometry, expensive
+        live-resize recomputation, broken keyboard/VoiceOver access, and hit-test mismatches.
+    - path: "TesseraTests/**/*.swift"
+      instructions: >-
+        Require deterministic coverage for concurrency, cancellation, filesystem
+        cleanup, chart geometry, and boundary conditions. Avoid timing-only assertions.
+    - path: "web/**/*.{ts,tsx,css}"
+      instructions: >-
+        Check responsive layout, semantic HTML, keyboard access, reduced-motion behavior,
+        Core Web Vitals, generated/static deployment compatibility, and strict typing.
+    - path: ".github/workflows/*.yml"
+      instructions: >-
+        Enforce least-privilege permissions, pinned major action versions, bounded
+        timeouts, concurrency cancellation, and complete native plus web validation.
+
+  auto_review:
+    enabled: true
+    drafts: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+    ignore_usernames:
+      - "dependabot[bot]"
+      - "github-actions[bot]"
+
+  tools:
+    swiftlint:
+      enabled: true
+    eslint:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    yamllint:
+      enabled: true
+    gitleaks:
+      enabled: true
+
+chat:
+  auto_reply: true

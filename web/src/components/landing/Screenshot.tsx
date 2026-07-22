@@ -10,11 +10,17 @@ import { cn } from '#/lib/utils.ts'
 export function Screenshot({
   src,
   alt,
+  width = 2400,
+  height = 1500,
+  fitContainer = false,
   priority = false,
   className,
 }: {
   src: string
   alt: string
+  width?: number
+  height?: number
+  fitContainer?: boolean
   title?: string
   priority?: boolean
   className?: string
@@ -29,9 +35,11 @@ export function Screenshot({
       <img
         src={asset(src)}
         alt={alt}
+        width={width}
+        height={height}
         loading={priority ? 'eager' : 'lazy'}
         decoding="async"
-        className="block w-full"
+        className={cn('block w-full', fitContainer && 'h-full object-contain')}
       />
     </Card>
   )

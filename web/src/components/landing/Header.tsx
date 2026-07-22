@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { content } from '../../data/spec'
 import { Sunburst } from './Sunburst'
@@ -8,12 +8,24 @@ import { cn } from '#/lib/utils.ts'
 export function Header() {
   const nav = content.nav.filter((n) => n.label !== 'Download')
   const [open, setOpen] = useState(false)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const mobileNavRef = useRef<HTMLElement>(null)
 
   // Close the mobile menu on Escape, and never leave it open past a resize
   // up into the desktop breakpoint.
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    const firstLink = mobileNavRef.current?.querySelector<HTMLElement>('a')
+    firstLink?.focus()
+    const closeAndRestoreFocus = () => {
+      setOpen(false)
+      toggleRef.current?.focus()
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      closeAndRestoreFocus()
+    }
     const onResize = () => window.innerWidth >= 768 && setOpen(false)
     window.addEventListener('keydown', onKey)
     window.addEventListener('resize', onResize)
@@ -62,12 +74,13 @@ export function Header() {
 
         {/* mobile menu toggle */}
         <button
+          ref={toggleRef}
           type="button"
           aria-label={open ? 'Close menu' : 'Open menu'}
           aria-expanded={open}
           aria-controls="mobile-nav"
           onClick={() => setOpen((v) => !v)}
-          className="ml-auto inline-flex size-9 items-center justify-center rounded-md border border-border bg-surface text-foreground md:hidden"
+          className="ml-auto inline-flex size-9 items-center justify-center rounded-md border border-border bg-surface text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:hidden"
         >
           {open ? <X className="size-5" /> : <Menu className="size-5" />}
         </button>
@@ -81,21 +94,32 @@ export function Header() {
           open ? 'block' : 'hidden',
         )}
       >
-        <nav aria-label="Primary" className="container-wrap flex flex-col py-3">
+        <nav
+          ref={mobileNavRef}
+          aria-label="Mobile primary"
+          className="container-wrap flex flex-col py-3"
+        >
           {nav.map((n) => (
             <a
               key={n.label}
               href={n.href}
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                setOpen(false)
+                toggleRef.current?.focus()
+              }}
               className="rounded-md px-2 py-3 text-[0.95rem] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               {n.label}
             </a>
           ))}
-          <div onClick={() => setOpen(false)}>
+          <div>
             <DownloadButton
               label="Download for macOS"
               className="mt-2 w-full"
+              onActivate={() => {
+                setOpen(false)
+                toggleRef.current?.focus()
+              }}
             />
           </div>
         </nav>

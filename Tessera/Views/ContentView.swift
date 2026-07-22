@@ -163,41 +163,51 @@ struct ContentView: View {
 
     @ViewBuilder
     private var chartContent: some View {
-        SunburstChart(
-            root: vm.currentRoot,
-            hoveredNode: vm.hoveredNode,
-            selectedNode: vm.selectedNode,
-            onHover: { vm.hoveredNode = $0 },
-            onSelect: { vm.selectedNode = $0 },
-            onZoomIn: { vm.zoomIn(to: $0) },
-            onZoomOut: { vm.zoomOut() },
-            onAddToCollector: { vm.addToCollector($0) },
-            onRevealInFinder: { node in
-                NSWorkspace.shared.activateFileViewerSelecting([node.url])
-            },
-            drag: drag,
-            onDrop: { node in vm.addToCollector(node) }
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Breadcrumb floats over the TOP edge only. Previously it was a
-        // full-height `VStack { breadcrumb; Spacer() }` overlay, which sat above
-        // the whole chart and swallowed every hover/click meant for the wedges.
-        .overlay(alignment: .top) {
+        // Give navigation and help their own rows. Overlaying them on the chart
+        // made the visible circle collide with controls as the window narrowed.
+        VStack(spacing: 8) {
             if let current = vm.currentRoot {
                 breadcrumb(for: current)
-                    .padding(.top, 4)
             }
+
+            SunburstChart(
+                root: vm.currentRoot,
+                contentRevision: vm.chartRevision,
+                hoveredNode: vm.hoveredNode,
+                selectedNode: vm.selectedNode,
+                onHover: { vm.hoveredNode = $0 },
+                onSelect: { vm.selectedNode = $0 },
+                onZoomIn: { vm.zoomIn(to: $0) },
+                onZoomOut: { vm.zoomOut() },
+                onAddToCollector: { vm.addToCollector($0) },
+                onRevealInFinder: { node in
+                    NSWorkspace.shared.activateFileViewerSelecting([node.url])
+                },
+                drag: drag,
+                onDrop: { node in vm.addToCollector(node) }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1)
+
+            chartHints
         }
-        // The chart's interactions are otherwise invisible. Say them out loud.
-        .overlay(alignment: .bottom) { chartHints }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// Always-visible, plain-language legend for the chart's three interactions.
     private var chartHints: some View {
-        HStack(spacing: 14) {
-            hint("cursorarrow.click", "Click a slice to open it")
-            hint("arrow.up.left.circle", "Click the middle to go back")
-            hint("arrow.down.to.line", "Drag a slice to the list below to remove it")
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                hint("cursorarrow.click", "Click a slice to open it")
+                hint("arrow.up.left.circle", "Click the middle to go back")
+                hint("arrow.down.to.line", "Drag a slice to the list below to remove it")
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
+            Label("Click: open · Center: back · Drag: add to Cleanup List",
+                  systemImage: "cursorarrow.click")
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
         .font(.caption)
         .foregroundStyle(Theme.mutedForeground)
@@ -205,7 +215,6 @@ struct ContentView: View {
         .padding(.vertical, 8)
         .background(Theme.surface, in: Capsule())
         .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
-        .padding(.bottom, 4)
         .allowsHitTesting(false)
     }
 
@@ -288,10 +297,10 @@ struct ContentView: View {
                     .multilineTextAlignment(.center)
             }
             HStack(spacing: 10) {
-                if let url = vm.scannedURL {
+                if vm.canRetryLastScan {
                     Button("Try Again") {
                         vm.errorMessage = nil
-                        vm.startScan(volumeURL: url)
+                        vm.retryLastScan()
                     }
                     .buttonStyle(.flatProminent)
                     .controlSize(.large)
@@ -314,45 +323,76 @@ struct ContentView: View {
 
     private func breadcrumb(for node: FileNode) -> some View {
         let ancestors = ancestorChain(of: node)
-        return ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    Button {
-                        vm.zoomToRoot()
-                    } label: {
-                        Image(systemName: "house.fill")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Zoom to root")
-
-                    ForEach(ancestors) { ancestor in
-                        chevron
-                        Button(ancestor.name) {
-                            vm.currentRoot = ancestor
-                            vm.selectedNode = ancestor
-                            vm.hoveredNode = nil
-                        }
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                breadcrumbHome
+                ForEach(ancestors) { ancestor in
+                    chevron
+                    Button(ancestor.name) { selectBreadcrumbNode(ancestor) }
                         .buttonStyle(.plain)
                         .font(.subheadline)
                         .lineLimit(1)
-                    }
-
-                    if !ancestors.isEmpty { chevron }
-
-                    Text(node.name)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    Text(Theme.format(node.size))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
+                if !ancestors.isEmpty { chevron }
+                breadcrumbCurrent(node)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
+            HStack(spacing: 6) {
+                breadcrumbHome
+                if !ancestors.isEmpty {
+                    chevron
+                    Menu {
+                        ForEach(ancestors) { ancestor in
+                            Button(ancestor.name) { selectBreadcrumbNode(ancestor) }
+                        }
+                    } label: {
+                        Label("Path", systemImage: "ellipsis.circle")
+                            .labelStyle(.iconOnly)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Open parent folders")
+                    chevron
+                }
+                breadcrumbCurrent(node)
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
         .frame(maxWidth: 560)
-        .fixedSize(horizontal: true, vertical: false)
         .background(Theme.elevated, in: Capsule())
         .liquidGlassDepth(Capsule(), highlight: 0.9, shadowRadius: 16, shadowY: 8)
+    }
+
+    private var breadcrumbHome: some View {
+        Button {
+            vm.zoomToRoot()
+        } label: {
+            Image(systemName: "house.fill")
+                .font(.caption.weight(.semibold))
+        }
+        .buttonStyle(.plain)
+        .help("Zoom to root")
+    }
+
+    private func breadcrumbCurrent(_ node: FileNode) -> some View {
+        HStack(spacing: 6) {
+            Text(node.name)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+            Text(Theme.format(node.size))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
+    }
+
+    private func selectBreadcrumbNode(_ node: FileNode) {
+        vm.zoomIn(to: node)
     }
 
     private var chevron: some View {

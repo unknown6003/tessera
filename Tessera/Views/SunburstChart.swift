@@ -4,10 +4,13 @@ import AppKit
 // MARK: - SunburstChart
 
 /// Pure-Canvas sunburst (ring chart) that renders up to five rings around a
-/// central glass hub. Layout is precomputed when `root` or the available size
-/// changes; only hover/selection state varies per frame.
+/// central glass hub. Angular layout is precomputed when `root` or its content
+/// revision changes; resizing only updates Canvas geometry, while hover/selection
+/// vary per frame.
 struct SunburstChart: View {
     let root: FileNode?
+    /// Invalidates cached wedge angles when the same root object is mutated.
+    let contentRevision: UInt64
     let hoveredNode: FileNode?
     let selectedNode: FileNode?
     let onHover: (FileNode?) -> Void
@@ -29,11 +32,40 @@ struct SunburstChart: View {
     private static let gapDegrees: Double = 1.2
     private static let maxWedgesPerRing = 60
     private static let ringInset: CGFloat = 1.5            // hairline separation
+    private static let minimumRenderableSide: CGFloat = 120
 
-    // Cached layout, recomputed only on root/size change.
+    /// Geometry shared by drawing and hit testing. Returning nil for transient
+    /// zero/tiny sizes prevents a live resize from producing a zero ring span
+    /// (which previously reached `Int(.nan)` in hit testing and crashed).
+    struct ChartGeometry: Equatable {
+        let center: CGPoint
+        let chartRadius: CGFloat
+        let hubRadius: CGFloat
+        let ringSpan: CGFloat
+    }
+
+    static func chartGeometry(for size: CGSize) -> ChartGeometry? {
+        guard size.width.isFinite, size.height.isFinite,
+              size.width > 0, size.height > 0 else { return nil }
+        let side = min(size.width, size.height)
+        guard side >= minimumRenderableSide else { return nil }
+        let chartRadius = side / 2 * 0.96
+        let hubRadius = chartRadius * hubFraction
+        let ringSpan = (chartRadius - hubRadius) / CGFloat(maxRings)
+        guard chartRadius.isFinite, hubRadius.isFinite, ringSpan.isFinite,
+              ringSpan > 0 else { return nil }
+        return ChartGeometry(
+            center: CGPoint(x: size.width / 2, y: size.height / 2),
+            chartRadius: chartRadius,
+            hubRadius: hubRadius,
+            ringSpan: ringSpan
+        )
+    }
+
+    // Cached angular layout, recomputed only when the displayed tree changes.
     @State private var layout: [Wedge] = []
-    @State private var layoutSize: CGSize = .zero
     @State private var layoutRootID: ObjectIdentifier?
+    @State private var layoutRevision: UInt64?
     @State private var appearProgress: Double = 0          // 0…1 sweep-in
     @State private var cursor: CGPoint = .zero
     @State private var hovering = false
@@ -50,68 +82,76 @@ struct SunburstChart: View {
 
     var body: some View {
         GeometryReader { geo in
-            let side = min(geo.size.width, geo.size.height)
-            let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-            let chartRadius = side / 2 * 0.96
-            let hubRadius = chartRadius * Self.hubFraction
-
-            ZStack {
-                // Flat design: the wedges sit directly on the solid window
-                // background. No frosted plate, no vibrancy.
-                canvas(center: center, chartRadius: chartRadius, hubRadius: hubRadius)
-                    // Make the entire chart frame hit-testable, including the
-                    // transparent gaps between wedges, so hover and taps always land.
-                    .contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        switch phase {
-                        case .active(let p):
-                            cursor = p
-                            hovering = true
-                            updateHover(at: p, center: center,
-                                        chartRadius: chartRadius, hubRadius: hubRadius)
-                        case .ended:
-                            hovering = false
-                            onHover(nil)
+            if let geometry = Self.chartGeometry(for: geo.size) {
+                ZStack {
+                    // Flat design: the wedges sit directly on the solid window
+                    // background. No frosted plate, no vibrancy.
+                    canvas(center: geometry.center,
+                           chartRadius: geometry.chartRadius,
+                           hubRadius: geometry.hubRadius)
+                        // Make the entire chart frame hit-testable, including the
+                        // transparent gaps between wedges, so hover and taps always land.
+                        .contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let p):
+                                cursor = p
+                                hovering = true
+                                updateHover(at: p, center: geometry.center,
+                                            chartRadius: geometry.chartRadius,
+                                            hubRadius: geometry.hubRadius)
+                            case .ended:
+                                hovering = false
+                                onHover(nil)
+                            }
                         }
+                        .onTapGesture(coordinateSpace: .local) { location in
+                            handleTap(at: location, center: geometry.center,
+                                      chartRadius: geometry.chartRadius,
+                                      hubRadius: geometry.hubRadius)
+                        }
+                        // Drag a wedge out to the dock. Simultaneous so it coexists
+                        // with tap (a click never moves far enough to start a drag).
+                        .simultaneousGesture(
+                            dragGesture(center: geometry.center,
+                                        chartRadius: geometry.chartRadius,
+                                        hubRadius: geometry.hubRadius)
+                        )
+                        .contextMenu {
+                            contextMenuItems(center: geometry.center,
+                                             chartRadius: geometry.chartRadius,
+                                             hubRadius: geometry.hubRadius)
+                        }
+
+                    hub(radius: geometry.hubRadius)
+
+                    if hovering, let node = hoveredNode {
+                        tooltip(for: node, in: geo.size)
                     }
-                    .onTapGesture(coordinateSpace: .local) { location in
-                        handleTap(at: location, center: center,
-                                  chartRadius: chartRadius, hubRadius: hubRadius)
-                    }
-                    // Drag a wedge out to the dock. Simultaneous so it coexists
-                    // with tap (a click never moves far enough to start a drag).
-                    .simultaneousGesture(
-                        dragGesture(center: center, chartRadius: chartRadius, hubRadius: hubRadius)
-                    )
-                    .contextMenu { contextMenuItems(center: center, chartRadius: chartRadius,
-                                                    hubRadius: hubRadius) }
-
-                hub(radius: hubRadius)
-
-                if hovering, let node = hoveredNode {
-                    tooltip(for: node, in: geo.size)
                 }
-            }
-            .background(
-                GeometryReader { proxy in
-                    Color.clear
-                        .onAppear {
-                            windowFrame = proxy.frame(in: .global)
-                            chartFrameInApp = proxy.frame(in: .named(CollectorDragController.appSpace))
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear {
+                                windowFrame = proxy.frame(in: .global)
+                                chartFrameInApp = proxy.frame(in: .named(CollectorDragController.appSpace))
+                            }
+                            .onChange(of: proxy.frame(in: .global)) { _, f in windowFrame = f }
+                            .onChange(of: proxy.frame(in: .named(CollectorDragController.appSpace))) { _, f in
+                                chartFrameInApp = f
+                            }
                         }
-                        .onChange(of: proxy.frame(in: .global)) { _, f in windowFrame = f }
-                        .onChange(of: proxy.frame(in: .named(CollectorDragController.appSpace))) { _, f in
-                            chartFrameInApp = f
-                        }
+                )
+                .onAppear {
+                    rebuild(size: geo.size)
+                    installRightClickMonitor()
                 }
-            )
-            .onAppear {
-                rebuild(size: geo.size)
-                installRightClickMonitor()
+                .onDisappear { removeRightClickMonitor() }
+                .onChange(of: root?.id) { _, _ in rebuild(size: geo.size) }
+                .onChange(of: contentRevision) { _, _ in rebuild(size: geo.size) }
+            } else {
+                Color.clear
             }
-            .onDisappear { removeRightClickMonitor() }
-            .onChange(of: geo.size) { _, s in rebuild(size: s) }
-            .onChange(of: root?.id) { _, _ in rebuild(size: geo.size) }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
@@ -432,11 +472,17 @@ struct SunburstChart: View {
     /// wedge under the cursor.
     static func hitTest(in layout: [Wedge], at p: CGPoint, center: CGPoint,
                         chartRadius: CGFloat, hubRadius: CGFloat) -> Wedge? {
+        guard chartRadius.isFinite, hubRadius.isFinite,
+              chartRadius > hubRadius, hubRadius >= 0 else { return nil }
         let dx = p.x - center.x, dy = p.y - center.y
         let r = sqrt(dx * dx + dy * dy)
+        guard r.isFinite else { return nil }
         guard r >= hubRadius, r <= chartRadius else { return nil }
         let ringSpan = (chartRadius - hubRadius) / CGFloat(maxRings)
-        let depth = Int((r - hubRadius) / ringSpan)
+        guard ringSpan.isFinite, ringSpan > 0 else { return nil }
+        let rawDepth = (r - hubRadius) / ringSpan
+        guard rawDepth.isFinite, rawDepth >= 0 else { return nil }
+        let depth = min(maxRings - 1, Int(rawDepth))
         var deg = Angle(radians: atan2(dy, dx)).degrees
         if deg < 0 { deg += 360 }
 
@@ -457,19 +503,24 @@ struct SunburstChart: View {
     // MARK: - Layout
 
     private func rebuild(size: CGSize) {
-        guard let root, size.width > 1, size.height > 1 else {
+        guard let root, Self.chartGeometry(for: size) != nil else {
             layout = []; return
         }
-        let same = layoutRootID == root.id && layoutSize == size
-        layout = Self.buildLayout(root: root)
-        layoutSize = size
-        if !same {
-            layoutRootID = root.id
-            appearProgress = 0
-            withAnimation(.easeInOut(duration: 0.35)) { appearProgress = 1 }
-        } else {
+        let rootChanged = layoutRootID != root.id
+        let contentChanged = layoutRevision != contentRevision
+
+        // Wedge angles depend only on the tree. Rebuilding hundreds of paths and
+        // synthetic "Other" nodes for every live-resize tick caused avoidable lag;
+        // Canvas applies the new center/radii to the same angular layout directly.
+        guard rootChanged || contentChanged || layout.isEmpty else {
             appearProgress = 1
+            return
         }
+        layout = Self.buildLayout(root: root)
+        layoutRootID = root.id
+        layoutRevision = contentRevision
+        appearProgress = 0
+        withAnimation(.easeInOut(duration: 0.35)) { appearProgress = 1 }
     }
 
     /// Walk the tree breadth-by-depth, allocating angular spans proportional to

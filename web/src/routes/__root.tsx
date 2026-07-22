@@ -47,14 +47,6 @@ function RootDocument({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
       <head>
-        {/* mark JS available before first paint so scroll-reveal can hide
-            initial state without flashing for JS users, while no-JS users
-            keep fully-visible prerendered content */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: "document.documentElement.classList.add('js')",
-          }}
-        />
         <HeadContent />
       </head>
       <body>

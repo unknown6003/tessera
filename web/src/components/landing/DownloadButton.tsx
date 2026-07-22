@@ -27,15 +27,18 @@ export function DownloadButton({
   size = 'lg',
   variant = 'default',
   showIcon = true,
+  onActivate,
 }: {
   label?: string
   className?: string
   size?: 'default' | 'lg' | 'sm'
   variant?: 'default' | 'outline' | 'secondary'
   showIcon?: boolean
+  onActivate?: () => void
 }) {
-  const onClick = (e: MouseEvent) => {
+  const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault()
+    onActivate?.()
     startDownload()
   }
   return (

@@ -80,19 +80,37 @@ struct LayoutTests {
 
     // MARK: - Hit-testing
 
-    // Chart geometry mirrors SunburstChart's body. hubFraction (0.17) and
-    // maxRings (5) are private to the view, so they are duplicated here.
-    private static let hubFraction: CGFloat = 0.17
-    private static let maxRings = 5
-
     private func chartGeometry(for size: CGSize)
         -> (center: CGPoint, chartRadius: CGFloat, hubRadius: CGFloat, ringSpan: CGFloat) {
-        let side = min(size.width, size.height)
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let chartRadius = side / 2 * 0.96
-        let hubRadius = chartRadius * Self.hubFraction
-        let ringSpan = (chartRadius - hubRadius) / CGFloat(Self.maxRings)
-        return (center, chartRadius, hubRadius, ringSpan)
+        guard let geometry = SunburstChart.chartGeometry(for: size) else {
+            Issue.record("Expected renderable chart geometry for \(size)")
+            return (.zero, 0, 0, 0)
+        }
+        return (geometry.center, geometry.chartRadius,
+                geometry.hubRadius, geometry.ringSpan)
+    }
+
+    @Test("Chart follows the smaller window dimension in portrait, landscape, and square layouts")
+    func chartGeometryIsResponsive() {
+        let landscape = SunburstChart.chartGeometry(for: CGSize(width: 900, height: 300))
+        let portrait = SunburstChart.chartGeometry(for: CGSize(width: 300, height: 900))
+        let square = SunburstChart.chartGeometry(for: CGSize(width: 300, height: 300))
+
+        #expect(landscape != nil && portrait != nil && square != nil)
+        #expect(landscape?.chartRadius == portrait?.chartRadius)
+        #expect(portrait?.chartRadius == square?.chartRadius)
+        #expect(landscape?.center == CGPoint(x: 450, y: 150))
+        #expect(portrait?.center == CGPoint(x: 150, y: 450))
+    }
+
+    @Test("Transient zero and tiny layouts do not create invalid chart geometry or hit-test traps")
+    func invalidChartGeometryIsRejected() {
+        #expect(SunburstChart.chartGeometry(for: .zero) == nil)
+        #expect(SunburstChart.chartGeometry(for: CGSize(width: 40, height: 400)) == nil)
+        #expect(SunburstChart.hitTest(in: [], at: .zero, center: .zero,
+                                     chartRadius: 0, hubRadius: 0) == nil)
+        #expect(SunburstChart.hitTest(in: [], at: .zero, center: .zero,
+                                     chartRadius: .nan, hubRadius: 0) == nil)
     }
 
     private func multiRingRoot() -> FileNode {

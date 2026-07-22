@@ -126,7 +126,7 @@ enum BulkDirScanner {
 
         let timeout = _timeoutSecondsOverride ?? timeoutSeconds
         return await withCheckedContinuation { (cont: CheckedContinuation<[EntryInfo]?, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
+            DispatchQueue.global(qos: .utility).async {
                 cont.resume(returning: entriesWithDeadline(atPath: path, timeoutSeconds: timeout))
             }
         }
@@ -169,7 +169,7 @@ enum BulkDirScanner {
     static func entriesWithDeadline(atPath path: String, timeoutSeconds: Double) -> [EntryInfo]? {
         let sem = DispatchSemaphore(value: 0)
         let box = ResultBox()
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .utility).async {
             box.value = entries(atPath: path)
             sem.signal()
         }

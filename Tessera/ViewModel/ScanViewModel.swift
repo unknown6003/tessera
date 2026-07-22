@@ -19,6 +19,10 @@ final class ScanViewModel: ObservableObject {
     @Published var duplicateProgress = DuplicateProgress()
     @Published var isScanning = false
     @Published var progress = ScanProgress()
+    /// Changes when an already-published tree is mutated in place (for example,
+    /// after cleanup). The chart uses this to invalidate angular layout without
+    /// tying expensive layout work to window-size changes.
+    @Published private(set) var chartRevision: UInt64 = 0
     @Published var errorMessage: String?
     @Published var needsFullDiskAccess = false
     /// Drives the first-launch onboarding prompt that asks for Full Disk Access
@@ -32,8 +36,16 @@ final class ScanViewModel: ObservableObject {
     @Published private(set) var scannedURL: URL?
 
     private var scanTask: Task<Void, Never>?
+    /// Monotonically identifies the scan allowed to publish into this view model.
+    /// Cancelling a task is cooperative: an older scanner may still deliver a
+    /// progress callback or finish while its replacement is already running.
+    /// Every async publication is therefore gated by this generation.
+    private var scanGeneration: UInt64 = 0
     private var duplicateTask: Task<Void, Never>?
     private var duplicateCancel: DuplicateCancelToken?
+    /// Invalidates results and progress from duplicate scans whose blocking GCD
+    /// work can outlive the Swift task that originally awaited it.
+    private var duplicateGeneration: UInt64 = 0
     /// The last volume scanned, so a re-scan of the same volume can reuse the
     /// previous tree for incremental speedup.
     private var lastScannedURL: URL?
@@ -51,7 +63,11 @@ final class ScanViewModel: ObservableObject {
     }
     private var scanCache: [URL: CachedScan] = [:]
     private var cacheLRU: [URL] = []
-    private let maxCachedScans = 3
+    // A full-disk FileNode tree can contain millions of objects. Keeping the
+    // displayed tree plus three more complete trees caused severe memory pressure
+    // (and eventual OS termination) after switching sources. One warm tree keeps
+    // instant back-navigation without multiplying the scan's peak footprint.
+    private let maxCachedScans = 1
     /// Diagnostic: true when the last scan ended via CancellationError.
     private(set) var scanTaskWasCancelled = false
 
@@ -62,6 +78,8 @@ final class ScanViewModel: ObservableObject {
     // MARK: - Scan
 
     func startScan(volumeURL: URL) {
+        scanGeneration &+= 1
+        let generation = scanGeneration
         scanTask?.cancel()
         // Preserve the scan currently on screen so switching back to it is instant.
         saveCurrentToCache()
@@ -71,6 +89,11 @@ final class ScanViewModel: ObservableObject {
         // via deletions the user just made — has a new modtime, so it's re-scanned
         // for fresh sizes.
         let cache = scanCache[volumeURL]?.rootNode ?? (volumeURL == scannedURL ? rootNode : nil)
+        // The local reference above is all the incremental scanner needs. Do not
+        // retain a second root for the same source in the LRU while rebuilding it;
+        // reused subtrees already stay alive through `cache`.
+        scanCache.removeValue(forKey: volumeURL)
+        cacheLRU.removeAll { $0 == volumeURL }
         lastScannedURL = volumeURL
         scannedURL = nil
         rootNode = nil
@@ -80,10 +103,8 @@ final class ScanViewModel: ObservableObject {
         selectedNode = nil
         collector = []
         cleanupReport = nil
-        duplicateCancel?.cancel()
-        duplicateTask?.cancel()
+        stopDuplicateSearch()
         duplicateGroups = []
-        isFindingDuplicates = false
         didRunDuplicates = false
         duplicateProgress = DuplicateProgress()
         errorMessage = nil
@@ -91,11 +112,12 @@ final class ScanViewModel: ObservableObject {
         isScanning = true
         progress = ScanProgress(currentPath: volumeURL.path)
 
-        scanTask = Task {
+        scanTask = Task { [weak self] in
+            guard let self else { return }
             do {
                 let node = try await FileScanner.scan(url: volumeURL, cache: cache) { [weak self] prog in
                     Task { @MainActor [weak self] in
-                        guard let self else { return }
+                        guard let self, self.scanGeneration == generation else { return }
                         // Monotonicity guard: discard stale ticks that arrive out of
                         // order (the @MainActor hop can reorder them). Accept the
                         // final tick, or any tick that advances a monotonic counter.
@@ -107,6 +129,11 @@ final class ScanViewModel: ObservableObject {
                         }
                     }
                 }
+                // Cancellation can race with a scanner completing. Only the most
+                // recently started scan may replace the chart or its source state.
+                // A superseded scan returns here and skips trailing cleanup safely:
+                // that cleanup is guarded by the same generation comparison.
+                guard self.scanGeneration == generation else { return }
                 let treeIsEmpty = node.children.isEmpty
                 let volumePath = volumeURL.path
                 let isVolumeRoot = volumePath == "/"
@@ -123,24 +150,44 @@ final class ScanViewModel: ObservableObject {
                     let report = await Task.detached(priority: .utility) {
                         CleanupClassifier.classify(root: node)
                     }.value
-                    guard let self else { return }
+                    guard let self,
+                          self.scanGeneration == generation,
+                          self.rootNode === node else { return }
                     self.cleanupReport = report
                     // Suggestions are NOT auto-staged. The user reviews the groups
                     // and chooses what to add — per group, or all-safe at once —
                     // then deletes from the collector behind the usual confirmation.
                 }
             } catch is CancellationError {
-                // User stopped the scan — not an error.
-                self.scanTaskWasCancelled = true
+                // User stopped the current scan — not an error. A cancellation
+                // from a superseded scan must not change its replacement's state.
+                if self.scanGeneration == generation {
+                    self.scanTaskWasCancelled = true
+                }
             } catch {
-                self.errorMessage = error.localizedDescription
+                if self.scanGeneration == generation {
+                    self.errorMessage = error.localizedDescription
+                }
             }
-            self.isScanning = false
+            if self.scanGeneration == generation {
+                self.isScanning = false
+                self.scanTask = nil
+            }
         }
     }
 
     func cancelScan() {
         scanTask?.cancel()
+    }
+
+    /// Whether the most recently requested source can be scanned again after a
+    /// failure. `scannedURL` is intentionally nil while a scan is in flight, so
+    /// retry state must use the requested URL instead of the last published tree.
+    var canRetryLastScan: Bool { lastScannedURL != nil && !isScanning }
+
+    func retryLastScan() {
+        guard let url = lastScannedURL, !isScanning else { return }
+        startScan(volumeURL: url)
     }
 
     // MARK: - Scan cache (instant disk/cloud switching)
@@ -172,8 +219,18 @@ final class ScanViewModel: ObservableObject {
     @discardableResult
     func showCachedScanIfAvailable(for url: URL) -> Bool {
         guard url != scannedURL, let cached = scanCache[url] else { return false }
-        if isScanning { scanTask?.cancel(); isScanning = false }
-        duplicateTask?.cancel()
+        if isScanning {
+            // Invalidate every callback/result from the in-flight scan before
+            // restoring the cached tree. Cancellation alone is cooperative.
+            scanGeneration &+= 1
+            scanTask?.cancel()
+            scanTask = nil
+            isScanning = false
+        }
+        // Cancelling the awaiting Task is not enough: DuplicateFinder runs on a
+        // blocking GCD worker and only its token can stop it. Invalidate both its
+        // result and progress before publishing the cached source.
+        stopDuplicateSearch()
         // Preserve what we're leaving, then restore the requested scan.
         saveCurrentToCache()
 
@@ -310,7 +367,8 @@ final class ScanViewModel: ObservableObject {
     /// GCD worker pool (off the cooperative pool, since it does blocking reads).
     func findDuplicates() {
         guard let root = rootNode, !isFindingDuplicates else { return }
-        duplicateCancel?.cancel()
+        stopDuplicateSearch()
+        let generation = duplicateGeneration
         let token = DuplicateCancelToken()
         duplicateCancel = token
         isFindingDuplicates = true
@@ -318,7 +376,12 @@ final class ScanViewModel: ObservableObject {
         duplicateGroups = []
         duplicateProgress = DuplicateProgress()
         let onProgress: @Sendable (DuplicateProgress) -> Void = { [weak self] prog in
-            Task { @MainActor in self?.duplicateProgress = prog }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.duplicateGeneration == generation,
+                      !token.isCancelled else { return }
+                self.duplicateProgress = prog
+            }
         }
         // Snapshot the candidate files on the main actor before handing them to the
         // background pass, so the background never walks `FileNode.children` while the
@@ -330,15 +393,29 @@ final class ScanViewModel: ObservableObject {
                     cont.resume(returning: DuplicateFinder.find(files: files, cancel: token, progress: onProgress))
                 }
             }
-            guard let self, !token.isCancelled else { return }
+            guard let self,
+                  self.duplicateGeneration == generation,
+                  !token.isCancelled else { return }
             self.duplicateGroups = groups
             self.isFindingDuplicates = false
+            self.duplicateTask = nil
+            self.duplicateCancel = nil
         }
     }
 
     func cancelDuplicates() {
+        stopDuplicateSearch()
+    }
+
+    /// Cancel both layers of duplicate work and invalidate every queued
+    /// publication. The GCD worker is cooperative, so generation gating remains
+    /// necessary for a progress callback already enqueued on the main actor.
+    private func stopDuplicateSearch() {
+        duplicateGeneration &+= 1
         duplicateCancel?.cancel()
         duplicateTask?.cancel()
+        duplicateCancel = nil
+        duplicateTask = nil
         isFindingDuplicates = false
     }
 
@@ -541,9 +618,10 @@ final class ScanViewModel: ObservableObject {
             }
         }
 
-        // Force chart redraw with the corrected (and safe) root.
-        currentRoot = nil
+        // Publish the corrected root and separately invalidate the cached angular
+        // layout when the existing tree actually changed.
         currentRoot = correctedRoot
+        if !removed.isEmpty { chartRevision &+= 1 }
 
         if let firstFailure = failures.first {
             throw firstFailure

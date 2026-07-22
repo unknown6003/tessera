@@ -1,144 +1,139 @@
 import SwiftUI
 
-/// Top action bar over the chart. Holds the scan-wide tools — Clean Up (rule-based
-/// suggestions) and Find Duplicates — as buttons that open popovers, so the
-/// inspector can stay focused on the selected item and these tools are one click
-/// away instead of buried in a long sidebar scroll.
+/// Scan-wide tools shown above the chart. At wide sizes every tool is visible;
+/// when the center column narrows, the secondary actions move into an explicit
+/// overflow menu instead of silently scrolling out of reach.
 struct CleanupActionBar: View {
     @ObservedObject var vm: ScanViewModel
-    @State private var showCleanup = false
-    @State private var showDuplicates = false
-    @State private var showByKind = false
-    @State private var showLargeOld = false
-    @State private var showSearch = false
-    @State private var showApps = false
+
+    private enum Tool: String, Identifiable, CaseIterable {
+        case cleanup, apps, duplicates, byKind, largeOld, search
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .cleanup:    return "Clean Up"
+            case .apps:       return "Uninstall Apps"
+            case .duplicates: return "Find Duplicates"
+            case .byKind:     return "Browse by Type"
+            case .largeOld:   return "Big & Old Files"
+            case .search:     return "Search Files"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .cleanup:    return "sparkles"
+            case .apps:       return "trash.square"
+            case .duplicates: return "doc.on.doc"
+            case .byKind:     return "square.grid.2x2.fill"
+            case .largeOld:   return "clock.badge.exclamationmark"
+            case .search:     return "magnifyingglass"
+            }
+        }
+
+        var popoverWidth: CGFloat {
+            switch self {
+            case .cleanup: return 380
+            case .apps, .largeOld, .search: return 420
+            case .duplicates, .byKind: return 400
+            }
+        }
+    }
+
+    @State private var presentedTool: Tool?
 
     var body: some View {
-        // The bar holds six tools; at the window's minimum width the center column is
-        // only ~300pt, so the buttons are kept at .regular size and wrapped in a
-        // horizontal ScrollView that degrades gracefully (scroll) instead of clipping.
-        // The staged total lives only in the collector dock header (its canonical
-        // place) — duplicating it here was redundant.
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                cleanupButton
-                appsButton
-                duplicatesButton
-                byKindButton
-                largeOldButton
-                searchButton
-            }
-            .padding(.horizontal, 4)
+        ViewThatFits(in: .horizontal) {
+            expandedToolbar
+            compactToolbar
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .popover(item: $presentedTool, arrowEdge: .top) { tool in
+            toolPopover(tool)
         }
     }
 
-    // MARK: Clean Up
+    /// Natural-width row used only when all six controls genuinely fit.
+    private var expandedToolbar: some View {
+        HStack(spacing: 10) {
+            ForEach(Tool.allCases) { tool in
+                toolButton(tool)
+            }
+        }
+        .padding(.horizontal, 4)
+        .fixedSize(horizontal: true, vertical: false)
+    }
 
-    private var cleanupButton: some View {
-        Button { showCleanup.toggle() } label: {
-            Label(cleanupTitle, systemImage: "sparkles")
+    /// The primary action stays one click away; every secondary action is named in
+    /// a conventional menu that works with mouse, keyboard, and VoiceOver.
+    private var compactToolbar: some View {
+        HStack(spacing: 8) {
+            toolButton(.cleanup)
+
+            Menu {
+                ForEach(Tool.allCases.filter { $0 != .cleanup }) { tool in
+                    Button {
+                        presentedTool = tool
+                    } label: {
+                        Label(title(for: tool), systemImage: tool.symbol)
+                    }
+                }
+            } label: {
+                Label("More Tools", systemImage: "ellipsis.circle")
+            }
+            .buttonStyle(.flat)
+            .controlSize(.regular)
+            .help("Open all scan tools")
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func toolButton(_ tool: Tool) -> some View {
+        Button {
+            presentedTool = tool
+        } label: {
+            Label(title(for: tool), systemImage: tool.symbol)
         }
         .buttonStyle(.flat)
         .controlSize(.regular)
-        .popover(isPresented: $showCleanup, arrowEdge: .top) {
-            ScrollView {
-                CleanupSuggestionsView(vm: vm).padding(16)
+        .help(tool.label)
+    }
+
+    private func title(for tool: Tool) -> String {
+        switch tool {
+        case .cleanup:
+            if let report = vm.cleanupReport, report.safeTotalBytes > 0 {
+                return "Clean Up · \(Theme.format(report.safeTotalBytes))"
             }
-            .frame(width: 380, height: 520)
-        }
-    }
-
-    private var cleanupTitle: String {
-        if let report = vm.cleanupReport, report.safeTotalBytes > 0 {
-            return "Clean Up · \(Theme.format(report.safeTotalBytes))"
-        }
-        return "Clean Up"
-    }
-
-    // MARK: Apps (uninstaller)
-
-    private var appsButton: some View {
-        Button { showApps.toggle() } label: {
-            Label("Uninstall Apps", systemImage: "trash.square")
-        }
-        .buttonStyle(.flat)
-        .controlSize(.regular)
-        .popover(isPresented: $showApps, arrowEdge: .top) {
-            ScrollView {
-                AppUninstallerView(vm: vm).padding(16)
+        case .duplicates:
+            if vm.didRunDuplicates, !vm.duplicateGroups.isEmpty {
+                return "Duplicates · \(Theme.format(vm.duplicateReclaimableBytes))"
             }
-            .frame(width: 420, height: 520)
+        case .apps, .byKind, .largeOld, .search:
+            break
         }
+        return tool.label
     }
 
-    // MARK: Duplicates
-
-    private var duplicatesButton: some View {
-        Button { showDuplicates.toggle() } label: {
-            Label(duplicatesTitle, systemImage: "doc.on.doc")
-        }
-        .buttonStyle(.flat)
-        .controlSize(.regular)
-        .popover(isPresented: $showDuplicates, arrowEdge: .top) {
-            ScrollView {
-                DuplicateFinderView(vm: vm).padding(16)
+    @ViewBuilder
+    private func toolPopover(_ tool: Tool) -> some View {
+        ScrollView {
+            Group {
+                switch tool {
+                case .cleanup:    CleanupSuggestionsView(vm: vm)
+                case .apps:       AppUninstallerView(vm: vm)
+                case .duplicates: DuplicateFinderView(vm: vm)
+                case .byKind:     ByKindView(vm: vm)
+                case .largeOld:   LargeOldFilesView(vm: vm)
+                case .search:     FileSearchView(vm: vm)
+                }
             }
-            .frame(width: 400, height: 520)
+            .padding(16)
         }
-    }
-
-    private var duplicatesTitle: String {
-        if vm.didRunDuplicates, !vm.duplicateGroups.isEmpty {
-            return "Duplicates · \(Theme.format(vm.duplicateReclaimableBytes))"
-        }
-        return "Find Duplicates"
-    }
-
-    // MARK: By Kind
-
-    private var byKindButton: some View {
-        Button { showByKind.toggle() } label: {
-            Label("Browse by Type", systemImage: "square.grid.2x2.fill")
-        }
-        .buttonStyle(.flat)
-        .controlSize(.regular)
-        .popover(isPresented: $showByKind, arrowEdge: .top) {
-            ScrollView {
-                ByKindView(vm: vm).padding(16)
-            }
-            .frame(width: 400, height: 520)
-        }
-    }
-
-    // MARK: Large & Old
-
-    private var largeOldButton: some View {
-        Button { showLargeOld.toggle() } label: {
-            Label("Big & Old Files", systemImage: "clock.badge.exclamationmark")
-        }
-        .buttonStyle(.flat)
-        .controlSize(.regular)
-        .popover(isPresented: $showLargeOld, arrowEdge: .top) {
-            ScrollView {
-                LargeOldFilesView(vm: vm).padding(16)
-            }
-            .frame(width: 420, height: 520)
-        }
-    }
-
-    // MARK: Search
-
-    private var searchButton: some View {
-        Button { showSearch.toggle() } label: {
-            Label("Search Files", systemImage: "magnifyingglass")
-        }
-        .buttonStyle(.flat)
-        .controlSize(.regular)
-        .popover(isPresented: $showSearch, arrowEdge: .top) {
-            ScrollView {
-                FileSearchView(vm: vm).padding(16)
-            }
-            .frame(width: 420, height: 520)
-        }
+        .frame(width: tool.popoverWidth, height: 520)
     }
 }
