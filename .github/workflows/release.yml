@@ -126,7 +126,7 @@ jobs:
           appcast="$updates/appcast.xml"
           [[ -s "$appcast" ]]
           grep -F 'sparkle:edSignature=' "$appcast"
-          grep -F "sparkle:shortVersionString=\"$version\"" "$appcast"
+          grep -F "<sparkle:shortVersionString>$version</sparkle:shortVersionString>" "$appcast"
           grep -F "Tessera-$version.dmg" "$appcast"
 
           cp "$updates/Tessera-$version.dmg" "$updates/Tessera.dmg"
