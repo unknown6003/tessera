@@ -113,17 +113,29 @@ struct Sidebar: View {
         VStack(alignment: .leading, spacing: 6) {
             sectionLabel(title)
             ForEach(items) { info in
-                VolumeCard(info: info,
-                           isSelected: selectedVolumeURL == info.url,
-                           isScanned: vm.scannedURL == info.url,
-                           isCached: vm.scannedURL != info.url && vm.hasCachedScan(for: info.url))
-                    .onTapGesture {
-                        selectedVolumeURL = info.url
-                        // If we've already scanned this source, switch to it instantly.
-                        vm.showCachedScanIfAvailable(for: info.url)
-                    }
+                Button {
+                    selectedVolumeURL = info.url
+                    // If we've already scanned this source, switch to it instantly.
+                    vm.showCachedScanIfAvailable(for: info.url)
+                } label: {
+                    VolumeCard(info: info,
+                               isSelected: selectedVolumeURL == info.url,
+                               isScanned: vm.scannedURL == info.url,
+                               isCached: vm.scannedURL != info.url && vm.hasCachedScan(for: info.url))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(info.name))
+                .accessibilityValue(Text(sourceAccessibilityValue(info)))
+                .accessibilityHint("Select or display this storage source")
             }
         }
+    }
+
+    private func sourceAccessibilityValue(_ info: VolumeInfo) -> String {
+        if vm.scannedURL == info.url { return "Currently viewing" }
+        if selectedVolumeURL == info.url { return "Selected" }
+        if vm.hasCachedScan(for: info.url) { return "Previously scanned" }
+        return "Not selected"
     }
 
     private var addSourceRows: some View {

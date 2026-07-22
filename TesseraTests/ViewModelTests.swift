@@ -299,6 +299,64 @@ struct ViewModelTests {
         }
     }
 
+    @Test("A failed scan keeps its source available for retry")
+    func failedScanCanRetry() async throws {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vm = ScanViewModel()
+
+        vm.startScan(volumeURL: missing)
+        for _ in 0..<500 where vm.isScanning {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(vm.errorMessage != nil)
+        #expect(vm.scannedURL == nil)
+        #expect(vm.canRetryLastScan)
+    }
+
+    @Test("Switching cached sources rejects late duplicate results")
+    func cachedSwitchCancelsDuplicateWorker() async throws {
+        let fm = FileManager.default
+        let duplicates = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let other = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: duplicates, withIntermediateDirectories: true)
+        try fm.createDirectory(at: other, withIntermediateDirectories: true)
+        defer {
+            try? fm.removeItem(at: duplicates)
+            try? fm.removeItem(at: other)
+        }
+
+        let payload = Data(repeating: 0x5A, count: 2 * 1024 * 1024)
+        try payload.write(to: duplicates.appendingPathComponent("copy-a.bin"))
+        try payload.write(to: duplicates.appendingPathComponent("copy-b.bin"))
+        try Data("other".utf8).write(to: other.appendingPathComponent("other.bin"))
+
+        let vm = ScanViewModel()
+        func scan(_ url: URL) async throws {
+            vm.startScan(volumeURL: url)
+            for _ in 0..<500 where vm.isScanning || vm.rootNode == nil {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+
+        try await scan(duplicates)
+        try await scan(other)
+        #expect(vm.showCachedScanIfAvailable(for: duplicates))
+
+        vm.findDuplicates()
+        #expect(vm.showCachedScanIfAvailable(for: other))
+        for _ in 0..<500 where vm.isFindingDuplicates {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        // Give an already-dispatched worker enough time to attempt a late publish.
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(vm.scannedURL == other)
+        #expect(vm.duplicateGroups.isEmpty)
+        #expect(!vm.isFindingDuplicates)
+    }
+
     @Test("Deleting from a published tree advances the chart content revision")
     func deletionInvalidatesChartLayout() async throws {
         let directory = FileManager.default.temporaryDirectory

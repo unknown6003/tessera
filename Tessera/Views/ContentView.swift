@@ -297,10 +297,10 @@ struct ContentView: View {
                     .multilineTextAlignment(.center)
             }
             HStack(spacing: 10) {
-                if let url = vm.scannedURL {
+                if vm.canRetryLastScan {
                     Button("Try Again") {
                         vm.errorMessage = nil
-                        vm.startScan(volumeURL: url)
+                        vm.retryLastScan()
                     }
                     .buttonStyle(.flatProminent)
                     .controlSize(.large)

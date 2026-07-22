@@ -43,6 +43,9 @@ final class ScanViewModel: ObservableObject {
     private var scanGeneration: UInt64 = 0
     private var duplicateTask: Task<Void, Never>?
     private var duplicateCancel: DuplicateCancelToken?
+    /// Invalidates results and progress from duplicate scans whose blocking GCD
+    /// work can outlive the Swift task that originally awaited it.
+    private var duplicateGeneration: UInt64 = 0
     /// The last volume scanned, so a re-scan of the same volume can reuse the
     /// previous tree for incremental speedup.
     private var lastScannedURL: URL?
@@ -100,10 +103,8 @@ final class ScanViewModel: ObservableObject {
         selectedNode = nil
         collector = []
         cleanupReport = nil
-        duplicateCancel?.cancel()
-        duplicateTask?.cancel()
+        stopDuplicateSearch()
         duplicateGroups = []
-        isFindingDuplicates = false
         didRunDuplicates = false
         duplicateProgress = DuplicateProgress()
         errorMessage = nil
@@ -179,6 +180,16 @@ final class ScanViewModel: ObservableObject {
         scanTask?.cancel()
     }
 
+    /// Whether the most recently requested source can be scanned again after a
+    /// failure. `scannedURL` is intentionally nil while a scan is in flight, so
+    /// retry state must use the requested URL instead of the last published tree.
+    var canRetryLastScan: Bool { lastScannedURL != nil && !isScanning }
+
+    func retryLastScan() {
+        guard let url = lastScannedURL, !isScanning else { return }
+        startScan(volumeURL: url)
+    }
+
     // MARK: - Scan cache (instant disk/cloud switching)
 
     /// True if a completed scan for `url` is cached and can be shown instantly.
@@ -216,7 +227,10 @@ final class ScanViewModel: ObservableObject {
             scanTask = nil
             isScanning = false
         }
-        duplicateTask?.cancel()
+        // Cancelling the awaiting Task is not enough: DuplicateFinder runs on a
+        // blocking GCD worker and only its token can stop it. Invalidate both its
+        // result and progress before publishing the cached source.
+        stopDuplicateSearch()
         // Preserve what we're leaving, then restore the requested scan.
         saveCurrentToCache()
 
@@ -353,7 +367,8 @@ final class ScanViewModel: ObservableObject {
     /// GCD worker pool (off the cooperative pool, since it does blocking reads).
     func findDuplicates() {
         guard let root = rootNode, !isFindingDuplicates else { return }
-        duplicateCancel?.cancel()
+        stopDuplicateSearch()
+        let generation = duplicateGeneration
         let token = DuplicateCancelToken()
         duplicateCancel = token
         isFindingDuplicates = true
@@ -361,7 +376,12 @@ final class ScanViewModel: ObservableObject {
         duplicateGroups = []
         duplicateProgress = DuplicateProgress()
         let onProgress: @Sendable (DuplicateProgress) -> Void = { [weak self] prog in
-            Task { @MainActor in self?.duplicateProgress = prog }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.duplicateGeneration == generation,
+                      !token.isCancelled else { return }
+                self.duplicateProgress = prog
+            }
         }
         // Snapshot the candidate files on the main actor before handing them to the
         // background pass, so the background never walks `FileNode.children` while the
@@ -373,15 +393,29 @@ final class ScanViewModel: ObservableObject {
                     cont.resume(returning: DuplicateFinder.find(files: files, cancel: token, progress: onProgress))
                 }
             }
-            guard let self, !token.isCancelled else { return }
+            guard let self,
+                  self.duplicateGeneration == generation,
+                  !token.isCancelled else { return }
             self.duplicateGroups = groups
             self.isFindingDuplicates = false
+            self.duplicateTask = nil
+            self.duplicateCancel = nil
         }
     }
 
     func cancelDuplicates() {
+        stopDuplicateSearch()
+    }
+
+    /// Cancel both layers of duplicate work and invalidate every queued
+    /// publication. The GCD worker is cooperative, so generation gating remains
+    /// necessary for a progress callback already enqueued on the main actor.
+    private func stopDuplicateSearch() {
+        duplicateGeneration &+= 1
         duplicateCancel?.cancel()
         duplicateTask?.cancel()
+        duplicateCancel = nil
+        duplicateTask = nil
         isFindingDuplicates = false
     }
 

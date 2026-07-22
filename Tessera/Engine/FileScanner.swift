@@ -1,5 +1,17 @@
 import Foundation
 
+enum FileScannerError: LocalizedError {
+    case sourceUnavailable(URL)
+
+    var errorDescription: String? {
+        switch self {
+        case .sourceUnavailable(let url):
+            let name = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
+            return "The selected source “\(name)” is no longer available. Reconnect it or choose another source, then try again."
+        }
+    }
+}
+
 // MARK: - Progress
 
 /// Progress derived from directories scanned vs. directories discovered.
@@ -80,6 +92,12 @@ struct FileScanner: Sendable {
         // the same root is supplied.
         let cacheMap = cache.map { buildCacheMap($0) }
         let allowedDevices = Self.allowedDevices(forRoot: rootPath)
+        // A removed folder, disconnected share, or unmounted disk cannot produce a
+        // trustworthy scan. Previously an lstat failure left this set empty and the
+        // scanner published an empty tree, which looked like a permissions problem.
+        guard !allowedDevices.isEmpty else {
+            throw FileScannerError.sourceUnavailable(url)
+        }
         let volumeUsed = volumeUsedBytes(for: url)
         let isVolumeRoot = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume ?? (rootPath == "/")
 
