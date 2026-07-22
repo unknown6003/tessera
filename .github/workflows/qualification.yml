@@ -166,10 +166,10 @@ jobs:
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
 
           for _ in {1..30}; do
-            curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null && break
+            curl --fail --silent http://127.0.0.1:4173/ >/dev/null && break
             sleep 1
           done
-          curl --fail --silent http://127.0.0.1:4173/index.html >/dev/null
+          curl --fail --silent http://127.0.0.1:4173/ >/dev/null
 
           "$SELENIUM_PYTHON" - <<'PY'
           import json
@@ -200,7 +200,7 @@ jobs:
               try:
                   driver.set_window_size(390, 844)
                   started = time.monotonic()
-                  driver.get(f'http://127.0.0.1:4173/index.html?run={run}')
+                  driver.get(f'http://127.0.0.1:4173/?run={run}')
                   visible_ms = (time.monotonic() - started) * 1000
 
                   metrics = driver.execute_script("""
