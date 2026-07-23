@@ -186,9 +186,17 @@ enum DuplicateFinder {
             catch { return nil }   // genuine read error → can't prove equality
         }
         while !cancel.isCancelled {
-            guard let da = next(a), let db = next(b) else { return false }
-            if da != db { return false }
-            if da.isEmpty { return true } // both reached EOF together with all bytes equal
+            // Stream each chunk in its own pool. This runs inside a single long
+            // GCD block, so without draining, comparing a multi-GB pair would pile
+            // up one 1 MB `Data` per iteration for the whole file before the block
+            // returns. Return through an optional so the pool wraps the read+compare.
+            var verdict: Bool?
+            autoreleasepool {
+                guard let da = next(a), let db = next(b) else { verdict = false; return }
+                if da != db { verdict = false; return }
+                if da.isEmpty { verdict = true } // both reached EOF together, all bytes equal
+            }
+            if let verdict { return verdict }
         }
         return false
     }
@@ -238,7 +246,16 @@ enum DuplicateFinder {
 
                     for i in start ..< end {
                         if cancel.isCancelled { break }
-                        if let h = hash(items[i]) { local[ObjectIdentifier(items[i])] = h }
+                        // Drain per file. These are raw `Thread.detachNewThread`
+                        // workers, whose top-level autorelease pool is emptied only
+                        // when the thread exits — i.e. at the end of the entire pass.
+                        // The FileHandle + Data temporaries each `hash` produces are
+                        // autoreleased, so without an inner pool they would live until
+                        // then and memory would grow with the number of files read
+                        // instead of staying flat. This is the dedup "memory leak".
+                        autoreleasepool {
+                            if let h = hash(items[i]) { local[ObjectIdentifier(items[i])] = h }
+                        }
                     }
                     state.lock.lock(); state.processed += (end - start); let done = state.processed; state.lock.unlock()
                     onProgress(done)

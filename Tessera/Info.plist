@@ -2,89 +2,72 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleDisplayName</key>
-    <string>Tessera</string>
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>$(PRODUCT_NAME)</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.1.2</string>
-    <key>CFBundleVersion</key>
-    <string>3</string>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.utilities</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
-    <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026. All rights reserved.</string>
-    <!-- Finder integration: right-click a folder ▸ Services ▸ "Analyze with Storage
-         Optimizer" launches/foregrounds the app and scans that folder. Accepts a
-         folder (public.folder + legacy NSFilenamesPboardType); no return type. The
-         handler is FinderServiceProvider.analyzeFolder(_:userData:error:), registered
-         as NSApp.servicesProvider in AppDelegate. -->
-    <key>NSServices</key>
-    <array>
-        <dict>
-            <key>NSMenuItem</key>
-            <dict>
-                <key>default</key>
-                <string>Analyze with Tessera</string>
-            </dict>
-            <key>NSMessage</key>
-            <string>analyzeFolder</string>
-            <key>NSPortName</key>
-            <string>Tessera</string>
-            <key>NSRequiredContext</key>
-            <dict>
-                <key>NSTextContent</key>
-                <array>
-                    <string>FilePath</string>
-                </array>
-            </dict>
-            <key>NSSendFileTypes</key>
-            <array>
-                <string>public.folder</string>
-            </array>
-            <key>NSSendTypes</key>
-            <array>
-                <string>NSFilenamesPboardType</string>
-            </array>
-        </dict>
-    </array>
-    <!-- Sparkle OTA auto-update (direct distribution; see RELEASING.md). -->
-    <!-- Appcast + builds are published as GitHub Releases on this repo, so
-         they're anonymously fetchable now that the repo is public. -->
-    <key>SUFeedURL</key>
-    <string>https://github.com/unknown6003/tessera/releases/latest/download/appcast.xml</string>
-    <!-- Sparkle EdDSA public key. The matching private key lives in this Mac's
-         login Keychain (generated via Sparkle's generate_keys); never commit it.
-         Sparkle verifies every downloaded update's signature against this key. -->
-    <key>SUPublicEDKey</key>
-    <string>5Fh/ArGlhV1lk+drNjvVxbYEgqTsq5h0pbLFwoDDr+0=</string>
-    <!-- Fully automatic updates. SUEnableAutomaticChecks suppresses Sparkle's
-         first-launch "do you want automatic updates?" prompt; SUAutomaticallyUpdate
-         makes downloading+installing the default. Together with the silent
-         SPUUserDriver in Updater.swift the app checks, downloads, installs and
-         relaunches itself with no user interaction. -->
-    <key>SUEnableAutomaticChecks</key>
-    <true/>
-    <key>SUAutomaticallyUpdate</key>
-    <true/>
-    <key>SUAllowsAutomaticUpdates</key>
-    <true/>
-    <!-- Check every 6 hours (Sparkle also checks shortly after launch). -->
-    <key>SUScheduledCheckInterval</key>
-    <integer>21600</integer>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Tessera</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.3</string>
+	<key>CFBundleVersion</key>
+	<string>4</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026. All rights reserved.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Analyze with Tessera</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>analyzeFolder</string>
+			<key>NSPortName</key>
+			<string>Tessera</string>
+			<key>NSRequiredContext</key>
+			<dict>
+				<key>NSTextContent</key>
+				<array>
+					<string>FilePath</string>
+				</array>
+			</dict>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.folder</string>
+			</array>
+			<key>NSSendTypes</key>
+			<array>
+				<string>NSFilenamesPboardType</string>
+			</array>
+		</dict>
+	</array>
+	<key>SUAllowsAutomaticUpdates</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/unknown6003/tessera/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>5Fh/ArGlhV1lk+drNjvVxbYEgqTsq5h0pbLFwoDDr+0=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>21600</integer>
 </dict>
 </plist>

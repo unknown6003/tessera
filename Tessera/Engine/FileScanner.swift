@@ -473,7 +473,13 @@ struct FileScanner: Sendable {
                 activeWorkers += 1
                 cond.unlock()
 
-                let result = enumerate(work, scratch: scratch)
+                // Drain per directory. Each worker runs the whole scan inside a
+                // single libdispatch block, whose autorelease pool empties only when
+                // the block returns — i.e. at scan end. `buildResult` → `isPackageName`
+                // bridges an NSString (`.pathExtension`) per directory entry, so
+                // without an inner pool those temporaries accumulate across every entry
+                // for the entire scan. Pooling per directory keeps scan memory flat.
+                let result = autoreleasepool { enumerate(work, scratch: scratch) }
 
                 // Reserve the right to mutate before touching the tree. A watchdog
                 // timeout can happen while this worker is still enumerating; a
@@ -509,9 +515,13 @@ struct FileScanner: Sendable {
                     cond.unlock()
                     return
                 }
-                merge(result, for: work)
+                let progressToEmit = merge(result, for: work)
                 activeWorkers -= 1
                 cond.unlock()
+                // Emit progress only after releasing the lock: `onProgress` is caller-
+                // supplied, so invoking it under `cond` would risk deadlock/priority
+                // inversion if it ever did real work or re-entered the coordinator.
+                if let progressToEmit { onProgress(progressToEmit) }
             }
         }
 
@@ -530,8 +540,10 @@ struct FileScanner: Sendable {
 
         /// Merge one directory's result under the lock: attach children, enqueue
         /// subdirs, update pending and progress, and dedup hard links.
-        /// Caller holds `cond`.
-        private func merge(_ result: DirResult, for work: DirWork) {
+        /// Caller holds `cond`. Returns a progress snapshot to emit *after* the caller
+        /// releases the lock (nil when this tick is throttled), so `onProgress` never
+        /// runs under `cond`.
+        private func merge(_ result: DirResult, for work: DirWork) -> ScanProgress? {
             // Children were already wired to `work.node` off-lock by the caller.
 
             // Enqueue discovered subdirectories and adjust the pending counter:
@@ -560,13 +572,14 @@ struct FileScanner: Sendable {
                 cond.broadcast()
             }
 
-            // Throttled progress emission.
+            // Throttled progress emission — hand the snapshot back to the caller,
+            // which emits it after unlocking.
             let now = DispatchTime.now()
             if now.uptimeNanoseconds &- lastReport.uptimeNanoseconds >= Self.progressIntervalNanos {
                 lastReport = now
-                let snapshot = progress
-                onProgress(snapshot)
+                return progress
             }
+            return nil
         }
 
         // MARK: Completion

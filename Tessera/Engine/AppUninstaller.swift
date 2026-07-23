@@ -76,7 +76,12 @@ enum AppUninstaller {
                 options: [.skipsHiddenFiles]) else { continue }
 
             for appURL in entries where appURL.pathExtension == "app" {
-                if let app = inspect(appURL: appURL) { apps.append(app) }
+                // Pool per app: `inspect` reads Info.plist (Data + PropertyList),
+                // sizes the bundle, and scans leftovers — all producing autoreleased
+                // temporaries. Draining per app keeps the sweep's footprint flat.
+                autoreleasepool {
+                    if let app = inspect(appURL: appURL) { apps.append(app) }
+                }
             }
         }
         return apps.sorted { $0.totalBytes > $1.totalBytes }
@@ -310,9 +315,11 @@ enum AppUninstaller {
                     at: dir, includingPropertiesForKeys: nil,
                     options: [.skipsHiddenFiles]) else { continue }
                 for appURL in entries where appURL.pathExtension == "app" {
-                    let id = readInfoPlist(appURL: appURL).bundleID
-                        .trimmingCharacters(in: .whitespaces)
-                    if !id.isEmpty { ids.insert(id) }
+                    autoreleasepool {
+                        let id = readInfoPlist(appURL: appURL).bundleID
+                            .trimmingCharacters(in: .whitespaces)
+                        if !id.isEmpty { ids.insert(id) }
+                    }
                 }
             }
             installedIDs = ids
@@ -329,18 +336,23 @@ enum AppUninstaller {
                 at: loc.dir, includingPropertiesForKeys: nil, options: []) else { continue }
 
             for entry in entries {
-                guard let id = orphanBundleID(
-                    entryName: entry.lastPathComponent,
-                    isPreferenceFile: loc.mode == 1,
-                    installedBundleIDs: installedIDs) else { continue }
+                // Pool per entry: a Library location (Caches, Application Support) can
+                // hold thousands of entries, each producing autoreleased URL/path
+                // temporaries here and inside `directorySize`. Drain per iteration.
+                autoreleasepool {
+                    guard let id = orphanBundleID(
+                        entryName: entry.lastPathComponent,
+                        isPreferenceFile: loc.mode == 1,
+                        installedBundleIDs: installedIDs) else { return }
 
-                let path = entry.standardizedFileURL.path
-                if !seen.insert(path).inserted { continue }
+                    let path = entry.standardizedFileURL.path
+                    if !seen.insert(path).inserted { return }
 
-                let bytes = directorySize(at: entry)
-                guard bytes > 0 || fm.fileExists(atPath: entry.path) else { continue }
-                byID[id, default: []].append(
-                    OrphanLeftover(url: entry, bytes: bytes, category: loc.category, bundleID: id))
+                    let bytes = directorySize(at: entry)
+                    guard bytes > 0 || fm.fileExists(atPath: entry.path) else { return }
+                    byID[id, default: []].append(
+                        OrphanLeftover(url: entry, bytes: bytes, category: loc.category, bundleID: id))
+                }
             }
         }
 
@@ -442,9 +454,14 @@ enum AppUninstaller {
             options: [], errorHandler: { _, _ in true }) else { return total }
 
         while let child = en.nextObject() as? URL {
-            var cst = Darwin.stat()
-            if lstat(child.path, &cst) == 0 {
-                total += Int64(cst.st_blocks) * 512
+            // `nextObject()` hands back an autoreleased URL and `child.path` bridges
+            // another temporary; over a large bundle these accumulate for the whole
+            // walk without an inner pool. Drain per entry so the sum stays flat.
+            autoreleasepool {
+                var cst = Darwin.stat()
+                if lstat(child.path, &cst) == 0 {
+                    total += Int64(cst.st_blocks) * 512
+                }
             }
         }
         return total
