@@ -138,26 +138,33 @@ final class ScanViewModel: ObservableObject {
                 let volumePath = volumeURL.path
                 let isVolumeRoot = volumePath == "/"
                 let isUnreadable = !FileManager.default.isReadableFile(atPath: volumePath)
+
+                // Classify cleanup suggestions off the main actor (pure CPU over the
+                // already-built tree, no I/O) BEFORE publishing it. While this runs,
+                // `node` is still exclusively owned by this task: `rootNode` /
+                // `currentRoot` were cleared at scan start and the collector is empty,
+                // so the tree is unreachable from the UI and nothing can mutate
+                // `children` underneath the walk. Publishing first and classifying
+                // afterwards would race the collector delete flow, which mutates the
+                // same arrays on the main actor.
+                let report = await Task.detached(priority: .utility) {
+                    CleanupClassifier.classify(root: node)
+                }.value
+
+                // A newer scan may have started while classifying — it owns the UI
+                // state now, so this one publishes nothing.
+                guard self.scanGeneration == generation else { return }
                 if treeIsEmpty && (isVolumeRoot || isUnreadable) {
                     self.needsFullDiskAccess = true
                 }
+                // Single atomic publish point: tree and its report together.
                 self.rootNode = node
                 self.currentRoot = node
                 self.scannedURL = volumeURL
-                // Classify cleanup suggestions off the main actor (pure CPU over the
-                // already-built tree, no I/O), then publish — doesn't gate the scan.
-                Task { @MainActor [weak self] in
-                    let report = await Task.detached(priority: .utility) {
-                        CleanupClassifier.classify(root: node)
-                    }.value
-                    guard let self,
-                          self.scanGeneration == generation,
-                          self.rootNode === node else { return }
-                    self.cleanupReport = report
-                    // Suggestions are NOT auto-staged. The user reviews the groups
-                    // and chooses what to add — per group, or all-safe at once —
-                    // then deletes from the collector behind the usual confirmation.
-                }
+                self.cleanupReport = report
+                // Suggestions are NOT auto-staged. The user reviews the groups and
+                // chooses what to add — per group, or all-safe at once — then deletes
+                // from the collector behind the usual confirmation.
             } catch is CancellationError {
                 // User stopped the current scan — not an error. A cancellation
                 // from a superseded scan must not change its replacement's state.

@@ -602,8 +602,7 @@ struct FileScanner: Sendable {
         /// Finalize the tree and resume the continuation with the root node.
         /// Runs exactly once (guarded by `finished`).
         private func finalizeAndResume() {
-            watchdog?.cancel()
-            watchdog = nil
+            claimWatchdog()?.cancel()
 
             // Size cross-mounted volumes (Simulator runtimes, disk images, …) from
             // the mount table before re-aggregating, so their bytes flow up into
@@ -625,8 +624,7 @@ struct FileScanner: Sendable {
         }
 
         private func resumeThrowing(_ error: Error) {
-            watchdog?.cancel()
-            watchdog = nil
+            claimWatchdog()?.cancel()
             cond.lock()
             let cont = continuation
             continuation = nil
@@ -644,8 +642,25 @@ struct FileScanner: Sendable {
             let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
             timer.schedule(deadline: .now() + 5, repeating: 5)
             timer.setEventHandler { [weak self] in self?.watchdogTick() }
+            cond.lock()
             watchdog = timer
+            cond.unlock()
             timer.resume()
+        }
+
+        /// Atomically take ownership of the watchdog timer, clearing the shared field
+        /// so exactly one caller ever cancels it. `resumeThrowing` races between up to
+        /// `workerCount` threads (any worker that observes cancellation calls it), so
+        /// an unguarded `watchdog?.cancel(); watchdog = nil` was a genuine data race on
+        /// a strong reference — two workers could double-release the timer. The
+        /// returned timer is cancelled by the caller *outside* the lock, so we never
+        /// call out to libdispatch while holding `cond`.
+        private func claimWatchdog() -> DispatchSourceTimer? {
+            cond.lock()
+            defer { cond.unlock() }
+            let timer = watchdog
+            watchdog = nil
+            return timer
         }
 
         private func watchdogTick() {

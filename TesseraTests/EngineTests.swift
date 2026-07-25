@@ -919,6 +919,45 @@ struct EngineTests {
         #expect(capped.map(\.name) == ["export.mov"])
     }
 
+    @Test("FileSearch.collectFiles snapshots leaves so the background pass never walks the tree")
+    func fileSearchSnapshotMatchesTreeWalk() {
+        let ns: Int64 = 1_000_000_000
+        let now: Int64 = 1_000_000
+
+        let root = FileNode(url: URL(fileURLWithPath: "/Users/x"), name: "x", isDirectory: true, size: 0)
+        let downloads = FileNode(url: URL(fileURLWithPath: "/Users/x/Downloads"),
+                                 name: "Downloads", isDirectory: true, size: 0)
+        let video = FileNode(name: "export.mov", isDirectory: false, size: 5_000_000_000, modTime: 100 * ns)
+        let pdf = FileNode(name: "report.pdf", isDirectory: false, size: 2_000_000_000, modTime: 100 * ns)
+        // A package is a leaf for this tool: it must be collected, not descended.
+        let app = FileNode(name: "Thing.app", isDirectory: true, size: 3_000_000_000, kind: .package)
+        let insideApp = FileNode(name: "buried.mov", isDirectory: false, size: 9_000_000_000)
+        app.setChildren([insideApp])
+        let hidden = FileNode(url: URL(fileURLWithPath: "/Users/x"), name: "Hidden Space",
+                              isDirectory: false, size: 9_000_000_000, kind: .hiddenSpace)
+        downloads.setChildren([video, pdf, app])
+        root.setChildren([downloads, hidden])
+
+        let snapshot = FileSearch.collectFiles(root: root)
+        // Packages are leaves (their contents are never surfaced separately) and
+        // synthetic nodes are excluded.
+        #expect(Set(snapshot.map(\.name)) == ["export.mov", "report.pdf", "Thing.app"])
+        #expect(!snapshot.contains { $0.isSynthetic })
+        #expect(!snapshot.contains { $0.name == "buried.mov" })
+
+        // The snapshot pass must produce exactly what the tree-walking pass does.
+        var f = FileSearch.Filter.empty
+        f.minSizeBytes = 1_073_741_824
+        #expect(FileSearch.find(files: snapshot, filter: f, nowEpochSeconds: now).map(\.name)
+                == FileSearch.find(root: root, filter: f, nowEpochSeconds: now).map(\.name))
+
+        // Mutating the tree after the snapshot must not affect an in-flight pass:
+        // the flat list is what the background filter reads.
+        downloads.remove(video)
+        #expect(FileSearch.find(files: snapshot, filter: f, nowEpochSeconds: now)
+                    .contains { $0.name == "export.mov" })
+    }
+
     @Test("DuplicateTriage keeps the most permanent copy; token helpers classify correctly")
     func dupeTriage() {
         func file(_ path: String) -> FileNode {

@@ -53,12 +53,51 @@ enum FileSearch {
 
     // MARK: - Executor
 
+    /// Flatten the tree into the leaf candidates a search can match: non-synthetic
+    /// regular files, plus packages (which the Finder — and `FileKind` — treat as a
+    /// single file, so they are leaves here and not descended).
+    ///
+    /// This is the ONLY step that walks `FileNode.children`, mirroring
+    /// `DuplicateFinder.collectFiles`. Callers run it on the tree's owning actor (the
+    /// main actor) to take a snapshot before handing the flat list to
+    /// `find(files:filter:)` on a background thread — closing the data race where the
+    /// main actor could mutate `children` (via the collector delete flow) while a
+    /// background search traversed the same arrays.
+    static func collectFiles(root: FileNode) -> [FileNode] {
+        var files: [FileNode] = []
+        var stack: [FileNode] = root.children
+        while let node = stack.popLast() {
+            if node.isSynthetic { continue }
+            if node.isDirectory && node.kind != .package {
+                stack.append(contentsOf: node.children)
+            } else {
+                files.append(node)
+            }
+        }
+        return files
+    }
+
     /// Walk `root`, collecting non-synthetic regular files that pass every set
-    /// filter, sorted largest-first and capped at `limit`.
+    /// filter, sorted largest-first and capped at `limit`. Walks the tree on the
+    /// calling thread, so prefer `find(files:filter:)` with a snapshot taken on the
+    /// tree's owning actor when the tree may be mutated concurrently.
     ///
     /// Pure and unit-testable: `nowEpochSeconds` is injected (defaults to the
     /// current wall clock) so age filtering is deterministic in tests.
     static func find(root: FileNode,
+                     filter: Filter,
+                     nowEpochSeconds: Int64 = Int64(Date().timeIntervalSince1970),
+                     limit: Int = resultCap) -> [FileNode] {
+        find(files: collectFiles(root: root), filter: filter,
+             nowEpochSeconds: nowEpochSeconds, limit: limit)
+    }
+
+    /// Filter a pre-collected, snapshot list of candidate files. Runs no tree
+    /// traversal at all — it reads only per-node immutable state (name, size,
+    /// modTime, kind) and the parent-chain-derived `url` — so it is safe to run on a
+    /// background thread while the main actor owns the tree. The list must not be
+    /// mutated concurrently; it is read-only here.
+    static func find(files: [FileNode],
                      filter: Filter,
                      nowEpochSeconds: Int64 = Int64(Date().timeIntervalSince1970),
                      limit: Int = resultCap) -> [FileNode] {
@@ -71,17 +110,7 @@ enum FileSearch {
         let needsPath = !filter.pathContains.isEmpty
 
         var matches: [FileNode] = []
-        // Iterative pre-order walk; packages are leaves for this tool (the Finder
-        // treats them as a single file, and FileKind classifies them as such).
-        var stack: [FileNode] = root.children.reversed()
-        while let node = stack.popLast() {
-            if node.isSynthetic { continue }
-
-            if node.isDirectory && node.kind != .package {
-                stack.append(contentsOf: node.children)
-                continue
-            }
-
+        for node in files {
             // A regular file (or a package, treated as a file leaf).
             if let minSize = filter.minSizeBytes, node.size < minSize { continue }
             if let maxSize = filter.maxSizeBytes, node.size > maxSize { continue }

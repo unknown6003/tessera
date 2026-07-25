@@ -66,16 +66,29 @@ enum BulkDirScanner {
 
     // MARK: - Test seams (test-only)
     //
-    // These are `nonisolated(unsafe)` by design: the test suite runs serially and
-    // mutates them only from a single test thread, so no synchronization is needed.
-    // They must not be touched by production code.
+    // Read through a lock. These seams exist to exercise the timeout path, which
+    // deliberately ABANDONS a sacrificial enumeration thread — that thread outlives
+    // the test and keeps reading these globals after the test's `defer` clears them,
+    // so an unsynchronized `nonisolated(unsafe)` read/write here is a genuine data
+    // race (TSan flags it). The lock is uncontended in production (nothing ever sets
+    // these) and costs ~20ns per directory, far below the enumeration syscall it
+    // guards. They must not be touched by production code.
+    private static let seamLock = NSLock()
 
     /// When set, `entries(atPath:)` sleeps for `seconds` if the path ends with
     /// `pathSuffix` — used to exercise the timeout/sacrificial-thread path.
-    nonisolated(unsafe) static var _testDelay: (pathSuffix: String, seconds: Double)? = nil
+    nonisolated(unsafe) private static var _testDelayStorage: (pathSuffix: String, seconds: Double)?
+    static var _testDelay: (pathSuffix: String, seconds: Double)? {
+        get { seamLock.lock(); defer { seamLock.unlock() }; return _testDelayStorage }
+        set { seamLock.lock(); _testDelayStorage = newValue; seamLock.unlock() }
+    }
 
     /// When set, `timedEntries` uses this timeout instead of its default.
-    nonisolated(unsafe) static var _timeoutSecondsOverride: Double? = nil
+    nonisolated(unsafe) private static var _timeoutSecondsOverrideStorage: Double?
+    static var _timeoutSecondsOverride: Double? {
+        get { seamLock.lock(); defer { seamLock.unlock() }; return _timeoutSecondsOverrideStorage }
+        set { seamLock.lock(); _timeoutSecondsOverrideStorage = newValue; seamLock.unlock() }
+    }
 
     /// When set, any entry whose `name` ends with this suffix is treated as
     /// dataless (SF_DATALESS bit forced on) — lets the cloud/dataless logic be

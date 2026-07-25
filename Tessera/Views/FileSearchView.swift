@@ -233,9 +233,14 @@ struct FileSearchView: View {
         result = nil
         let now = Int64(Date().timeIntervalSince1970)
         let filter = FileSearchParser.parse(trimmed)
+        // Snapshot the candidate leaves here on the main actor, before handing them
+        // to the background filter pass — the background must never walk
+        // `FileNode.children` while the collector delete flow can mutate the same
+        // arrays on the main actor.
+        let candidates = FileSearch.collectFiles(root: root)
         Task {
             let nodes = await Task.detached(priority: .userInitiated) {
-                FileSearch.find(root: root, filter: filter, nowEpochSeconds: now)
+                FileSearch.find(files: candidates, filter: filter, nowEpochSeconds: now)
             }.value
             // Ignore a stale search superseded by a newer one.
             guard token == runToken else { return }
