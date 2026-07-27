@@ -131,13 +131,35 @@ jobs:
           app="$RUNNER_TEMP/DerivedData/Build/Products/Release/Tessera.app"
           [[ -d "$app" ]]
           bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")
-          # Sign with the stable identity and pin the signing identifier to the
-          # bundle id, so the designated requirement is identical on every build.
-          codesign --force --deep --options runtime --timestamp=none \
+          # Sign with the stable identity. Deliberately NOT --options runtime:
+          # the hardened runtime turns on library validation, which requires every
+          # loaded library to share the main binary's Team ID. A self-signed
+          # identity has no Team ID, so Sparkle.framework fails to load and the app
+          # dies at launch ("different Team IDs"). Hardened runtime is only needed
+          # for notarization, which this identity cannot do anyway; it comes back
+          # with Developer ID, which does have a Team ID.
+          #
+          # Also NOT --identifier: with --deep that stamps the app's bundle id onto
+          # nested code too, renaming Sparkle.framework's identifier. codesign
+          # already derives the app's identifier from CFBundleIdentifier.
+          codesign --force --deep \
             --sign "$SIGN_IDENTITY" --keychain "$SIGN_KEYCHAIN" \
-            --identifier "$bundle_id" \
             --entitlements Tessera/Tessera.entitlements "$app"
           codesign --verify --deep --strict --verbose=2 "$app"
+
+          # The hardened runtime must stay off for exactly the reason above.
+          if codesign -dvv "$app" 2>&1 | grep -q 'flags=.*runtime'; then
+            echo "Hardened runtime is set; library validation will break Sparkle loading at launch." >&2
+            exit 1
+          fi
+          # Nested code must keep its own identity.
+          sparkle_id=$(codesign -dvv "$app/Contents/Frameworks/Sparkle.framework" 2>&1 \
+            | sed -n 's/^Identifier=//p')
+          echo "Sparkle framework identifier: $sparkle_id"
+          if [[ "$sparkle_id" == "$bundle_id" ]]; then
+            echo "Sparkle.framework was stamped with the app's identifier." >&2
+            exit 1
+          fi
 
           # Guard the whole point of signing: the designated requirement must be
           # certificate-based. If it ever falls back to a cdhash requirement, the
@@ -171,6 +193,42 @@ jobs:
           source_key=$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' Tessera/Info.plist)
           [[ "$built_version" == "$version" ]]
           [[ "$built_key" == "$source_key" ]]
+
+          # Actually launch the signed app before it can be published. Signature
+          # verification passes on a build that cannot start — 0.1.5 verified
+          # clean, then died in dyld because the hardened runtime blocked
+          # Sparkle.framework. Only running it catches that class of break.
+          # The app has a headless mode: scan a path, then quit.
+          smoke_dir="$RELEASE_DIR/smoke"
+          mkdir -p "$smoke_dir"
+          SO_AUTOSCAN="$GITHUB_WORKSPACE/Tessera" \
+          SO_SNAPSHOT_DIR="$smoke_dir" \
+          SO_AUTOQUIT=1 \
+            "$app/Contents/MacOS/Tessera" > "$smoke_dir/stdout.log" 2>&1 &
+          smoke_pid=$!
+          for _ in $(seq 1 90); do
+            kill -0 "$smoke_pid" 2>/dev/null || break
+            sleep 1
+          done
+          if kill -0 "$smoke_pid" 2>/dev/null; then
+            kill -9 "$smoke_pid" 2>/dev/null || true
+            echo 'Signed app did not exit within 90s during the launch smoke test.' >&2
+            sed -n '1,60p' "$smoke_dir/stdout.log" >&2 || true
+            exit 1
+          fi
+          wait "$smoke_pid" && smoke_rc=0 || smoke_rc=$?
+          if [[ "$smoke_rc" -ne 0 ]]; then
+            echo "Signed app failed to launch (exit $smoke_rc)." >&2
+            sed -n '1,60p' "$smoke_dir/stdout.log" >&2 || true
+            exit 1
+          fi
+          # Exiting 0 is not enough — prove it got far enough to do real work.
+          if ! grep -q 'scan finished' "$smoke_dir/stdout.log"; then
+            echo 'Signed app launched but never completed a scan.' >&2
+            sed -n '1,60p' "$smoke_dir/stdout.log" >&2 || true
+            exit 1
+          fi
+          echo "Launch smoke test passed."
 
           updates="$RELEASE_DIR/updates"
           stage="$RELEASE_DIR/dmg-stage"

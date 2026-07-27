@@ -50,6 +50,12 @@ struct ContentView: View {
         .background(TransparentWindowConfigurator())
         .background(KeyboardShortcuts(vm: vm))
         .tint(Theme.electricBlue)
+        // No keyboard focus rings anywhere. macOS draws them in the SYSTEM accent
+        // colour (a Mac set to pink halos our controls in pink, ignoring `.tint`),
+        // and this app is driven by pointer, not tab order. Disabled at the root so
+        // it covers every control, not just our own button styles. Revisit if
+        // keyboard navigation is ever added.
+        .focusEffectDisabled()
         .preferredColorScheme(.dark)
         // Shared coordinate space so the chart's drag location and the dock's drop
         // zones are measured against the same origin.

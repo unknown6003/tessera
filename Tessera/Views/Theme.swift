@@ -266,7 +266,6 @@ private struct FlatButtonSurface<Label: View>: View {
     let liftsOnHover: Bool
 
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.isFocused) private var isFocused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
@@ -285,11 +284,6 @@ private struct FlatButtonSurface<Label: View>: View {
             .overlay {
                 if let border {
                     shape.strokeBorder(active ? (borderHovered ?? border) : border, lineWidth: 1)
-                }
-            }
-            .overlay {
-                if isFocused {
-                    shape.strokeBorder(Theme.electricBlue.opacity(0.85), lineWidth: 2)
                 }
             }
             .contentShape(shape)
@@ -386,7 +380,6 @@ struct IconButtonStyle: ButtonStyle {
 /// Labels that colour themselves keep their colour.
 struct PlainInteractiveButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.isFocused) private var isFocused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
@@ -397,13 +390,6 @@ struct PlainInteractiveButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.85 : 1.0)
             // Scale down only on press: a hover-grow would reflow full-width rows.
             .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.98 : 1.0))
-            .overlay {
-                if isFocused {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(Theme.electricBlue.opacity(0.85), lineWidth: 2)
-                        .padding(-3)
-                }
-            }
             .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
             .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
             .focusEffectDisabled()
