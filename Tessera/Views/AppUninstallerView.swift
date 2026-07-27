@@ -92,7 +92,7 @@ struct AppUninstallerView: View {
                 Button { Task { await load() } } label: {
                     Image(systemName: "arrow.clockwise").font(.system(size: 11))
                 }
-                .buttonStyle(.plain).foregroundStyle(.tint)
+                .buttonStyle(.interactive).foregroundStyle(.tint)
                 .help("Rescan installed apps")
             }
 
@@ -166,7 +166,7 @@ struct AppUninstallerView: View {
                 } label: {
                     Image(systemName: "magnifyingglass").font(.system(size: 10))
                 }
-                .buttonStyle(.plain).foregroundStyle(.tint)
+                .buttonStyle(.interactive).foregroundStyle(.tint)
                 .help("Reveal in Finder")
                 Button {
                     vm.stageOrphanGroup(group)
@@ -175,7 +175,7 @@ struct AppUninstallerView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(staged ? Theme.electricBlue : Color.accentColor)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactive)
                 .disabled(staged)
                 .help(staged ? "Staged in collector" : "Add to collector")
             }
@@ -217,7 +217,7 @@ struct AppUninstallerView: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.interactive)
         .padding(.vertical, 2)
     }
 
@@ -232,7 +232,7 @@ struct AppUninstallerView: View {
                 Label("All apps", systemImage: "chevron.left")
                     .font(.caption.weight(.medium))
             }
-            .buttonStyle(.plain).foregroundStyle(.tint)
+            .buttonStyle(.interactive).foregroundStyle(.tint)
 
             HStack(spacing: 8) {
                 appIcon(app.appURL, size: 26)
@@ -311,7 +311,7 @@ struct AppUninstallerView: View {
                 } label: {
                     Image(systemName: "magnifyingglass").font(.system(size: 10))
                 }
-                .buttonStyle(.plain).foregroundStyle(.tint)
+                .buttonStyle(.interactive).foregroundStyle(.tint)
                 .help("Reveal in Finder")
             }
             HStack(spacing: 4) {

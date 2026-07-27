@@ -59,7 +59,7 @@ struct DuplicateFinderView: View {
             Text("\(Int(vm.duplicateProgress.fraction * 100))%")
                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             Button("Stop") { vm.cancelDuplicates() }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactive)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.red)
         }
@@ -108,7 +108,7 @@ struct DuplicateFinderView: View {
                     Image(systemName: staged ? "checkmark.circle.fill" : "plus.circle")
                         .foregroundStyle(staged ? AnyShapeStyle(Theme.electricBlue) : AnyShapeStyle(.secondary))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactive)
                 .help(staged ? "Remove these copies from the collector" : "Add the redundant copies to the collector")
             }
 
@@ -125,7 +125,7 @@ struct DuplicateFinderView: View {
                 } label: {
                     Image(systemName: "magnifyingglass").font(.system(size: 9))
                 }
-                .buttonStyle(.plain).foregroundStyle(.green)
+                .buttonStyle(.interactive).foregroundStyle(.green)
                 .help("Reveal the kept copy in Finder")
                 Spacer(minLength: 0)
             }
@@ -146,7 +146,7 @@ struct DuplicateFinderView: View {
                     } label: {
                         Image(systemName: "magnifyingglass").font(.system(size: 9))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.interactive)
                     .foregroundStyle(.tint)
                     .help("Reveal this copy in Finder")
                 }

@@ -113,7 +113,7 @@ struct HiddenSpaceView: View {
                         Button { snapToDelete = snap } label: {
                             Image(systemName: "trash").font(.caption2)
                         }
-                        .buttonStyle(.plain).foregroundStyle(Theme.danger)
+                        .buttonStyle(.interactive).foregroundStyle(Theme.danger)
                         .help("Delete this snapshot — cannot be undone")
                         .disabled(busyID != nil)
                     }

@@ -84,7 +84,7 @@ struct ByKindView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactive)
 
             if isOpen {
                 largestFiles(for: row.kind)
@@ -149,7 +149,7 @@ struct ByKindView: View {
             } label: {
                 Image(systemName: "magnifyingglass").font(.system(size: 10))
             }
-            .buttonStyle(.plain).foregroundStyle(.tint)
+            .buttonStyle(.interactive).foregroundStyle(.tint)
             .help("Reveal in Finder")
 
             Button {
@@ -158,7 +158,7 @@ struct ByKindView: View {
                 Image(systemName: collected ? "checkmark.circle.fill" : "plus.circle")
                     .foregroundStyle(collected ? AnyShapeStyle(Theme.electricBlue) : AnyShapeStyle(.secondary))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactive)
             .help(collected ? "Remove from the collector" : "Add to the collector")
         }
     }

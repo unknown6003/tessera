@@ -329,7 +329,7 @@ struct ContentView: View {
                 ForEach(ancestors) { ancestor in
                     chevron
                     Button(ancestor.name) { selectBreadcrumbNode(ancestor) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.interactive)
                         .font(.subheadline)
                         .lineLimit(1)
                 }
@@ -373,7 +373,7 @@ struct ContentView: View {
             Image(systemName: "house.fill")
                 .font(.caption.weight(.semibold))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.interactive)
         .help("Zoom to root")
     }
 

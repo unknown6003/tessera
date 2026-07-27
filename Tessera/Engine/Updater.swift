@@ -36,6 +36,10 @@ enum UpdateStatus: Equatable {
     case installing
     case upToDate
     case failed(String)
+    /// A verified update is downloaded and waiting for the app to go idle (a scan
+    /// is running, or files are staged in the Cleanup List). Surfaced so the hold
+    /// is visible instead of looking like nothing happened.
+    case readyToInstall(version: String?)
 
     /// Menu-item text for the "Check for Updates" command.
     var menuTitle: String {
@@ -48,6 +52,9 @@ enum UpdateStatus: Equatable {
         case .installing:            return "Installing Update…"
         case .upToDate:              return "Tessera is Up to Date"
         case .failed:                return "Check for Updates Now"
+        case .readyToInstall(let v):
+            if let v { return "Update \(v) Installs When Idle" }
+            return "Update Installs When Idle"
         }
     }
 
@@ -55,7 +62,35 @@ enum UpdateStatus: Equatable {
     var isBusy: Bool {
         switch self {
         case .checking, .downloading, .installing: return true
-        case .idle, .upToDate, .failed:            return false
+        case .idle, .upToDate, .failed, .readyToInstall: return false
+        }
+    }
+
+    /// Compact label for the in-app status row.
+    var shortTitle: String {
+        switch self {
+        case .idle:                  return "Check for updates"
+        case .checking:              return "Checking…"
+        case .downloading(let pct):
+            if let pct { return "Downloading \(Int(pct * 100))%" }
+            return "Downloading…"
+        case .installing:            return "Installing…"
+        case .upToDate:              return "Up to date"
+        case .failed:                return "Check failed — retry"
+        case .readyToInstall:        return "Update ready"
+        }
+    }
+
+    /// SF Symbol mirroring `shortTitle`.
+    var symbol: String {
+        switch self {
+        case .idle:           return "arrow.triangle.2.circlepath"
+        case .checking:       return "arrow.triangle.2.circlepath"
+        case .downloading:    return "arrow.down.circle"
+        case .installing:     return "gearshape.arrow.trianglehead.2.clockwise.rotate.90"
+        case .upToDate:       return "checkmark.circle"
+        case .failed:         return "exclamationmark.triangle"
+        case .readyToInstall: return "arrow.up.circle.fill"
         }
     }
 }
@@ -66,6 +101,34 @@ final class UpdaterController: ObservableObject {
     @Published var canCheckForUpdates = false
     /// What the updater is doing, for the menu item's title.
     @Published var status: UpdateStatus = .idle
+    /// Set on the first launch after an update landed, so the app can tell the
+    /// user what just changed. Updates install silently and relaunch on their
+    /// own, which otherwise happens with no acknowledgement at all.
+    @Published private(set) var justUpdatedFrom: String?
+    /// When the last successful check finished, for the in-app status row.
+    @Published private(set) var lastCheckedAt: Date?
+
+    /// Marketing version of the running build ("0.1.5").
+    let currentVersion: String = Bundle.main
+        .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+
+    private static let lastRunVersionKey = "TesseraLastRunVersion"
+
+    /// Compare the running version with the one recorded on the previous launch.
+    /// A change means an update installed since last time. Called once at init.
+    private func detectUpdateSinceLastLaunch() {
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: Self.lastRunVersionKey)
+        defaults.set(currentVersion, forKey: Self.lastRunVersionKey)
+        // Only announce a real upgrade — never on a first-ever launch, and never
+        // when the version is unchanged.
+        if let previous, previous != currentVersion {
+            justUpdatedFrom = previous
+        }
+    }
+
+    /// Dismiss the "what's new" acknowledgement.
+    func acknowledgeUpdate() { justUpdatedFrom = nil }
 
     /// Set by the UI: true while a scan is running or files are staged in the
     /// Cleanup List. While true, a downloaded update is held back rather than
@@ -89,6 +152,10 @@ final class UpdaterController: ObservableObject {
     private let driver: SilentUserDriver?
 
     init() {
+        // Runs regardless of whether Sparkle itself is configured: the version
+        // changed on disk either way, and the user should still be told.
+        defer { detectUpdateSinceLastLaunch() }
+
         guard Self.hasValidPublicKey else {
             updater = nil
             driver = nil
@@ -111,7 +178,11 @@ final class UpdaterController: ObservableObject {
         self.driver = driver
 
         driver.shouldPostponeInstall = { [weak self] in self?.isBusy ?? false }
-        driver.onStatusChange = { [weak self] status in self?.status = status }
+        driver.onStatusChange = { [weak self] status in
+            guard let self else { return }
+            self.status = status
+            if case .upToDate = status { self.lastCheckedAt = Date() }
+        }
 
         do {
             try updater.start()
@@ -165,6 +236,8 @@ final class SilentUserDriver: NSObject, SPUUserDriver {
 
     /// A completed download waiting for the app to go idle before it relaunches.
     private var queuedInstall: ((SPUUserUpdateChoice) -> Void)?
+    /// Version of the update currently being downloaded/held, for status text.
+    private var pendingVersion: String?
     /// Total bytes, for turning byte counts into a percentage.
     private var expectedLength: UInt64 = 0
     private var receivedLength: UInt64 = 0
@@ -202,6 +275,7 @@ final class SilentUserDriver: NSObject, SPUUserDriver {
         state: SPUUserUpdateState,
         reply: @escaping (SPUUserUpdateChoice) -> Void
     ) {
+        pendingVersion = appcastItem.displayVersionString
         onStatusChange(.downloading(percent: nil))
         reply(.install)
     }
@@ -268,6 +342,9 @@ final class SilentUserDriver: NSObject, SPUUserDriver {
         // because Sparkle installs a downloaded update on quit.
         if shouldPostponeInstall() {
             queuedInstall = reply
+            // Say so, rather than going quiet: the update is done downloading and
+            // is only waiting on the user's own in-progress work.
+            onStatusChange(.readyToInstall(version: pendingVersion))
             return
         }
         onStatusChange(.installing)

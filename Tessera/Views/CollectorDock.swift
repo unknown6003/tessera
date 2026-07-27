@@ -235,7 +235,7 @@ private struct CollectorChip: View {
                     .foregroundStyle(.tint)
                     .font(.subheadline)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactive)
             .help("Reveal in Finder to check before deleting")
 
             Button(action: onRemove) {
@@ -243,7 +243,7 @@ private struct CollectorChip: View {
                     .foregroundStyle(.tertiary)
                     .font(.subheadline)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactive)
             .help("Remove from collector")
         }
         .padding(.horizontal, 12)

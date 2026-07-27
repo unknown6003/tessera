@@ -6,6 +6,8 @@ import Combine
 
 struct Sidebar: View {
     @ObservedObject var vm: ScanViewModel
+    /// Injected by TesseraApp; drives the version/update row in the footer.
+    @EnvironmentObject private var updater: UpdaterController
 
     @State private var volumes: [VolumeInfo] = []
     @State private var customFolders: [VolumeInfo] = []
@@ -96,9 +98,8 @@ struct Sidebar: View {
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.icon)
             .help("Refresh sources")
         }
         .padding(.horizontal, 16)
@@ -123,7 +124,7 @@ struct Sidebar: View {
                                isScanned: vm.scannedURL == info.url,
                                isCached: vm.scannedURL != info.url && vm.hasCachedScan(for: info.url))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactive)
                 .accessibilityLabel(Text(info.name))
                 .accessibilityValue(Text(sourceAccessibilityValue(info)))
                 .accessibilityHint("Select or display this storage source")
@@ -166,7 +167,7 @@ struct Sidebar: View {
             .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.interactive)
     }
 
     @ViewBuilder
@@ -194,9 +195,110 @@ struct Sidebar: View {
                 }
                 scanButton
             }
+            updateRow
         }
         .padding(.bottom, 16)
         .padding(.top, vm.isScanning ? 8 : 4)
+    }
+
+    // MARK: Version / updates
+    //
+    // Updates install themselves, so there was previously nothing in the window
+    // saying which version was running, whether a check had happened, or that a
+    // new build had just been installed — the only surface was a menu item. This
+    // is the quiet in-app equivalent: always shows the version, doubles as a
+    // manual "check now", and reports what the updater is doing.
+
+    @ViewBuilder
+    private var updateRow: some View {
+        VStack(spacing: 6) {
+            if let previous = updater.justUpdatedFrom {
+                updatedNotice(from: previous)
+            }
+            Button {
+                updater.checkForUpdates()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: updater.status.symbol)
+                        .font(.system(size: 9, weight: .semibold))
+                        .symbolEffect(.rotate, isActive: updater.status.isBusy)
+                    Text("Version \(updater.currentVersion)")
+                        .font(.system(size: 10, weight: .medium))
+                    Text("·")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.quaternary)
+                    Text(updater.status.shortTitle)
+                        .font(.system(size: 10))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(updateRowTint)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.interactive)
+            .disabled(!updater.canCheckForUpdates || updater.status.isBusy)
+            .help(updateRowHelp)
+            .accessibilityLabel(Text("Tessera version \(updater.currentVersion)"))
+            .accessibilityValue(Text(updater.status.shortTitle))
+            .accessibilityHint("Check for updates now")
+        }
+        .padding(.horizontal, 10)
+    }
+
+    private var updateRowTint: Color {
+        switch updater.status {
+        case .readyToInstall, .downloading, .installing: return Theme.electricBlue
+        case .failed: return Theme.danger
+        default: return Color.secondary
+        }
+    }
+
+    private var updateRowHelp: String {
+        switch updater.status {
+        case .readyToInstall:
+            return "An update is downloaded and installs as soon as the app is idle."
+        case .failed(let message):
+            return "Last update check failed: \(message)"
+        default:
+            return "Tessera updates itself automatically. Click to check now."
+        }
+    }
+
+    /// One-time acknowledgement that a silent update landed.
+    @ViewBuilder
+    private func updatedNotice(from previous: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.electricBlue)
+            Text("Updated to \(updater.currentVersion)")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.foreground)
+            Text("from \(previous)")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            Button {
+                updater.acknowledgeUpdate()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.icon(size: 18))
+            .help("Dismiss")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Theme.electricBlue.opacity(0.10))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(Theme.electricBlue.opacity(0.28), lineWidth: 1))
+        )
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
     /// What's currently displayed in the chart — names the scanned disk so the
@@ -243,7 +345,7 @@ struct Sidebar: View {
             Button("Back") {
                 selectedVolumeURL = vm.scannedURL
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactive)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.tint)
             .help("Re-select \(name(for: vm.scannedURL) ?? "the scanned disk") (the one currently displayed)")
@@ -321,7 +423,7 @@ struct Sidebar: View {
                 }
                 Spacer()
                 Button("Stop") { vm.cancelScan() }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.interactive)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.red)
             }

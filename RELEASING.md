@@ -31,6 +31,35 @@ rm -P /tmp/tessera-sparkle-private-key
 Never generate a replacement key for this workflow: existing installations trust
 the public key already embedded in 0.1.1.
 
+### Stable code-signing identity — ✅ configured (why permissions now persist)
+macOS ties a Full Disk Access grant to the app's **designated requirement**.
+Ad-hoc signing (`codesign -s -`) derives that requirement from the binary's
+cdhash:
+
+```
+designated => cdhash H"70f4979094…" or cdhash H"cdb57616d7…"
+```
+
+That hash changes on *every* build, so each Sparkle update looked like a
+different app to TCC and the user had to re-grant Full Disk Access after every
+update. Releases are therefore signed with one long-lived certificate, which
+makes the requirement certificate-based and stable.
+
+The identity lives in two Actions secrets, `MACOS_CERT_P12` (base64 of the .p12)
+and `MACOS_CERT_PASSWORD`. A copy of the identity is also in this Mac's login
+Keychain ("Tessera Code Signing") — GitHub secrets are write-only, so that is the
+only recoverable copy. **Back it up.** If the certificate is ever lost or
+replaced, permissions reset once more for every existing install.
+
+The release workflow asserts the resulting requirement is certificate-based and
+pins the bundle id; if signing ever silently falls back to ad-hoc the release
+fails rather than shipping the regression.
+
+> This certificate is self-signed, so it fixes *permissions*, not Gatekeeper —
+> the app is still "unidentified developer" on first launch, exactly as before.
+> Developer ID below is what removes that warning; switching to it costs one
+> final permission re-grant.
+
 ### Apple Developer ID — ⛔ STILL NEEDED (enroll personal account first)
 `security find-identity -v -p codesigning` currently shows **0 identities**. Being
 signed into your Apple account in Xcode is not enough.

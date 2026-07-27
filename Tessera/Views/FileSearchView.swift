@@ -79,12 +79,12 @@ struct FileSearchView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactive)
             }
             Button(action: run) {
                 Image(systemName: "arrow.right.circle.fill")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactive)
             .foregroundStyle(Theme.electricBlue)
             .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty)
         }
@@ -113,7 +113,7 @@ struct FileSearchView: View {
                         .background(Capsule().fill(Theme.surface))
                         .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactive)
                 .foregroundStyle(.secondary)
             }
         }
@@ -206,7 +206,7 @@ struct FileSearchView: View {
             } label: {
                 Image(systemName: "magnifyingglass").font(.system(size: 10))
             }
-            .buttonStyle(.plain).foregroundStyle(.tint)
+            .buttonStyle(.interactive).foregroundStyle(.tint)
             .help("Reveal in Finder")
 
             Button {
@@ -215,7 +215,7 @@ struct FileSearchView: View {
                 Image(systemName: collected ? "checkmark.circle.fill" : "plus.circle")
                     .foregroundStyle(collected ? AnyShapeStyle(Theme.electricBlue) : AnyShapeStyle(.secondary))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.interactive)
             .help(collected ? "Remove from the collector" : "Add to the collector")
         }
     }

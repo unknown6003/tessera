@@ -230,6 +230,82 @@ private struct FlatButtonMetrics {
     }
 }
 
+// MARK: - Interaction feedback
+//
+// Every interactive surface answers the same two questions: "is this thing
+// live?" (hover) and "did my click land?" (press). Before this, the flat styles
+// changed only on press and only slightly, and plain icon buttons did nothing at
+// all — so neither question was answered.
+//
+// It also replaces macOS's own focus ring. That ring is drawn in the SYSTEM
+// accent colour, which is not necessarily ours (a Mac set to the pink accent
+// draws a pink ring around our controls, ignoring `.tint`). We turn the system
+// effect off and draw the ring in the app's own accent instead, so keyboard
+// focus stays visible — important with Full Keyboard Access — but on-brand.
+
+/// Timing shared by every interaction so the whole app feels like one surface.
+enum Motion {
+    static let hover: Animation = .easeOut(duration: 0.12)
+    static let press: Animation = .easeOut(duration: 0.09)
+}
+
+/// The hover / press / focus surface behind the flat button styles.
+private struct FlatButtonSurface<Label: View>: View {
+    let label: Label
+    let radius: CGFloat
+    let isPressed: Bool
+    let resting: Color
+    let hovered: Color
+    let pressedFill: Color
+    let border: Color?
+    let borderHovered: Color?
+    /// `nil` keeps whatever colour the call site already set on the label — the
+    /// plain style must not repaint labels that style themselves.
+    let foreground: Color?
+    /// Prominent buttons already read as filled; they lift instead of washing.
+    let liftsOnHover: Bool
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.isFocused) private var isFocused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
+
+    /// Applies the style's colour only when it owns one, so call sites that set
+    /// their own (`.foregroundStyle(.tint)`, danger red, …) keep it.
+    @ViewBuilder private var tintedLabel: some View {
+        if let foreground { label.foregroundStyle(foreground) } else { label }
+    }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let active = isHovering && isEnabled
+        let scale: CGFloat = isPressed ? 0.97 : (active && liftsOnHover ? 1.02 : 1.0)
+        return tintedLabel
+            .background(isPressed ? pressedFill : (active ? hovered : resting), in: shape)
+            .overlay {
+                if let border {
+                    shape.strokeBorder(active ? (borderHovered ?? border) : border, lineWidth: 1)
+                }
+            }
+            .overlay {
+                if isFocused {
+                    shape.strokeBorder(Theme.electricBlue.opacity(0.85), lineWidth: 2)
+                }
+            }
+            .contentShape(shape)
+            .scaleEffect(reduceMotion ? 1.0 : scale)
+            .opacity(isEnabled ? 1.0 : 0.45)
+            .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
+            .animation(reduceMotion ? nil : Motion.press, value: isPressed)
+            .focusEffectDisabled()
+            // A pointer cue makes "this is clickable" obvious before the click.
+            // Declarative, so it can't unbalance the cursor stack the way
+            // NSCursor.push/pop pairs can when views come and go mid-hover.
+            .pointerStyle(isEnabled ? .link : nil)
+            .onHover { isHovering = $0 }
+    }
+}
+
 /// Filled accent button (primary action). Solid cyan, contrast-safe ink.
 /// Deliberately does not set a font — call sites' `.font()` still applies.
 struct FlatProminentButtonStyle: ButtonStyle {
@@ -239,13 +315,20 @@ struct FlatProminentButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let m = FlatButtonMetrics(controlSize)
-        let shape = RoundedRectangle(cornerRadius: m.radius, style: .continuous)
-        return configuration.label
-            .foregroundStyle(ink ?? Theme.ink(on: tint))
-            .padding(.horizontal, m.h)
-            .padding(.vertical, m.v)
-            .background(tint.opacity(configuration.isPressed ? 0.82 : 1.0), in: shape)
-            .contentShape(shape)
+        return FlatButtonSurface(
+            label: configuration.label
+                .padding(.horizontal, m.h)
+                .padding(.vertical, m.v),
+            radius: m.radius,
+            isPressed: configuration.isPressed,
+            resting: tint,
+            hovered: tint.opacity(0.88),
+            pressedFill: tint.opacity(0.78),
+            border: nil,
+            borderHovered: nil,
+            foreground: ink ?? Theme.ink(on: tint),
+            liftsOnHover: true
+        )
     }
 }
 
@@ -256,14 +339,132 @@ struct FlatButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let m = FlatButtonMetrics(controlSize)
-        let shape = RoundedRectangle(cornerRadius: m.radius, style: .continuous)
+        return FlatButtonSurface(
+            label: configuration.label
+                .padding(.horizontal, m.h)
+                .padding(.vertical, m.v),
+            radius: m.radius,
+            isPressed: configuration.isPressed,
+            resting: .clear,
+            hovered: Color.white.opacity(0.07),
+            pressedFill: Color.white.opacity(0.12),
+            border: Theme.border,
+            borderHovered: Theme.borderStrong,
+            foreground: tint,
+            liftsOnHover: false
+        )
+    }
+}
+
+/// Bare icon button (sidebar refresh, inspector affordances). Previously
+/// `.buttonStyle(.plain)`, which gave no hover or press feedback at all and let
+/// macOS draw its system-accent focus ring — the stray pink halo in the sidebar.
+struct IconButtonStyle: ButtonStyle {
+    var size: CGFloat = 28
+    var tint: Color = Theme.mutedForeground
+
+    func makeBody(configuration: Configuration) -> some View {
+        FlatButtonSurface(
+            label: configuration.label.frame(width: size, height: size),
+            radius: size / 2,
+            isPressed: configuration.isPressed,
+            resting: .clear,
+            hovered: Color.white.opacity(0.10),
+            pressedFill: Color.white.opacity(0.16),
+            border: nil,
+            borderHovered: nil,
+            foreground: tint,
+            liftsOnHover: false
+        )
+    }
+}
+
+/// Drop-in replacement for `.plain`, which renders a button as bare content with
+/// no hover or press response whatsoever. This keeps that layout exactly — no
+/// padding, no background, so nothing shifts — and adds the two cues that were
+/// missing: the label brightens under the pointer and settles when clicked.
+/// Labels that colour themselves keep their colour.
+struct PlainInteractiveButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.isFocused) private var isFocused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let active = isHovering && isEnabled
         return configuration.label
-            .foregroundStyle(tint)
-            .padding(.horizontal, m.h)
-            .padding(.vertical, m.v)
-            .background(Color.white.opacity(configuration.isPressed ? 0.10 : 0.0), in: shape)
-            .overlay(shape.strokeBorder(Theme.border, lineWidth: 1))
+            .brightness(active && !configuration.isPressed ? 0.12 : 0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            // Scale down only on press: a hover-grow would reflow full-width rows.
+            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.98 : 1.0))
+            .overlay {
+                if isFocused {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Theme.electricBlue.opacity(0.85), lineWidth: 2)
+                        .padding(-3)
+                }
+            }
+            .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
+            .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
+            .focusEffectDisabled()
+            .pointerStyle(isEnabled ? .link : nil)
+            .onHover { isHovering = $0 }
+    }
+}
+
+extension ButtonStyle where Self == PlainInteractiveButtonStyle {
+    /// Bare button that still answers hover and click.
+    static var interactive: PlainInteractiveButtonStyle { .init() }
+}
+
+extension ButtonStyle where Self == IconButtonStyle {
+    /// Circular, borderless icon button with hover + press feedback.
+    static var icon: IconButtonStyle { .init() }
+    static func icon(size: CGFloat = 28, tint: Color = Theme.mutedForeground) -> IconButtonStyle {
+        .init(size: size, tint: tint)
+    }
+}
+
+// MARK: - Row interaction
+
+extension View {
+    /// Hover + press feedback for list rows and other tappable non-button
+    /// surfaces (sidebar sources, duplicate groups, suggestion rows). Selected
+    /// rows keep their accent wash and only brighten on hover.
+    func interactiveRow(
+        isSelected: Bool = false,
+        radius: CGFloat = 10,
+        pressed: Bool = false
+    ) -> some View {
+        modifier(InteractiveRow(isSelected: isSelected, radius: radius, pressed: pressed))
+    }
+}
+
+private struct InteractiveRow: ViewModifier {
+    let isSelected: Bool
+    let radius: CGFloat
+    let pressed: Bool
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let active = isHovering && isEnabled
+        return content
+            .background {
+                shape.fill(
+                    pressed ? Color.white.opacity(0.10)
+                            : (active ? Color.white.opacity(isSelected ? 0.06 : 0.05) : .clear)
+                )
+            }
             .contentShape(shape)
+            .scaleEffect(reduceMotion ? 1.0 : (pressed ? 0.985 : 1.0))
+            .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
+            .animation(reduceMotion ? nil : Motion.press, value: pressed)
+            .pointerStyle(isEnabled ? .link : nil)
+            .onHover { isHovering = $0 }
     }
 }
 

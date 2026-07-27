@@ -122,7 +122,7 @@ struct InspectorView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.interactive)
                 .contentShape(Rectangle())
             }
         }
