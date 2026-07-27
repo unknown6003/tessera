@@ -145,8 +145,18 @@ jobs:
           # fail the release instead of shipping that regression.
           requirement=$(codesign -d -r- "$app" 2>&1 | sed -n 's/^designated => //p')
           echo "designated requirement: $requirement"
+          # A cdhash requirement is the regression we are guarding against: it is
+          # per-build, so TCC would drop Full Disk Access on the next update.
           case "$requirement" in
-            *"certificate leaf"*) : ;;
+            *cdhash*)
+              echo "Designated requirement is cdhash-based; Full Disk Access would reset on update." >&2
+              exit 1 ;;
+          esac
+          # Anything cert-anchored is stable. A self-signed identity is its own
+          # root, so codesign writes "certificate root"; a CA-issued one (e.g. a
+          # future Developer ID) writes "certificate leaf". Accept both.
+          case "$requirement" in
+            *certificate*) : ;;
             *) echo "Designated requirement is not certificate-based; Full Disk Access would reset on update." >&2
                exit 1 ;;
           esac
