@@ -1,0 +1,305 @@
+{
+  "title": "Tessera disk rescue: implementation gate",
+  "eyebrow": "Tessera / round 27",
+  "subtitle": "Research is ready for a read-only build slice.",
+  "summary": "The corpus now has 8,554 unique URLs across 58 inputs: 3,005 non-automated behavior records, 5,005 automated GitHub candidates, 30 Apple system facts, 426 owner or implementation facts, and 88 market signals. A separate agent may start the read-only rescue flow now. Raw owner actions and post-failure retry behavior remain gated on two open choices. No files were changed.",
+  "slug": "tessera-disk-rescue-study-corpus-r27",
+  "expiresInSeconds": 604800,
+  "sections": [
+    {
+      "title": "Evidence snapshot",
+      "intro": "The source queue is large enough to guide the first build slice. Automated issue records stay separate until manual coding is complete.",
+      "blocks": [
+        {
+          "type": "table",
+          "columns": ["Class", "Count", "Meaning"],
+          "rows": [
+            ["Non-automated behavior", "3,005", "User and issue evidence used in pattern work"],
+            ["Automated GitHub candidates", "5,005", "Issue pages 1 through 10; manual coding required"],
+            ["Apple system facts", "30", "Platform rules and API limits"],
+            ["Owner or implementation facts", "426", "App, tool, and storage behavior"],
+            ["Market signals", "88", "Product claims, not demand proof"],
+            ["Deduplication", "8,554 URLs", "Zero exact or normalized duplicates"]
+          ]
+        },
+        {
+          "type": "callout",
+          "tone": "info",
+          "title": "The agent can start now",
+          "text": "Build the read-only Rescue path, scan coverage, ranked review, local case save, and tests. Keep risky and owner-managed items protected. Research continues during implementation."
+        }
+      ]
+    },
+    {
+      "title": "What the latest batch adds",
+      "intro": "Pages 5 through 10 added 3,217 candidates through the logged-in GitHub CLI. They sharpen state boundaries, but they do not grant permission to delete.",
+      "blocks": [
+        {
+          "type": "table",
+          "columns": ["Lane", "Total", "New pages 5 to 10"],
+          "rows": [
+            ["Game libraries", "1,869", "1,251"],
+            ["Package stores", "1,059", "675"],
+            ["App profiles", "1,187", "730"],
+            ["Communication", "890", "561"]
+          ]
+        },
+        {
+          "type": "bullets",
+          "items": [
+            "Game paths mix payloads with saves, mods, launcher registration, external volumes, partial transfers, and runtime state.",
+            "Package paths mix shared stores with local sources, locks, offline rebuild needs, and project materializations.",
+            "Profiles mix exact caches with sessions, credentials, drafts, local history, offline data, and workspace databases.",
+            "Communication paths mix attachments with exports, encryption, sync, local databases, and active writers.",
+            "All 5,005 records are discovery candidates. They must not change a safety rule until a person codes them."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Development gate",
+      "intro": "The first implementation slice has a safe boundary and does not need to wait for the open product choices.",
+      "blocks": [
+        {
+          "type": "table",
+          "columns": ["Start now", "Hold for later"],
+          "rows": [
+            ["Rescue entry, scan phases, coverage, named measurements, ranked candidates, exact-path review, local case save, and no-mutation tests", "Raw backup or VM actions, generic profile or communication deletion, permanent deletion, silent retry, and background mutation"],
+            ["Safe, review, and protected rows with owner handoff and clear reasons", "Any action that depends on a verified restore copy, guest state, or post-failure policy"],
+            ["Hard holds for active, unclear, owner-managed, sync, backup, virtual-disk, profile, and communication state", "Broad rules based only on names such as node_modules, Cache, or System Data"]
+          ]
+        },
+        {
+          "type": "callout",
+          "tone": "warning",
+          "title": "Do not cross the gate",
+          "text": "Round 7 decides backup and virtual-disk owner action, recovery proof, and host plus guest evidence. Round 10 decides pause behavior, blocker explanation, and background work after failure. Until then, use hard holds and owner handoffs."
+        }
+      ]
+    },
+    {
+      "title": "Implementation plan",
+      "intro": "Use the existing Tessera flow. Keep the first diff small and test the real macOS path.",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "Trace the existing scan, suggestion, view-model, and Trash flow in an isolated Tessera space.",
+            "Add Rescue entry and the needs_rescue, scanning, diagnosing, and plan_ready states.",
+            "Add the shared identity and owner-state gate. Report path, volume, type, coverage, permission, process, lock, sync, logical size, physical size, and measurement source.",
+            "Build ranked review rows. Preselect only high-confidence rebuildable items. Keep all unknown or owner-managed rows review-only or protected.",
+            "Add local resumable case state. Revalidate identity, coverage, owner, and capacity before any future staging or Trash move.",
+            "Add tests for no mutation during scan, stale paths, permission gaps, active writers, measurement mismatch, per-item results, and local-only case data.",
+            "Run the rendered macOS window at the supported sizes. Then return to the research loop for every new decision."
+          ]
+        },
+        {
+          "type": "links",
+          "items": [
+            {
+              "label": "Open the Tessera repository",
+              "url": "https://github.com/unknown6003/tessera"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Round 7: choose recovery behavior",
+      "intro": "Backups, snapshots, Docker images, and VM bundles have restore value and owner-controlled state.",
+      "blocks": [
+        {
+          "type": "interaction",
+          "id": "tessera-rescue-recovery-context",
+          "mode": "attach-next-message",
+          "title": "Choose the recovery boundary",
+          "description": "The recommended choices protect recovery objects while showing the exact owner action and measured state.",
+          "submitLabel": "Send round 7 choices",
+          "fields": [
+            {
+              "id": "recovery-object-action",
+              "kind": "single",
+              "label": "1. What should Tessera do with backups and VM bundles?",
+              "description": "A large bundle may be a current restore path, an old device backup, a live environment, or an owner-managed disk image.",
+              "options": [
+                {
+                  "id": "owner-handoff-only",
+                  "label": "Owner app only",
+                  "description": "Keep device backups, Time Machine, Docker, Parallels, UTM, and similar bundles protected; show the exact owner next step.",
+                  "meta": "Recommended",
+                  "tone": "success"
+                },
+                {
+                  "id": "raw-path-review",
+                  "label": "Review raw path",
+                  "description": "Show the exact path, state, and a strong warning; allow inspection without placing it in safe staging.",
+                  "meta": "More control",
+                  "tone": "info"
+                }
+              ]
+            },
+            {
+              "id": "recovery-proof",
+              "kind": "single",
+              "label": "2. What proof should be required before reclaim?",
+              "description": "A Trash move cannot recreate a lost restore point, guest state, or persistent volume.",
+              "options": [
+                {
+                  "id": "verified-copy-required",
+                  "label": "Require verified copy",
+                  "description": "Require a verified backup or restore point and show when it was last checked before a source-aware reclaim.",
+                  "meta": "Recommended",
+                  "tone": "success"
+                },
+                {
+                  "id": "warn-and-review",
+                  "label": "Warn and review",
+                  "description": "Show the missing proof and let the user continue to a review step after a stronger warning.",
+                  "meta": "Less friction",
+                  "tone": "info"
+                }
+              ]
+            },
+            {
+              "id": "disk-image-evidence",
+              "kind": "single",
+              "label": "3. What evidence should a disk-image row show?",
+              "description": "Host file size, physical allocation, guest capacity, snapshots, and runtime state can disagree.",
+              "options": [
+                {
+                  "id": "host-guest-runtime",
+                  "label": "Host, guest, and runtime",
+                  "description": "Show logical and physical size, guest or runtime state, snapshots, owner, and restore role when known.",
+                  "meta": "Recommended",
+                  "tone": "success"
+                },
+                {
+                  "id": "host-file-only",
+                  "label": "Host file only",
+                  "description": "Keep the row compact and show only the host file size until the user opens details.",
+                  "meta": "Less detail",
+                  "tone": "info"
+                }
+              ]
+            },
+            {
+              "id": "backup-virtual-disk-notes",
+              "kind": "text",
+              "label": "Your notes",
+              "description": "Name a backup, VM, snapshot, owner app, or restore boundary that must shape the first version.",
+              "required": false,
+              "placeholder": "For example: never delete a Time Machine or Docker bundle; show me the owner action and last verified restore point."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Round 10: choose failure behavior",
+      "intro": "A failed cleanup, backup, update, copy, or sync attempt can change the state or block the next safe step.",
+      "blocks": [
+        {
+          "type": "interaction",
+          "id": "tessera-rescue-post-failure",
+          "mode": "attach-next-message",
+          "title": "Choose the post-failure boundary",
+          "description": "The recommended choices keep a failed case inspectable and prevent a silent retry or a wider delete batch.",
+          "submitLabel": "Send round 10 choices",
+          "fields": [
+            {
+              "id": "post-failure-retry",
+              "kind": "single",
+              "label": "1. What should Tessera do after a failed transaction?",
+              "description": "The failure may have changed the path, owner state, sync state, or usable space.",
+              "options": [
+                {
+                  "id": "pause-and-inspect",
+                  "label": "Pause and inspect",
+                  "description": "Save the exact scope and error, re-measure, and ask before retrying or changing the plan.",
+                  "meta": "Recommended",
+                  "tone": "success"
+                },
+                {
+                  "id": "retry-same-plan",
+                  "label": "Retry same plan",
+                  "description": "Try the same operation again when the failure looks temporary, while keeping the existing confirmation.",
+                  "meta": "Less interruption",
+                  "tone": "info"
+                }
+              ]
+            },
+            {
+              "id": "blocker-explanation",
+              "kind": "single",
+              "label": "2. How should Tessera explain the blocker?",
+              "description": "The next safe step depends on whether the cause is measurement, permission, sync, backup, or an owner app.",
+              "options": [
+                {
+                  "id": "blocker-and-owner",
+                  "label": "Show blocker and owner",
+                  "description": "Name the failed transaction, exact blocker, measured state, responsible owner, and one safe next step.",
+                  "meta": "Recommended",
+                  "tone": "success"
+                },
+                {
+                  "id": "one-generic-next-step",
+                  "label": "One generic next step",
+                  "description": "Keep the result short and suggest one broad action such as rescan, restart, or try again.",
+                  "meta": "Less detail",
+                  "tone": "info"
+                }
+              ]
+            },
+            {
+              "id": "background-work-policy",
+              "kind": "single",
+              "label": "3. Should Tessera do work in the background after failure?",
+              "description": "Users report losing trust when a cleanup or sync action continues without a clear visible state.",
+              "options": [
+                {
+                  "id": "no-background-work",
+                  "label": "No background work",
+                  "description": "Stop mutation and monitoring after the result unless the user starts an explicit, local observer.",
+                  "meta": "Recommended",
+                  "tone": "success"
+                },
+                {
+                  "id": "quiet-observer",
+                  "label": "Allow quiet observer",
+                  "description": "Keep a local, read-only observer running to report whether space or owner state changes.",
+                  "meta": "More context",
+                  "tone": "info"
+                }
+              ]
+            },
+            {
+              "id": "post-failure-notes",
+              "kind": "text",
+              "label": "Your notes",
+              "description": "Tell me what Tessera should show or save when the first cleanup, backup, update, copy, or sync step fails.",
+              "required": false,
+              "placeholder": "For example: stop, explain the exact blocker, save the case, and never try a wider delete without asking."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Next loop",
+      "intro": "The evidence loop stays open while the agent builds.",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "Use the implementation handoff as the build contract for the read-only slice.",
+            "Submit the two open forms. The next page will keep your answers read-only.",
+            "Manually code the 5,005 GitHub candidates before using them as behavior evidence.",
+            "Continue with issue pages 11 and later when older history can change a product decision.",
+            "Add direct owner documentation and user reports for communication storage before adding an adapter.",
+            "Re-scan the real macOS path after each feature slice and record new questions."
+          ]
+        }
+      ]
+    }
+  ]
+}
