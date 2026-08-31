@@ -591,7 +591,7 @@ final class ScanViewModel: ObservableObject {
     private func persistRescueCase(candidateIDs: Set<String>) {
         guard let plan = rescuePlan else { return }
         let wasRemembering = rescuePhase == .remembering
-        let candidateIdentities = Dictionary(uniqueKeysWithValues: plan.recommendations.compactMap { recommendation in
+        let candidateIdentities: [String: ScanIdentity] = Dictionary(uniqueKeysWithValues: plan.recommendations.compactMap { recommendation in
             guard candidateIDs.contains(recommendation.id), let identity = recommendation.identity else { return nil }
             return (recommendation.id, identity)
         })
