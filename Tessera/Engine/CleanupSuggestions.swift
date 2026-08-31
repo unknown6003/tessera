@@ -675,7 +675,7 @@ struct RescueMeasurement: Codable, Equatable, Sendable {
         return RescueMeasurement(
             volumePath: volumeURL.standardizedFileURL.path,
             totalBytes: values?.volumeTotalCapacity.map(Int64.init),
-            availableBytes: values?.volumeAvailableCapacityForImportantUsage.map(Int64.init),
+            availableBytes: values?.volumeAvailableCapacityForImportantUsage,
             freeBytes: values?.volumeAvailableCapacity.map(Int64.init),
             logicalBytes: logicalBytes(of: root),
             physicalBytes: physicalBytes(of: root),
@@ -690,7 +690,7 @@ struct RescueMeasurement: Codable, Equatable, Sendable {
         return RescueMeasurement(
             volumePath: volumeURL.standardizedFileURL.path,
             totalBytes: values?.volumeTotalCapacity.map(Int64.init),
-            availableBytes: values?.volumeAvailableCapacityForImportantUsage.map(Int64.init),
+            availableBytes: values?.volumeAvailableCapacityForImportantUsage,
             freeBytes: values?.volumeAvailableCapacity.map(Int64.init),
             logicalBytes: 0,
             physicalBytes: 0,
