@@ -303,7 +303,7 @@ struct EngineTests {
 
     // MARK: 6c — dataless (online-only) items via the test seam
 
-    @Test("Dataless files are excluded; a dataless directory becomes a .cloudOnlyStorage boundary")
+    @Test("Dataless files and directories become .cloudOnlyStorage boundaries")
     func datalessItemsAreHandled() async throws {
         let base = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: base) }
@@ -345,8 +345,12 @@ struct EngineTests {
             return nil
         }
 
-        // Dataless file excluded entirely (no node).
-        #expect(find(root, named: "ghost.online") == nil)
+        // Dataless file stays visible as a non-actionable boundary.
+        let onlineFileNode = find(root, named: "ghost.online")
+        #expect(onlineFileNode != nil)
+        #expect(onlineFileNode?.kind == .cloudOnlyStorage)
+        #expect(onlineFileNode?.size == 0)
+        #expect(onlineFileNode?.children.isEmpty == true)
 
         // Dataless directory → boundary node, size 0, NOT descended.
         let onlineDirNode = find(root, named: "cloudfolder.online")
