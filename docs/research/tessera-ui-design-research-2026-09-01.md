@@ -102,7 +102,7 @@ instruction, and do not send the user to a distant footer.
 ![CleanMyMac review action](./tessera-ui-design-research-2026-09-01/references/cleanmymac-review.webp)
 
 CleanMyMac's useful pattern is not its gradients. It is the explicit transition
-from browsing to “Review and Remove”, with the selected count and amount beside
+from browsing to "Review and Remove", with the selected count and amount beside
 the action.
 
 ![CleanMyMac selected list](./tessera-ui-design-research-2026-09-01/references/cleanmymac-selected-list.webp)
@@ -129,9 +129,9 @@ held paths, failed paths, and any mismatch.
 | Apple typography | Prefer system fonts and readable weights; avoid light text at small sizes | Remove tiny decorative labels and small caps. Use system text styles and monospaced digits only for measurements. |
 | Apple accessibility | Support larger text, visible focus, and comfortable controls; macOS controls should not be smaller than 20 pt | Restore keyboard focus, avoid 8–10 pt interactive text, and give icon-only buttons labels. |
 | Apple feedback | Put status near the thing it describes; use determinate progress when possible | Put coverage and measurement status beside the rescue plan. Use a standard progress bar for scans. |
-| Apple buttons | The primary button should be the likely nondestructive choice; destructive actions are explicit | “Move to Trash” is primary. Permanent deletion stays behind a separate confirmed action. |
+| Apple buttons | The primary button should be the likely nondestructive choice; destructive actions are explicit | "Move to Trash" is primary. Permanent deletion stays behind a separate confirmed action. |
 | Apple alerts | Interrupt only for important, irreversible decisions | Keep normal review inline. Use confirmation only at the Trash/permanent-delete boundary. |
-| Apple disclosure controls | Use disclosure to hide secondary detail, and do not stack many independent expanders in one view | Show the short reason in each recommendation; keep proof behind one “Proof” disclosure. |
+| Apple disclosure controls | Use disclosure to hide secondary detail, and do not stack many independent expanders in one view | Show the short reason in each recommendation; keep proof behind one "Proof" disclosure. |
 
 ## Current UI audit
 
@@ -144,12 +144,12 @@ works against that safety model:
 - All six tools compete in the same toolbar. Rescue opens in a 420-point
   popover, which forces measurement, goals, coverage, risk, ownership, proof,
   and exact paths into a narrow scroll area.
-- Rescue shows too many equally weighted bordered cards. “Available”, “Free”,
-  “Logical”, “Physical”, source, target, coverage, confidence, side effect, and
+- Rescue shows too many equally weighted bordered cards. "Available", "Free",
+  "Logical", "Physical", source, target, coverage, confidence, side effect, and
   proof are all present, but the user has no strong reading order.
 - The cleanup list is a large bottom surface with wrapped chips. It is useful as
   a drop target, but its primary action is placed in the least reliable part of
-  the window and its “Empty List” / “Move to Trash” / permanent-delete controls
+  the window and its "Empty List" / "Move to Trash" / permanent-delete controls
   look too similar.
 - The sidebar source cards combine selected, viewing, cached, total capacity,
   green outlines, and progress bars. The information is correct but visually
@@ -173,7 +173,7 @@ works against that safety model:
 
 ### Do
 
-- Lead with the immediate outcome: “Need 20 GB for an update?”
+- Lead with the immediate outcome: "Need 20 GB for an update?"
 - Keep the current source and the current measurement in the same header block.
 - Show one large, readable available-space value. Keep Free, Logical, and
   Physical as supporting values.
@@ -196,8 +196,8 @@ works against that safety model:
 - Do not make the rescue plan a narrow popover.
 - Do not make every piece of information its own rounded card.
 - Do not put important confirmation actions only in a bottom dock.
-- Do not make the user decode “collector”, “purgeable”, “orphan”, “logical”, or
-  “physical” before they understand the next action.
+- Do not make the user decode "collector", "purgeable", "orphan", "logical", or
+  "physical" before they understand the next action.
 - Do not use all-caps headings, tiny labels, or light weights as decoration.
 - Do not use gradients, glows, colored shadows, or faux-glass plates behind
   content. They compete with the storage map and weaken text contrast.
@@ -226,7 +226,7 @@ works against that safety model:
 - Recommendation rows show name/path/size first, then reason, then expandable
   proof. Group actions stay on the group header.
 - The review queue stays a visible drop target, but its controls use clear
-  labels and a strong distinction between “Empty list” and “Move to Trash”.
+  labels and a strong distinction between "Empty list" and "Move to Trash".
 - The inspector is anchored to the selected item, not transient hover.
 - Empty and loading states state the next action in the same place as the
   explanation.
