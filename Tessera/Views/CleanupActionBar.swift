@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Scan-wide tools shown above the chart. At wide sizes every tool is visible;
-/// when the center column narrows, the secondary actions move into an explicit
-/// overflow menu instead of silently scrolling out of reach.
+/// The app-level task switcher. Rescue is the primary path; the other views are
+/// named tools that open in a roomy sheet instead of a cramped popover.
 struct CleanupActionBar: View {
     @ObservedObject var vm: ScanViewModel
+    var onTrashAll: () -> Void
 
     private enum Tool: String, Identifiable, CaseIterable {
         case rescue, apps, duplicates, byKind, largeOld, search
@@ -13,128 +13,134 @@ struct CleanupActionBar: View {
 
         var label: String {
             switch self {
-            case .rescue:     return "Rescue Space"
-            case .apps:       return "Uninstall Apps"
+            case .rescue: return "Rescue"
+            case .apps: return "Uninstall Apps"
             case .duplicates: return "Find Duplicates"
-            case .byKind:     return "Browse by Type"
-            case .largeOld:   return "Big & Old Files"
-            case .search:     return "Search Files"
+            case .byKind: return "Browse by Type"
+            case .largeOld: return "Big & Old Files"
+            case .search: return "Search Files"
             }
         }
 
         var symbol: String {
             switch self {
-            case .rescue:     return "lifepreserver.fill"
-            case .apps:       return "trash.square"
+            case .rescue: return "lifepreserver.fill"
+            case .apps: return "trash.square"
             case .duplicates: return "doc.on.doc"
-            case .byKind:     return "square.grid.2x2.fill"
-            case .largeOld:   return "clock.badge.exclamationmark"
-            case .search:     return "magnifyingglass"
+            case .byKind: return "square.grid.2x2.fill"
+            case .largeOld: return "clock.badge.exclamationmark"
+            case .search: return "magnifyingglass"
             }
         }
 
-        var popoverWidth: CGFloat {
+        var description: String {
             switch self {
-            case .rescue: return 420
-            case .apps, .largeOld, .search: return 420
-            case .duplicates, .byKind: return 400
+            case .rescue: return "A short, safe plan for making room."
+            case .apps: return "Remove apps and their matching leftovers."
+            case .duplicates: return "Compare identical files before staging copies."
+            case .byKind: return "See which file types use the most space."
+            case .largeOld: return "Find large files you may no longer need."
+            case .search: return "Search the current scan with plain words."
             }
         }
+
+        var sheetWidth: CGFloat { self == .rescue ? 780 : 720 }
     }
 
     @State private var presentedTool: Tool?
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            expandedToolbar
-            compactToolbar
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .popover(item: $presentedTool, arrowEdge: .top) { tool in
-            toolPopover(tool)
-        }
-    }
-
-    /// Natural-width row used only when all six controls genuinely fit.
-    private var expandedToolbar: some View {
         HStack(spacing: 10) {
-            ForEach(Tool.allCases) { tool in
-                toolButton(tool)
+            Button {
+                presentedTool = .rescue
+            } label: {
+                Label(rescueTitle, systemImage: Tool.rescue.symbol)
             }
-        }
-        .padding(.horizontal, 4)
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    /// The primary action stays one click away; every secondary action is named in
-    /// a conventional menu that works with mouse, keyboard, and VoiceOver.
-    private var compactToolbar: some View {
-        HStack(spacing: 8) {
-            toolButton(.rescue)
+            .buttonStyle(.flatProminent)
+            .controlSize(.regular)
+            .help("Build a safe plan to make room")
 
             Menu {
-                ForEach(Tool.allCases.filter { $0 != .rescue }) { tool in
-                    Button {
-                        presentedTool = tool
-                    } label: {
-                        Label(title(for: tool), systemImage: tool.symbol)
+                Section("Tools") {
+                    ForEach(Tool.allCases.filter { $0 != .rescue }) { tool in
+                        Button {
+                            presentedTool = tool
+                        } label: {
+                            Label(tool.label, systemImage: tool.symbol)
+                        }
                     }
                 }
             } label: {
-                Label("More Tools", systemImage: "ellipsis.circle")
+                Label("Tools", systemImage: "square.grid.2x2")
             }
             .buttonStyle(.flat)
             .controlSize(.regular)
-            .help("Open all scan tools")
+            .help("Open another way to explore this scan")
 
             Spacer(minLength: 0)
+
+            if !vm.collector.isEmpty {
+                Label("\(vm.collector.count) ready for review · \(Theme.format(vm.collectorTotalSize))",
+                      systemImage: "checklist")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
-        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(item: $presentedTool) { tool in
+            toolSheet(tool)
+        }
     }
 
-    private func toolButton(_ tool: Tool) -> some View {
-        Button {
-            presentedTool = tool
-        } label: {
-            Label(title(for: tool), systemImage: tool.symbol)
-        }
-        .buttonStyle(.flat)
-        .controlSize(.regular)
-        .help(tool.label)
-    }
-
-    private func title(for tool: Tool) -> String {
-        switch tool {
-        case .rescue:
-            if let plan = vm.rescuePlan, !plan.safeRecommendations.isEmpty {
-                let bytes = plan.safeRecommendations.reduce(0) { $0 + $1.physicalBytes }
-                return "Rescue · \(Theme.format(bytes))"
-            }
-        case .duplicates:
-            if vm.didRunDuplicates, !vm.duplicateGroups.isEmpty {
-                return "Duplicates · \(Theme.format(vm.duplicateReclaimableBytes))"
-            }
-        case .apps, .byKind, .largeOld, .search:
-            break
-        }
-        return tool.label
+    private var rescueTitle: String {
+        guard let plan = vm.rescuePlan, !plan.safeRecommendations.isEmpty else { return "Rescue" }
+        let bytes = plan.safeRecommendations.reduce(0) { $0 + $1.physicalBytes }
+        return "Rescue · \(Theme.format(bytes))"
     }
 
     @ViewBuilder
-    private func toolPopover(_ tool: Tool) -> some View {
-        ScrollView {
-            Group {
-                switch tool {
-                case .rescue:     CleanupSuggestionsView(vm: vm)
-                case .apps:       AppUninstallerView(vm: vm)
-                case .duplicates: DuplicateFinderView(vm: vm)
-                case .byKind:     ByKindView(vm: vm)
-                case .largeOld:   LargeOldFilesView(vm: vm)
-                case .search:     FileSearchView(vm: vm)
+    private func toolSheet(_ tool: Tool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: tool.symbol)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 34, height: 34)
+                    .background(Theme.selectionTint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tool.label)
+                        .font(.title3.weight(.semibold))
+                    Text(tool.description)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
+
+                Spacer(minLength: 0)
             }
-            .padding(16)
+            .padding(.horizontal, 24)
+            .padding(.top, 22)
+            .padding(.bottom, 18)
+
+            Divider()
+
+            ScrollView(.vertical, showsIndicators: true) {
+                Group {
+                    switch tool {
+                    case .rescue: CleanupSuggestionsView(vm: vm, onMoveToTrash: onTrashAll)
+                    case .apps: AppUninstallerView(vm: vm)
+                    case .duplicates: DuplicateFinderView(vm: vm)
+                    case .byKind: ByKindView(vm: vm)
+                    case .largeOld: LargeOldFilesView(vm: vm)
+                    case .search: FileSearchView(vm: vm)
+                    }
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .frame(width: tool.popoverWidth, height: 520)
+        .frame(width: tool.sheetWidth, height: 680)
+        .background(Theme.bg)
     }
 }

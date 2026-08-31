@@ -52,9 +52,11 @@ extension View {
     func desktopGlassPanel(cornerRadius: CGFloat = 24,
                            shadowRadius: CGFloat = 28,
                            shadowY: CGFloat = 16) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        // Keep the old call sites source-compatible while enforcing the quieter
+        // content geometry used by the redesigned shell.
+        let shape = RoundedRectangle(cornerRadius: min(cornerRadius, 16), style: .continuous)
         return self
             .background(Theme.card, in: shape)
-            .liquidGlassDepth(shape, shadowRadius: shadowRadius, shadowY: shadowY)
+            .liquidGlassDepth(shape, shadowRadius: min(shadowRadius, 12), shadowY: min(shadowY, 6))
     }
 }

@@ -1,23 +1,27 @@
 import SwiftUI
 import AppKit
 
-/// The first Rescue slice. It explains the current measurement and ranks every
-/// known candidate without hiding protected owner-managed paths.
+/// The Rescue task surface. It keeps the user's goal, the volume measurement,
+/// and the ranked review list in one readable path.
 struct CleanupSuggestionsView: View {
     @ObservedObject var vm: ScanViewModel
+    var onMoveToTrash: (() -> Void)? = nil
 
+    @Environment(\.dismiss) private var dismiss
     @State private var requiredSpaceText = ""
+    @State private var expandedGroups = Set<String>()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            FeatureSectionLabel("Rescue space")
-
+        VStack(alignment: .leading, spacing: 20) {
             if let saved = vm.savedRescueCase {
                 savedCaseRow(saved)
             }
 
             if let plan = vm.rescuePlan {
                 planView(plan)
+                if let onMoveToTrash, !vm.collector.isEmpty {
+                    reviewFooter(onMoveToTrash)
+                }
             } else {
                 emptyPlan
             }
@@ -32,17 +36,10 @@ struct CleanupSuggestionsView: View {
 
     @ViewBuilder
     private func planView(_ plan: RescuePlan) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("A short plan for \(plan.sourcePath)")
-                .font(.subheadline.weight(.medium))
-                .lineLimit(2)
-                .truncationMode(.middle)
-            Label(vm.rescuePhase.title, systemImage: vm.rescuePhase.symbol)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(color(for: plan.coverage.state == .blocked ? .protected : .safe))
-
-            goalCard(plan)
+        VStack(alignment: .leading, spacing: 20) {
+            planHeader(plan)
             measurementCard(plan)
+            goalCard(plan)
 
             if let verification = vm.rescueVerification {
                 verificationCard(verification)
@@ -52,70 +49,150 @@ struct CleanupSuggestionsView: View {
 
             coverageCard(plan.coverage)
 
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Ranked candidates")
-                        .font(.subheadline.weight(.semibold))
-                    Text("Safe items are staged for review. Check every exact path before moving anything.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Save plan") { vm.saveRescueCase() }
-                    .buttonStyle(.flat)
-                    .controlSize(.small)
-                    .help("Save this plan on this Mac. It will not move files.")
-            }
-
             if let report = vm.cleanupReport, !report.isEmpty {
+                candidatesHeader(report)
+
                 if !report.safeGroups.isEmpty {
-                    Button {
-                        vm.stageSafeCleanup()
-                    } label: {
-                        Label("Add all safe · \(Theme.format(report.safeTotalBytes))",
-                              systemImage: "sparkles")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.flatProminent)
-                    .controlSize(.large)
-                    .disabled(vm.safeGroupsAllStaged)
+                    candidateSection(
+                        title: "Safe to review",
+                        subtitle: "Known generated files. They can be rebuilt, but the next build may take longer.",
+                        groups: report.safeGroups,
+                        action: {
+                            vm.stageSafeCleanup()
+                        },
+                        actionTitle: vm.safeGroupsAllStaged
+                            ? "Added to review"
+                            : "Add all safe · \(Theme.format(report.safeTotalBytes))",
+                        actionDisabled: vm.safeGroupsAllStaged,
+                        prominent: true
+                    )
                 }
 
-                ForEach(report.groups) { group in
-                    groupRow(group)
+                if !report.reviewGroups.isEmpty {
+                    candidateSection(
+                        title: "Review first",
+                        subtitle: "These may be useful, shared, active, or tied to an owner app. Nothing is added automatically.",
+                        groups: report.reviewGroups,
+                        action: nil,
+                        actionTitle: nil,
+                        actionDisabled: false,
+                        prominent: false
+                    )
+                }
+
+                if !report.protectedGroups.isEmpty {
+                    candidateSection(
+                        title: "Protected",
+                        subtitle: "Tessera will not stage these. Use the owner app or keep them in place.",
+                        groups: report.protectedGroups,
+                        action: nil,
+                        actionTitle: nil,
+                        actionDisabled: false,
+                        prominent: false
+                    )
                 }
             } else {
-                Text("No known candidates in this scan. The coverage and measurement above still matter.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                emptyCandidates
             }
         }
     }
 
-    private var emptyPlan: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if vm.isScanning {
-                ProgressView("Building the rescue plan…")
-            } else if let error = vm.lastRescueError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Label("Scan a source to build a plan.", systemImage: "magnifyingglass")
+    private func planHeader(_ plan: RescuePlan) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Rescue space")
+                    .font(.title2.weight(.semibold))
+                Text(plan.sourcePath)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                Text("Everything stays on this Mac. Review the paths before anything moves.")
                     .font(.subheadline)
-                Text("Rescue reads local storage only. It does not move or upload files while it measures.")
-                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Spacer(minLength: 12)
+            phaseBadge
         }
+    }
+
+    private var phaseBadge: some View {
+        Label(vm.rescuePhase.title, systemImage: vm.rescuePhase.symbol)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(phaseColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(phaseColor.opacity(0.12), in: Capsule())
+    }
+
+    private var phaseColor: Color {
+        switch vm.rescuePhase {
+        case .result: return Theme.electricBlue
+        case .confirmingTrash, .moving, .verifying: return .orange
+        default: return .secondary
+        }
+    }
+
+    private func measurementCard(_ plan: RescuePlan) -> some View {
+        let primary = plan.measurement.primaryBytes
+        let fraction = capacityFraction(plan.measurement)
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(primary.map(Theme.format) ?? "Unknown")
+                        .font(.system(.largeTitle, design: .rounded).weight(.semibold).monospacedDigit())
+                    Text("available now")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 16)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(targetTitle(plan))
+                        .font(.title3.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(targetColor(plan))
+                    Text(targetLabel(plan))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let fraction {
+                ProgressView(value: fraction)
+                    .tint(targetColor(plan))
+                    .accessibilityLabel("Available capacity")
+                    .accessibilityValue(primary.map(Theme.format) ?? "Unknown")
+            }
+
+            HStack(spacing: 20) {
+                metric("Free", plan.measurement.freeBytes.map(Theme.format) ?? "Unknown")
+                metric("Logical", Theme.format(plan.measurement.logicalBytes))
+                metric("Physical", Theme.format(plan.measurement.physicalBytes))
+            }
+
+            Text("Measured locally · \(plan.measurement.primarySource)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(Theme.borderStrong, lineWidth: 1))
     }
 
     private func goalCard(_ plan: RescuePlan) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("What do you need room for?")
-                .font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("What are you trying to finish?")
+                    .font(.headline.weight(.semibold))
+                Text("The target includes a little working room for the next step.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             Picker("Goal", selection: Binding(
                 get: { vm.rescueGoal },
@@ -125,276 +202,274 @@ struct CleanupSuggestionsView: View {
                     Text(goal.title).tag(goal)
                 }
             }
-            .labelsHidden()
+            .pickerStyle(.segmented)
 
-            HStack(spacing: 8) {
-                TextField("Target GB (optional)", text: $requiredSpaceText)
+            HStack(spacing: 10) {
+                Text("Extra space needed")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                TextField("Optional GB", text: $requiredSpaceText)
                     .textFieldStyle(.roundedBorder)
+                    .frame(width: 110)
                     .onSubmit(commitRequiredSpace)
                 Text("+ \(Theme.format(plan.workingSpaceBuffer)) working room")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize()
             }
+
             if let target = plan.targetSpace {
-                Text("Plan target: \(Theme.format(target)) usable space, including temporary work room.")
-                    .font(.caption2)
+                Text("Plan target: \(Theme.format(target)) of usable space.")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(10)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Theme.border, lineWidth: 1))
-    }
-
-    private func measurementCard(_ plan: RescuePlan) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 14) {
-                metric("Available", plan.measurement.availableBytes.map(Theme.format) ?? "Unknown")
-                metric("Free", plan.measurement.freeBytes.map(Theme.format) ?? "Unknown")
-            }
-            HStack(spacing: 14) {
-                metric("Logical", Theme.format(plan.measurement.logicalBytes))
-                metric("Physical", Theme.format(plan.measurement.physicalBytes))
-            }
-            Text("Source: \(plan.measurement.primarySource) · measured locally")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .padding(10)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Theme.border, lineWidth: 1))
-    }
-
-    private func verificationCard(_ verification: RescueVerification) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Label(verification.status,
-                  systemImage: verification.hasMeasurementMismatch
-                    ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(verification.hasMeasurementMismatch ? .orange : Theme.electricBlue)
-            if let error = vm.lastRescueError {
-                Text(error)
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let requested = verification.requestedBytes {
-                Text("Requested usable space: \(Theme.format(requested))")
-                    .font(.caption2)
-            }
-            Text("Moved from this plan: \(Theme.format(verification.movedBytes))")
-                .font(.caption2)
-            Text("Moved to Finder Trash (still on disk): \(Theme.format(verification.movedBytes))")
-                .font(.caption2)
-            if let movedPaths = verification.movedPaths, !movedPaths.isEmpty {
-                DisclosureGroup("Moved paths") {
-                    ForEach(movedPaths, id: \.self) { path in
-                        Text(path)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .truncationMode(.middle)
-                    }
-                }
-                .font(.caption2)
-            }
-            if let heldBytes = verification.heldBytes, heldBytes > 0 {
-                Text("Held for separate review: \(Theme.format(heldBytes))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            if let heldPaths = verification.heldPaths, !heldPaths.isEmpty {
-                DisclosureGroup("Held paths") {
-                    ForEach(heldPaths, id: \.self) { path in
-                        Text(path)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .truncationMode(.middle)
-                    }
-                }
-                .font(.caption2)
-            }
-            if let reclaimed = verification.verifiedReclaimedBytes {
-                Text("\(verification.hasMeasurementMismatch ? "Measured" : "Verified") usable space change: \(Theme.format(reclaimed))")
-                    .font(.caption2)
-            } else {
-                Text("Usable space could not be verified from the volume measurement.")
-                    .font(.caption2)
-            }
-            if let mismatchPaths = verification.measurementMismatchPaths, !mismatchPaths.isEmpty {
-                Text("Space did not match the moved estimate for:")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                ForEach(mismatchPaths, id: \.self) { path in
-                    Text(path)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.orange)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                }
-            }
-            if verification.failedBytes > 0 {
-                Text("Failed items: \(Theme.format(verification.failedBytes))")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                ForEach(verification.failedPaths, id: \.self) { path in
-                    Text(path)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.orange)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                }
-            }
-        }
-        .padding(10)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(verification.hasMeasurementMismatch ? .orange.opacity(0.35) : Theme.electricBlue.opacity(0.35), lineWidth: 1))
-    }
-
-    private func resultErrorCard(_ error: String) -> some View {
-        Label(error, systemImage: "exclamationmark.triangle.fill")
-            .font(.caption2)
-            .foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func metric(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(.caption.monospacedDigit().weight(.semibold))
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(Theme.border, lineWidth: 1))
     }
 
     private func coverageCard(_ coverage: RescueCoverage) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Label(coverage.title, systemImage: coverage.state == .blocked
-                  ? "lock.fill" : (coverage.state == .complete
-                                    ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(coverage.state == .blocked
-                                 ? Theme.danger
-                                 : (coverage.state == .complete ? Theme.electricBlue : .orange))
-            if coverage.notes.isEmpty {
-                Text("No scan gaps reported.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(coverage.notes, id: \.self) { note in
-                Text(note)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+        let color: Color = coverage.state == .blocked
+            ? Theme.danger
+            : (coverage.state == .complete ? Theme.electricBlue : .orange)
+
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: coverage.state == .blocked
+                  ? "lock.fill"
+                  : (coverage.state == .complete ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"))
+                .font(.title3)
+                .foregroundStyle(color)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(coverage.title)
+                    .font(.headline.weight(.semibold))
+                if coverage.notes.isEmpty {
+                    Text("The scan reported no gaps.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(coverage.notes, id: \.self) { note in
+                        Text(note)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         }
-        .padding(10)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(coverage.state == .complete
-                          ? Theme.electricBlue.opacity(0.35)
-                          : .orange.opacity(0.35), lineWidth: 1))
+        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(color.opacity(0.35), lineWidth: 1))
+    }
+
+    private func candidatesHeader(_ report: CleanupReport) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Suggested cleanup")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Text("\(report.recommendations.count) items")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Add only what you want to the review queue. Tessera never removes a file from this screen.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func candidateSection(
+        title: String,
+        subtitle: String,
+        groups: [CleanupReport.Group],
+        action: (() -> Void)?,
+        actionTitle: String?,
+        actionDisabled: Bool,
+        prominent: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.headline.weight(.semibold))
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 10)
+                if let action, let actionTitle {
+                    if prominent {
+                        Button(actionTitle, action: action)
+                            .buttonStyle(.flatProminent)
+                            .controlSize(.small)
+                            .disabled(actionDisabled)
+                    } else {
+                        Button(actionTitle, action: action)
+                            .buttonStyle(.flat)
+                            .controlSize(.small)
+                            .disabled(actionDisabled)
+                    }
+                }
+            }
+
+            ForEach(groups) { group in
+                groupRow(group)
+            }
+        }
     }
 
     @ViewBuilder
     private func groupRow(_ group: CleanupReport.Group) -> some View {
-        DisclosureGroup {
-            ForEach(group.recommendations) { recommendation in
-                recommendationRow(recommendation)
+        let expanded = Binding(
+            get: { expandedGroups.contains(group.id) },
+            set: { value in
+                if value { expandedGroups.insert(group.id) }
+                else { expandedGroups.remove(group.id) }
             }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: group.category.symbol)
-                    .frame(width: 20)
-                    .foregroundStyle(color(for: group.risk))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(group.category.title)
-                        .font(.subheadline.weight(.medium))
-                    Text("\(group.nodes.count) item\(group.nodes.count == 1 ? "" : "s") · \(group.risk.title)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+        )
+
+        DisclosureGroup(isExpanded: expanded) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(group.recommendations) { recommendation in
+                    recommendationRow(recommendation)
+                    if recommendation.id != group.recommendations.last?.id {
+                        Divider().padding(.leading, 34)
+                    }
                 }
-                Spacer(minLength: 4)
-                Text(Theme.format(group.totalBytes))
-                    .font(.caption.monospacedDigit().weight(.semibold))
+            }
+            .padding(.top, 4)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: group.category.symbol)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(color(for: group.risk))
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(group.category.title)
+                        .font(.subheadline.weight(.semibold))
+                    Text("\(group.nodes.count) item\(group.nodes.count == 1 ? "" : "s") · \(group.category.explanation)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(Theme.format(group.totalBytes))
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                    riskTag(group.risk)
+                }
+
                 if group.risk != .protected {
                     Button(vm.isGroupStaged(group) ? "Added" : "Add") {
                         vm.toggleCleanupGroup(group)
                     }
                     .buttonStyle(.flat)
                     .controlSize(.small)
-                    .tint(vm.isGroupStaged(group) ? Theme.electricBlue : nil)
                 } else {
                     Text("Owner handoff")
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
             }
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
         }
-        .tint(color(for: group.risk))
+        .tint(.secondary)
+        .padding(.horizontal, 12)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(Theme.border, lineWidth: 1))
     }
 
     private func recommendationRow(_ recommendation: CleanupRecommendation) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: Theme.icon(for: recommendation.node))
-                    .foregroundStyle(color(for: recommendation.risk))
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 10) {
+                Button {
+                    if vm.isCollected(recommendation.node) {
+                        vm.removeFromCollector(recommendation.node)
+                    } else {
+                        vm.addToCollector(recommendation.node)
+                    }
+                } label: {
+                    Image(systemName: vm.isCollected(recommendation.node)
+                          ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(vm.isCollected(recommendation.node)
+                                         ? Theme.electricBlue : Theme.mutedForeground)
+                }
+                .buttonStyle(.interactive)
+                .help(vm.isCollected(recommendation.node)
+                      ? "Remove from the review queue" : "Add to the review queue")
+                .accessibilityLabel(vm.isCollected(recommendation.node)
+                                    ? "Remove from review queue" : "Add to review queue")
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(recommendation.node.name)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        Text(Theme.format(recommendation.physicalBytes))
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
+                            .fixedSize()
+                    }
+
                     Text(recommendation.path)
-                        .font(.caption2.monospaced())
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .truncationMode(.middle)
-                    Text(sizeSummary(for: recommendation))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 4)
-                if recommendation.risk != .protected {
-                    Button(vm.isCollected(recommendation.node) ? "Added" : "Add") {
-                        if vm.isCollected(recommendation.node) {
-                            vm.removeFromCollector(recommendation.node)
-                        } else {
-                            vm.addToCollector(recommendation.node)
+
+                    HStack(spacing: 7) {
+                        Text("\(Theme.format(recommendation.physicalBytes)) allocated")
+                        if let logical = recommendation.logicalBytes {
+                            Text("· \(Theme.format(logical)) logical")
                         }
                     }
-                    .buttonStyle(.flat)
-                    .controlSize(.small)
-                }
-            }
-            Text(recommendation.reason)
-                .font(.caption2)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("Side effect: \(recommendation.sideEffect)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("Confidence: \(recommendation.confidence.title) · Next: \(recommendation.action.title)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            DisclosureGroup("Proof") {
-                ForEach(recommendation.proof, id: \.self) { item in
-                    Text(item)
-                        .font(.caption2.monospaced())
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+
+                    Text(recommendation.reason)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 8) {
+                        Text(recommendation.owner)
+                        Text("·")
+                        Text(recommendation.confidence.title)
+                        Text("·")
+                        Text(recommendation.action.title)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    Text("May change: \(recommendation.sideEffect)")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    DisclosureGroup("Proof") {
+                        ForEach(recommendation.proof, id: \.self) { item in
+                            Text(item)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .font(.caption)
                 }
             }
-            .font(.caption2)
         }
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
+        .padding(.vertical, 10)
         .contextMenu {
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([recommendation.node.url])
@@ -404,32 +479,119 @@ struct CleanupSuggestionsView: View {
         }
     }
 
+    private func verificationCard(_ verification: RescueVerification) -> some View {
+        let color: Color = verification.hasMeasurementMismatch || verification.failedBytes > 0
+            ? .orange : Theme.electricBlue
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Label(verification.status,
+                  systemImage: verification.hasMeasurementMismatch
+                    ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(color)
+
+            if let error = vm.lastRescueError {
+                Text(error)
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 18) {
+                metric("Moved to Trash", Theme.format(verification.movedBytes))
+                metric("Failed", Theme.format(verification.failedBytes))
+                if let reclaimed = verification.verifiedReclaimedBytes {
+                    metric(verification.hasMeasurementMismatch ? "Measured change" : "Verified change",
+                           Theme.format(reclaimed))
+                }
+            }
+
+            Text("Trash still uses disk space until you empty it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let requested = verification.requestedBytes {
+                Text("Requested usable space: \(Theme.format(requested))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            pathDisclosure(title: "Moved paths", paths: verification.movedPaths)
+            pathDisclosure(title: "Held paths", paths: verification.heldPaths)
+            pathDisclosure(title: "Paths that did not match", paths: verification.measurementMismatchPaths)
+            pathDisclosure(title: "Failed paths", paths: verification.failedPaths)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(color.opacity(0.35), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func pathDisclosure(title: String, paths: [String]?) -> some View {
+        if let paths, !paths.isEmpty {
+            DisclosureGroup(title) {
+                ForEach(paths, id: \.self) { path in
+                    Text(path)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                }
+            }
+            .font(.caption)
+        }
+    }
+
+    private func resultErrorCard(_ error: String) -> some View {
+        Label(error, systemImage: "exclamationmark.triangle.fill")
+            .font(.subheadline)
+            .foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     private func savedCaseRow(_ saved: SavedRescueCase) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label("Saved rescue case", systemImage: "bookmark.fill")
-                .font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: "bookmark.fill")
+                    .foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Saved rescue case")
+                        .font(.headline.weight(.semibold))
+                    Text("Kept on this Mac. A fresh scan is required before staging anything.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Text(saved.sourcePath)
-                .font(.caption2.monospaced())
+                .font(.caption.monospaced())
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(.secondary)
-            HStack {
+
+            HStack(spacing: 8) {
                 Button("Reopen and rescan") { vm.reopenSavedRescueCase() }
-                    .buttonStyle(.flat)
+                    .buttonStyle(.flatProminent)
                     .controlSize(.small)
                     .disabled(vm.isScanning)
                 Button("Forget") { vm.discardSavedRescueCase() }
                     .buttonStyle(.flat)
                     .controlSize(.small)
             }
+
             if vm.restoredRescueCaseIsStale {
                 Text("The old selection no longer matches the fresh scan. Review it again before staging.")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.orange)
             } else if !vm.restoredRescueCandidateIDs.isEmpty {
                 HStack {
-                    Text("\(vm.restoredRescueCandidateIDs.count) old selection(s) found again.")
-                        .font(.caption2)
+                    Text("\(vm.restoredRescueCandidateIDs.count) old selection\(vm.restoredRescueCandidateIDs.count == 1 ? "" : "s") found again.")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
                     Button("Stage for review") { vm.stageRestoredRescueCase() }
@@ -437,15 +599,110 @@ struct CleanupSuggestionsView: View {
                         .controlSize(.small)
                 }
                 Text("Nothing is staged until you choose this action.")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(10)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Theme.electricBlue.opacity(0.3), lineWidth: 1))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(Theme.electricBlue.opacity(0.35), lineWidth: 1))
+    }
+
+    private var emptyPlan: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FeatureSectionLabel("Rescue space")
+            if vm.isScanning {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Building the rescue plan…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let error = vm.lastRescueError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Label("Scan a source to build a plan.", systemImage: "magnifyingglass")
+                    .font(.subheadline)
+                Text("Tessera reads local storage only. It does not move or upload files while it measures.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var emptyCandidates: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Nothing to suggest yet")
+                .font(.headline.weight(.semibold))
+            Text("The scan found no known cleanup candidates. The coverage and measurement above still describe the current volume.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func reviewFooter(_ moveToTrash: @escaping () -> Void) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "checklist")
+                .font(.title3)
+                .foregroundStyle(.tint)
+                .frame(width: 32, height: 32)
+                .background(Theme.selectionTint, in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Review queue ready")
+                    .font(.subheadline.weight(.semibold))
+                Text("\(vm.collector.count) item\(vm.collector.count == 1 ? "" : "s") · \(Theme.format(vm.collectorTotalSize))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Text("A confirmation comes next. Finder Trash is recoverable.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                moveToTrash()
+                dismiss()
+            } label: {
+                Label("Move to Trash", systemImage: "trash.fill")
+            }
+            .buttonStyle(.flatProminent)
+            .controlSize(.regular)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(Theme.electricBlue.opacity(0.35), lineWidth: 1))
+    }
+
+    private func metric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.subheadline.monospacedDigit().weight(.semibold))
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func riskTag(_ risk: CleanupRisk) -> some View {
+        Text(risk.title)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(color(for: risk))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(color(for: risk).opacity(0.12), in: Capsule())
     }
 
     private func color(for risk: CleanupRisk) -> Color {
@@ -456,10 +713,32 @@ struct CleanupSuggestionsView: View {
         }
     }
 
-    private func sizeSummary(for recommendation: CleanupRecommendation) -> String {
-        let physical = "\(Theme.format(recommendation.physicalBytes)) allocated"
-        let logical = recommendation.logicalBytes.map { " · \(Theme.format($0)) logical" } ?? ""
-        return "Owner: \(recommendation.owner) · \(physical)\(logical)"
+    private func targetTitle(_ plan: RescuePlan) -> String {
+        guard let target = plan.targetSpace, let available = plan.measurement.primaryBytes else {
+            return "—"
+        }
+        return Theme.format(max(0, target - available))
+    }
+
+    private func targetLabel(_ plan: RescuePlan) -> String {
+        guard plan.targetSpace != nil else { return "set a target to plan" }
+        guard let target = plan.targetSpace, let available = plan.measurement.primaryBytes else {
+            return "more space needed"
+        }
+        return target > available ? "more space needed" : "target covered"
+    }
+
+    private func targetColor(_ plan: RescuePlan) -> Color {
+        guard let target = plan.targetSpace, let available = plan.measurement.primaryBytes else {
+            return .secondary
+        }
+        return target > available ? .orange : Theme.electricBlue
+    }
+
+    private func capacityFraction(_ measurement: RescueMeasurement) -> Double? {
+        guard let total = measurement.totalBytes, total > 0,
+              let primary = measurement.primaryBytes else { return nil }
+        return min(1, max(0, Double(primary) / Double(total)))
     }
 
     private var parsedRequiredSpace: Int64? {

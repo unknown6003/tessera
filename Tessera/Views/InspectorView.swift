@@ -4,7 +4,7 @@ struct InspectorView: View {
     @ObservedObject var vm: ScanViewModel
 
     private var inspectedNode: FileNode? {
-        vm.hoveredNode ?? vm.selectedNode ?? vm.currentRoot
+        vm.selectedNode ?? vm.currentRoot
     }
 
     var body: some View {
@@ -171,10 +171,9 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.caption2.weight(.semibold))
+        Text(text)
+            .font(.headline.weight(.semibold))
             .foregroundStyle(.secondary)
-            .kerning(0.8)
     }
 
     private func iconCircleColor(_ node: FileNode) -> Color {
@@ -189,4 +188,3 @@ struct InspectorView: View {
         }
     }
 }
-

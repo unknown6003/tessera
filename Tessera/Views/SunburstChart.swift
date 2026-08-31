@@ -155,6 +155,15 @@ struct SunburstChart: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityHint("Click a folder to open it. Click a file to select it. Drag a file to the review queue.")
+    }
+
+    private var accessibilityValue: String {
+        if let selectedNode {
+            return "Selected \(selectedNode.name), \(Theme.format(selectedNode.size))"
+        }
+        return "No item selected"
     }
 
     // MARK: - Canvas

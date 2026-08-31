@@ -23,21 +23,22 @@ struct ContentView: View {
     @State private var deleteError: String?
 
     var body: some View {
-        VStack(spacing: 18) {
-            HStack(spacing: 18) {
+        VStack(spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
                 Sidebar(vm: vm)
-                    .frame(width: 252)
+                    .frame(width: 238)
 
-                VStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
+                    appHeader
                     if vm.rootNode != nil {
-                        CleanupActionBar(vm: vm)
+                        CleanupActionBar(vm: vm, onTrashAll: { requestTrash(vm.collector) })
                     }
                     centerArea
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 InspectorView(vm: vm)
-                    .frame(width: 296)
+                    .frame(width: 278)
             }
 
             // Full-width collector dock + trash drop-zone, shown once there's a
@@ -49,8 +50,8 @@ struct ContentView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .padding(18)
-        .frame(minWidth: 920, minHeight: 600)
+        .padding(16)
+        .frame(minWidth: 980, minHeight: 640)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Flat, solid near-black background — no vibrancy, no desktop refraction,
         // so the app renders identically regardless of what sits behind it.
@@ -58,12 +59,6 @@ struct ContentView: View {
         .background(TransparentWindowConfigurator())
         .background(KeyboardShortcuts(vm: vm))
         .tint(Theme.electricBlue)
-        // No keyboard focus rings anywhere. macOS draws them in the SYSTEM accent
-        // colour (a Mac set to pink halos our controls in pink, ignoring `.tint`),
-        // and this app is driven by pointer, not tab order. Disabled at the root so
-        // it covers every control, not just our own button styles. Revisit if
-        // keyboard navigation is ever added.
-        .focusEffectDisabled()
         .preferredColorScheme(.dark)
         // Shared coordinate space so the chart's drag location and the dock's drop
         // zones are measured against the same origin.
@@ -263,6 +258,64 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - App header
+
+    private var appHeader: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(currentSourceTitle)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(1)
+                Text(currentSourceDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer(minLength: 12)
+
+            Label(currentStateTitle, systemImage: currentStateSymbol)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(currentStateColor)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var currentSourceTitle: String {
+        if let root = vm.currentRoot { return root.name }
+        if let source = vm.selectedSourceURL, !source.lastPathComponent.isEmpty {
+            return source.lastPathComponent
+        }
+        return "Choose a storage source"
+    }
+
+    private var currentSourceDetail: String {
+        if let source = vm.scannedURL { return source.standardizedFileURL.path }
+        if let source = vm.selectedSourceURL { return source.standardizedFileURL.path }
+        return "Select a disk, folder, cloud source, or server from the sidebar."
+    }
+
+    private var currentStateTitle: String {
+        if vm.isScanning { return "Scanning" }
+        if vm.needsFullDiskAccess { return "Access needed" }
+        if vm.errorMessage != nil { return "Scan failed" }
+        if vm.rootNode != nil { return "Ready" }
+        return "Not scanned"
+    }
+
+    private var currentStateSymbol: String {
+        if vm.isScanning { return "arrow.triangle.2.circlepath" }
+        if vm.needsFullDiskAccess { return "lock.shield" }
+        if vm.errorMessage != nil { return "exclamationmark.triangle" }
+        return vm.rootNode != nil ? "checkmark.circle" : "circle"
+    }
+
+    private var currentStateColor: Color {
+        if vm.needsFullDiskAccess || vm.errorMessage != nil { return .orange }
+        return vm.rootNode != nil ? Theme.electricBlue : .secondary
+    }
+
     // MARK: - Center area
 
     @ViewBuilder
@@ -326,11 +379,11 @@ struct ContentView: View {
             HStack(spacing: 14) {
                 hint("cursorarrow.click", "Click a slice to open it")
                 hint("arrow.up.left.circle", "Click the middle to go back")
-                hint("arrow.down.to.line", "Drag a slice to the list below to remove it")
+                hint("arrow.down.to.line", "Drag a slice to review")
             }
             .fixedSize(horizontal: true, vertical: false)
 
-            Label("Click: open · Center: back · Drag: add to Cleanup List",
+            Label("Click: open · Center: back · Drag: review",
                   systemImage: "cursorarrow.click")
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -339,8 +392,7 @@ struct ContentView: View {
         .foregroundStyle(Theme.mutedForeground)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Theme.surface, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
+        .padding(.top, 2)
         .allowsHitTesting(false)
     }
 
@@ -352,15 +404,13 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Glass card wrapper
+    // MARK: - Centered task card
 
     private func centeredCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .padding(40)
-            .frame(maxWidth: 460)
-            // Behind-window glass so the empty / scanning / error cards refract the
-            // desktop instead of refracting nothing over the transparent window.
-            .desktopGlassPanel(cornerRadius: 28, shadowRadius: 34, shadowY: 18)
+            .padding(32)
+            .frame(maxWidth: 520)
+            .desktopGlassPanel(cornerRadius: 16, shadowRadius: 12, shadowY: 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .transition(.opacity.combined(with: .scale(scale: 0.97)))
     }
@@ -373,18 +423,18 @@ struct ContentView: View {
                 .font(.system(size: 64, weight: .ultraLight))
                 .foregroundStyle(.secondary)
             VStack(spacing: 8) {
-                Text("See what's using your disk")
-                    .font(.title2.weight(.semibold))
-                Text("Pick a disk in the list on the left, then click the blue **Rescue** button at the bottom of that list. Tessera reads the whole drive and maps it — nothing is changed or deleted.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            Text("Make room with confidence")
+                .font(.title2.weight(.semibold))
+            Text("Choose a source, then scan it here. Tessera maps the drive and builds a safe rescue plan — nothing moves while it measures.")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
             if let source = vm.selectedSourceURL {
                 Button {
                     vm.startScan(volumeURL: source)
                 } label: {
-                    Label("Scan \(source.lastPathComponent.isEmpty ? "this source" : source.lastPathComponent) for Rescue",
+                    Label("Scan \(source.lastPathComponent.isEmpty ? "this source" : source.lastPathComponent)",
                           systemImage: "lifepreserver.fill")
                 }
                 .buttonStyle(.flatProminent)
@@ -554,24 +604,35 @@ private struct ScanningView: View {
     @ObservedObject var vm: ScanViewModel
 
     var body: some View {
-        VStack(spacing: 24) {
-            PulsingRings()
-                .frame(width: 140, height: 140)
-
-            VStack(spacing: 6) {
-                Text("Scanning…")
-                    .font(.title2.weight(.semibold))
-                if let fraction = vm.progress.fraction {
-                    Text("\(Int(fraction * 100))%")
-                        .font(.system(.largeTitle, design: .rounded).weight(.medium).monospacedDigit())
-                        .contentTransition(.numericText())
-                        .animation(.smooth, value: fraction)
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Scanning locally")
+                        .font(.title2.weight(.semibold))
+                    Text("Tessera is reading the source. Your files are not changed.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
                 }
             }
 
-            HStack(spacing: 28) {
-                counter(value: "\(vm.progress.filesScanned)", label: "Files")
-                counter(value: Theme.format(vm.progress.bytesFound), label: "Found")
+            if let fraction = vm.progress.fraction {
+                ProgressView(value: fraction)
+                    .tint(Theme.electricBlue)
+                Text("\(Int(fraction * 100))% complete")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                    .animation(.smooth, value: fraction)
+            } else {
+                ProgressView()
+                    .progressViewStyle(.linear)
+            }
+
+            HStack(spacing: 24) {
+                counter(value: "\(vm.progress.filesScanned)", label: "Items read")
+                counter(value: Theme.format(vm.progress.bytesFound), label: "Mapped")
             }
 
             Text(vm.progress.currentPath)
@@ -579,16 +640,17 @@ private struct ScanningView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(maxWidth: 360)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(role: .cancel) {
                 vm.cancelScan()
             } label: {
-                Label("Stop", systemImage: "stop.fill")
+                Label("Stop scan", systemImage: "stop.fill")
             }
             .buttonStyle(.flat)
-            .controlSize(.large)
+            .controlSize(.regular)
         }
+        .frame(maxWidth: 440, alignment: .leading)
     }
 
     private func counter(value: String, label: String) -> some View {
@@ -600,43 +662,6 @@ private struct ScanningView: View {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        }
-    }
-}
-
-// MARK: - Pulsing concentric rings
-
-/// Flat indeterminate scan indicator: a hairline track with a single accent arc
-/// sweeping around it, and a solid hub. No gradients, glows, or glass.
-private struct PulsingRings: View {
-    var body: some View {
-        ZStack {
-            // Static hairline track.
-            Circle()
-                .strokeBorder(Theme.border, lineWidth: 3)
-
-            // One accent arc, rotating steadily — clearly "working", never "stuck".
-            TimelineView(.animation) { timeline in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                let angle = Angle(degrees: (t * 110).truncatingRemainder(dividingBy: 360))
-                Circle()
-                    .trim(from: 0, to: 0.22)
-                    .stroke(Theme.electricBlue,
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .rotationEffect(angle)
-                    .padding(1.5)
-            }
-
-            // Solid hub.
-            Circle()
-                .fill(Theme.card)
-                .frame(width: 46, height: 46)
-                .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
-                .overlay(
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Theme.electricBlue)
-                )
         }
     }
 }
@@ -663,7 +688,7 @@ private struct KeyboardShortcuts: View {
 
 /// First-launch overlay that asks for Full Disk Access once, up front, so the
 /// app can read the whole disk instead of failing per-directory mid-scan. It
-/// dims the window behind a glass card and auto-dismisses the moment access is
+    /// dims the window behind a solid card and auto-dismisses the moment access is
 /// detected (the window re-checks on reactivation).
 private struct FullDiskAccessOnboarding: View {
     @ObservedObject var vm: ScanViewModel
@@ -683,17 +708,17 @@ private struct FullDiskAccessOnboarding: View {
 
             card
                 .frame(maxWidth: 520)
-                .padding(40)
+                .padding(24)
         }
     }
 
     private var card: some View {
-        let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
-        return VStack(spacing: 24) {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        return VStack(spacing: 20) {
             ZStack {
                 Circle()
                     .fill(.orange.opacity(0.18))
-                    .frame(width: 96, height: 96)
+                .frame(width: 80, height: 80)
                 Image(systemName: "lock.shield.fill")
                     .font(.system(size: 46, weight: .light))
                     .foregroundStyle(.orange)
@@ -742,7 +767,7 @@ private struct FullDiskAccessOnboarding: View {
                 .controlSize(.large)
             }
         }
-        .padding(40)
+        .padding(28)
         .background(Theme.elevated, in: shape)
         .liquidGlassDepth(shape, shadowRadius: 40, shadowY: 22)
     }

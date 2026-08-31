@@ -208,7 +208,7 @@ extension View {
                     .strokeBorder(Theme.border, lineWidth: 1)
                     .allowsHitTesting(false)
             )
-            .shadow(color: .black.opacity(0.35), radius: min(shadowRadius, 20), y: min(shadowY, 10))
+            .shadow(color: .black.opacity(0.22), radius: min(shadowRadius, 12), y: min(shadowY, 6))
     }
 }
 
@@ -237,11 +237,8 @@ private struct FlatButtonMetrics {
 // changed only on press and only slightly, and plain icon buttons did nothing at
 // all — so neither question was answered.
 //
-// It also replaces macOS's own focus ring. That ring is drawn in the SYSTEM
-// accent colour, which is not necessarily ours (a Mac set to the pink accent
-// draws a pink ring around our controls, ignoring `.tint`). We turn the system
-// effect off and draw the ring in the app's own accent instead, so keyboard
-// focus stays visible — important with Full Keyboard Access — but on-brand.
+// The native focus ring stays enabled so Full Keyboard Access remains visible.
+// Hover and press feedback add clarity without moving controls under the pointer.
 
 /// Timing shared by every interaction so the whole app feels like one surface.
 enum Motion {
@@ -262,9 +259,6 @@ private struct FlatButtonSurface<Label: View>: View {
     /// `nil` keeps whatever colour the call site already set on the label — the
     /// plain style must not repaint labels that style themselves.
     let foreground: Color?
-    /// Prominent buttons already read as filled; they lift instead of washing.
-    let liftsOnHover: Bool
-
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
@@ -278,7 +272,8 @@ private struct FlatButtonSurface<Label: View>: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         let active = isHovering && isEnabled
-        let scale: CGFloat = isPressed ? 0.97 : (active && liftsOnHover ? 1.02 : 1.0)
+        // Hover should clarify a control, not move it under the pointer.
+        let scale: CGFloat = isPressed ? 0.97 : 1.0
         return tintedLabel
             .background(isPressed ? pressedFill : (active ? hovered : resting), in: shape)
             .overlay {
@@ -291,7 +286,6 @@ private struct FlatButtonSurface<Label: View>: View {
             .opacity(isEnabled ? 1.0 : 0.45)
             .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
             .animation(reduceMotion ? nil : Motion.press, value: isPressed)
-            .focusEffectDisabled()
             // A pointer cue makes "this is clickable" obvious before the click.
             // Declarative, so it can't unbalance the cursor stack the way
             // NSCursor.push/pop pairs can when views come and go mid-hover.
@@ -320,8 +314,7 @@ struct FlatProminentButtonStyle: ButtonStyle {
             pressedFill: tint.opacity(0.78),
             border: nil,
             borderHovered: nil,
-            foreground: ink ?? Theme.ink(on: tint),
-            liftsOnHover: true
+            foreground: ink ?? Theme.ink(on: tint)
         )
     }
 }
@@ -344,8 +337,7 @@ struct FlatButtonStyle: ButtonStyle {
             pressedFill: Color.white.opacity(0.12),
             border: Theme.border,
             borderHovered: Theme.borderStrong,
-            foreground: tint,
-            liftsOnHover: false
+            foreground: tint
         )
     }
 }
@@ -367,8 +359,7 @@ struct IconButtonStyle: ButtonStyle {
             pressedFill: Color.white.opacity(0.16),
             border: nil,
             borderHovered: nil,
-            foreground: tint,
-            liftsOnHover: false
+            foreground: tint
         )
     }
 }
@@ -392,7 +383,6 @@ struct PlainInteractiveButtonStyle: ButtonStyle {
             .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.98 : 1.0))
             .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
             .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
-            .focusEffectDisabled()
             .pointerStyle(isEnabled ? .link : nil)
             .onHover { isHovering = $0 }
     }

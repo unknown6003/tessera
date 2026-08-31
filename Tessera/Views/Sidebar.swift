@@ -87,10 +87,9 @@ struct Sidebar: View {
                 .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 1))
             VStack(alignment: .leading, spacing: 1) {
                 Text("Tessera")
-                    .font(.headline.smallCaps())
-                    .tracking(0.5)
-                Text("Disk Space Visualizer")
-                    .font(.caption2)
+                    .font(.headline.weight(.semibold))
+                Text("Disk space")
+                    .font(.caption)
                     .foregroundStyle(.tertiary)
             }
             Spacer()
@@ -174,10 +173,9 @@ struct Sidebar: View {
 
     @ViewBuilder
     private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.tertiary)
-            .kerning(0.8)
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 6)
     }
 
@@ -225,18 +223,18 @@ struct Sidebar: View {
                         .font(.system(size: 9, weight: .semibold))
                         .symbolEffect(.rotate, isActive: updater.status.isBusy)
                     Text("Version \(updater.currentVersion)")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.caption)
                     Text("·")
-                        .font(.system(size: 10))
+                        .font(.caption)
                         .foregroundStyle(.quaternary)
                     Text(updater.status.shortTitle)
-                        .font(.system(size: 10))
+                        .font(.caption)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(updateRowTint)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 5)
+                .padding(.vertical, 7)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.interactive)
@@ -273,13 +271,13 @@ struct Sidebar: View {
     private func updatedNotice(from previous: String) -> some View {
         HStack(spacing: 7) {
             Image(systemName: "sparkles")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.electricBlue)
             Text("Updated to \(updater.currentVersion)")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.foreground)
             Text("from \(previous)")
-                .font(.system(size: 10))
+                .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 4)
             Button {
@@ -550,7 +548,7 @@ private struct VolumeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Image(systemName: info.kind.symbolName)
                     .font(.body.weight(.medium))
                     .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
@@ -561,17 +559,21 @@ private struct VolumeCard: View {
                         .lineLimit(1)
                     if let subtitle = info.subtitle, info.totalBytes == nil {
                         Text(subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
                 }
                 Spacer()
                 if isScanned {
-                    viewingPill
+                    Label("Viewing", systemImage: "eye.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.green)
                 } else if isCached {
-                    cachedPill
+                    Label("Saved", systemImage: "clock.arrow.circlepath")
+                        .font(.caption2)
+                        .foregroundStyle(.tint)
                 } else if let total = info.totalBytes {
                     Text(Theme.format(total))
                         .font(.caption.monospacedDigit())
@@ -587,60 +589,20 @@ private struct VolumeCard: View {
                 capacityBar(total: total)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background {
-            let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-            // Selection is a tinted fill + accent border, NOT a nested glass
-            // surface. The sidebar panel is already glass; layering glass on glass
-            // double-blurs the card into the unreadable smear seen before.
+            let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
             if isSelected {
                 shape.fill(Theme.selectionTint)
                     .overlay(shape.strokeBorder(Theme.electricBlue, lineWidth: 1))
             } else {
-                shape.fill(Theme.surface)
-                    .overlay(shape.strokeBorder(Theme.border, lineWidth: 1))
+                shape.fill(.clear)
             }
         }
-        // The scanned source gets a persistent green ring so it stays identifiable
-        // even when the highlight (next-scan target) moves to a different card.
-        .overlay {
-            if isScanned {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(.green.opacity(0.55), lineWidth: 1)
-            }
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .animation(.smooth(duration: 0.2), value: isSelected)
         .animation(.smooth(duration: 0.2), value: isScanned)
-    }
-
-    /// Green "Viewing" badge marking the source whose tree is on screen.
-    private var viewingPill: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "eye.fill")
-                .font(.system(size: 8, weight: .bold))
-            Text("Viewing")
-                .font(.system(size: 9, weight: .semibold))
-        }
-        .foregroundStyle(.green)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(.green.opacity(0.16)))
-    }
-
-    /// "Cached" badge — tap to switch to this source's results instantly.
-    private var cachedPill: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 8, weight: .bold))
-            Text("Cached")
-                .font(.system(size: 9, weight: .semibold))
-        }
-        .foregroundStyle(.tint)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(.tint.opacity(0.14)))
     }
 
     @ViewBuilder

@@ -73,16 +73,16 @@ struct CollectorDock: View {
     /// entire collector.
     var onDeleteAll: () -> Void
 
-    private let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+    private let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
 
     /// Natural height of the wrapped chips, measured so the scroll area grows with
     /// content up to `maxChipsHeight`, then scrolls vertically instead of off-screen.
     @State private var chipsHeight: CGFloat = 0
-    private let maxChipsHeight: CGFloat = 160
+    private let maxChipsHeight: CGFloat = 120
 
     var body: some View {
         collectorColumn
-            .padding(14)
+            .padding(12)
             .frame(maxWidth: .infinity)
             .background(Theme.card, in: shape)
             .overlay {
@@ -93,7 +93,7 @@ struct CollectorDock: View {
                 )
                 .animation(.easeOut(duration: 0.12), value: drag.isOverCollector)
             }
-            .liquidGlassDepth(shape, shadowRadius: 26, shadowY: 14)
+            .liquidGlassDepth(shape, shadowRadius: 16, shadowY: 8)
             // Register the whole dock as the collector drop zone.
             .onGeometryChange(for: CGRect.self) {
                 $0.frame(in: .named(CollectorDragController.appSpace))
@@ -118,10 +118,8 @@ struct CollectorDock: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text("CLEANUP LIST")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .kerning(0.8)
+                    Text("Review queue")
+                        .font(.headline.weight(.semibold))
                     if !vm.collector.isEmpty {
                         Text("· \(vm.collector.count) · \(Theme.format(vm.collectorTotalSize))")
                             .font(.caption.monospacedDigit())
@@ -129,9 +127,9 @@ struct CollectorDock: View {
                     }
                 }
                 // Always explain the model — not just when the list is empty.
-                Text("Nothing here is deleted until you click Move to Trash.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                Text("Nothing moves until you confirm.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -139,7 +137,7 @@ struct CollectorDock: View {
             if !vm.collector.isEmpty {
                 // Says exactly what it does — it empties this list, it does NOT
                 // touch your files. ("Clear" next to "Delete" was a trap.)
-                Button("Empty List") { vm.clearCollector() }
+                Button("Empty list") { vm.clearCollector() }
                     .buttonStyle(.flat)
                     .controlSize(.small)
                     .font(.caption.weight(.medium))
@@ -173,13 +171,20 @@ struct CollectorDock: View {
     }
 
     private var emptyHint: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Image(systemName: "hand.draw")
+                .font(.title3)
                 .foregroundStyle(.tint)
-            Text("Drag a slice from the chart down here — or use the tools above — to line up files to remove. You review everything here before anything is deleted.")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
-            Spacer()
+                .frame(width: 32, height: 32)
+                .background(Theme.selectionTint, in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Drop files here to review")
+                    .font(.subheadline.weight(.medium))
+                Text("Drag a chart slice, or use Rescue above.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
     }
@@ -250,7 +255,7 @@ private struct CollectorChip: View {
         .padding(.vertical, 8)
         .frame(maxWidth: 240)
         .background {
-            let s = RoundedRectangle(cornerRadius: 14, style: .continuous)
+            let s = RoundedRectangle(cornerRadius: 10, style: .continuous)
             s.fill(Theme.surface)
                 .overlay(s.strokeBorder(Theme.border, lineWidth: 1))
         }
