@@ -506,7 +506,7 @@ final class ScanViewModel: ObservableObject {
     }
 
     func saveRescueCase() {
-        guard let plan else { return }
+        guard let plan = rescuePlan else { return }
         let stagedIDs = Set(collector.compactMap { node in
             plan.recommendations.first(where: { $0.node.id == node.id })?.id
         })
@@ -535,7 +535,7 @@ final class ScanViewModel: ObservableObject {
     /// Restore a saved selection only after the user explicitly asks. Protected
     /// recommendations can never enter the collector through this path.
     func stageRestoredRescueCase() {
-        guard let plan else { return }
+        guard let plan = rescuePlan else { return }
         for recommendation in plan.recommendations
             where restoredRescueCandidateIDs.contains(recommendation.id)
                 && recommendation.risk != .protected {
@@ -589,7 +589,7 @@ final class ScanViewModel: ObservableObject {
     }
 
     private func persistRescueCase(candidateIDs: Set<String>) {
-        guard let plan else { return }
+        guard let plan = rescuePlan else { return }
         let wasRemembering = rescuePhase == .remembering
         let candidateIdentities = Dictionary(uniqueKeysWithValues: plan.recommendations.compactMap { recommendation in
             guard candidateIDs.contains(recommendation.id), let identity = recommendation.identity else { return nil }
