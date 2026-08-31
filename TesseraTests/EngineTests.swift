@@ -79,6 +79,8 @@ struct EngineTests {
 
             #expect(f1.size == expectedFile1)
             #expect(f2.size == expectedFile2)
+            #expect(f1.logicalSize == 4096)
+            #expect(f2.logicalSize == 8192)
             // b/ aggregates file2
             #expect(bNode.size == expectedFile2)
             // a/ aggregates file1 + b/
@@ -564,6 +566,8 @@ struct EngineTests {
                 "gamma size \(gammaNode.size) != expected \(expectedGamma)")
         // slowdir timed out — its entries were never enumerated
         #expect(slowNode.children.isEmpty, "slowdir should have no children after timeout")
+        #expect(root.scanCoverageGaps.contains(slowdir.path),
+                "Timed-out directories must remain visible as coverage gaps")
 
         // Progress fraction must reach 1.0
         let finalProg = box.read()
@@ -612,15 +616,46 @@ struct EngineTests {
 
         let downloads = FileNode(name: "Downloads", isDirectory: true, size: 200)
         let hidden = FileNode(url: home, name: "Hidden Space", isDirectory: false, size: 999, kind: .hiddenSpace)
-        root.setChildren([proj, downloads, hidden])
+        let library = FileNode(name: "Library", isDirectory: true, size: 0)
+        let developer = FileNode(name: "Developer", isDirectory: true, size: 0)
+        let xcode = FileNode(name: "Xcode", isDirectory: true, size: 0)
+        let derived = FileNode(
+            name: "DerivedData", isDirectory: true, size: 500,
+            identity: ScanIdentity(
+                path: home.appendingPathComponent("Library/Developer/Xcode/DerivedData").path,
+                volumeIdentifier: "test-volume", device: 1, inode: 2,
+                resourceType: .directory))
+        xcode.setChildren([derived])
+        developer.setChildren([xcode])
+        library.setChildren([developer])
+        root.setChildren([proj, downloads, hidden, library])
 
         let report = CleanupClassifier.classify(root: root)
 
-        // node_modules → safe, counted once (nested instance subsumed, not double-counted)
-        let nmGroup = report.safeGroups.first { $0.category.id == "dev.node_modules" }
+        // node_modules → review, counted once (nested instance subsumed, not double-counted)
+        let nmGroup = report.reviewGroups.first { $0.category.id == "dev.node_modules" }
         #expect(nmGroup?.nodes.count == 1)
         #expect(nmGroup?.totalBytes == 100)
-        #expect(report.safeTotalBytes == 100)
+        #expect(report.safeTotalBytes == 500)
+
+        // Only a narrow, identity-backed generated path enters the safe default.
+        let derivedGroup = report.safeGroups.first { $0.category.id == "xcode.deriveddata" }
+        #expect(derivedGroup?.totalBytes == 500)
+
+        let activeOwnerReport = CleanupClassifier.classify(root: root, ownerState: .active)
+        #expect(activeOwnerReport.safeGroups.isEmpty)
+        #expect(activeOwnerReport.reviewGroups.contains {
+            $0.category.id == "xcode.deriveddata"
+                && $0.recommendations.first?.reason.contains("active") == true
+        })
+
+        root.addScanCoverageGap("/Users/test/Library/Private")
+        let partialReport = CleanupClassifier.classify(root: root)
+        #expect(partialReport.safeGroups.isEmpty)
+        #expect(partialReport.reviewGroups.contains {
+            $0.category.id == "xcode.deriveddata"
+                && $0.recommendations.first?.reason.contains("coverage gaps") == true
+        })
 
         // Downloads → review tier, never swept into the safe (one-button) set
         #expect(report.reviewGroups.contains { $0.category.id == "user.downloads" })
@@ -628,6 +663,172 @@ struct EngineTests {
 
         // synthetic nodes are never classified
         #expect(report.groups.allSatisfy { g in g.nodes.allSatisfy { !$0.isSynthetic } })
+    }
+
+    @Test("CleanupClassifier keeps backups, virtual disks, cloud, profiles, and messages protected")
+    func protectedCleanupClassification() {
+        let home = URL(fileURLWithPath: "/Users/test")
+        let root = FileNode(url: home, name: "test", isDirectory: true, size: 0)
+        let library = FileNode(name: "Library", isDirectory: true, size: 0)
+        let cloud = FileNode(name: "CloudStorage", isDirectory: true, size: 100)
+        let messages = FileNode(name: "Messages", isDirectory: true, size: 200)
+        let support = FileNode(name: "Application Support", isDirectory: true, size: 0)
+        let google = FileNode(name: "Google", isDirectory: true, size: 0)
+        let chrome = FileNode(name: "Chrome", isDirectory: true, size: 300)
+        let mobileSync = FileNode(name: "MobileSync", isDirectory: true, size: 0)
+        let backup = FileNode(name: "Backup", isDirectory: true, size: 400)
+        let docker = FileNode(name: ".docker", isDirectory: true, size: 500)
+
+        google.setChildren([chrome])
+        mobileSync.setChildren([backup])
+        support.setChildren([google, mobileSync])
+        library.setChildren([cloud, messages, support])
+        root.setChildren([library, docker])
+
+        let report = CleanupClassifier.classify(root: root)
+        let protectedIDs = Set(report.protectedGroups.map { $0.category.id })
+        #expect(protectedIDs == [
+            "owner.backup", "owner.cloud", "owner.communication", "owner.profile",
+            "owner.virtualdisk",
+        ])
+        #expect(report.safeGroups.isEmpty)
+        #expect(report.reviewGroups.isEmpty)
+        #expect(report.protectedGroups.allSatisfy { $0.risk == .protected })
+        #expect(CleanupClassifier.protectedCategory(
+            for: "/Users/test/Library/Messages/Attachments/item.bin")?.id == "owner.communication")
+        #expect(CleanupClassifier.protectedCategory(
+            for: "/Users/test/.docker/volumes/data")?.id == "owner.virtualdisk")
+        let protectedNode = FileNode(
+            url: URL(fileURLWithPath: "/Users/test/Library/Messages"),
+            name: "Messages", isDirectory: true, size: 1,
+            identity: ScanIdentity(device: 1, inode: 2, resourceType: .directory))
+        #expect(DeletionService.preflight(protectedNode) == .protected)
+
+        let opaqueParent = FileNode(
+            url: URL(fileURLWithPath: "/Users/test/Library/Caches"),
+            name: "Caches", isDirectory: true, size: 1,
+            identity: ScanIdentity(device: 1, inode: 3, resourceType: .directory))
+        let cloudBoundary = FileNode(name: "Online", isDirectory: true, size: 0,
+                                     kind: .cloudOnlyStorage)
+        opaqueParent.setChildren([cloudBoundary])
+        #expect(DeletionService.preflight(opaqueParent) == .incompleteScan)
+
+        let partialParent = FileNode(
+            url: URL(fileURLWithPath: "/Users/test/Library/Logs"),
+            name: "Logs", isDirectory: true, size: 1,
+            identity: ScanIdentity(device: 1, inode: 4, resourceType: .directory))
+        partialParent.addScanCoverageGap("/Users/test/Library/Logs/private")
+        #expect(DeletionService.preflight(partialParent) == .incompleteScan)
+    }
+
+    @Test("RescueCoverage reports permission gaps and hidden scan boundaries")
+    func rescueCoverageStates() {
+        let root = FileNode(url: URL(fileURLWithPath: "/Users/test"),
+                            name: "test", isDirectory: true, size: 0)
+        root.addScanCoverageGap("/Users/test/Library/Private")
+        let hidden = FileNode(url: root.url.appendingPathComponent("hidden"),
+                              name: "Hidden Space", isDirectory: false,
+                              size: 100, kind: .hiddenSpace)
+        root.setChildren([hidden])
+
+        let partial = RescueCoverage.inspect(root: root, sourceIsReadable: true)
+        #expect(partial.state == .partial)
+        #expect(partial.notes.contains { $0.contains("/Users/test/Library/Private") })
+
+        let blocked = RescueCoverage.inspect(root: root, sourceIsReadable: false)
+        #expect(blocked.state == .blocked)
+        #expect(blocked.notes.contains { $0.localizedCaseInsensitiveContains("could not be read") })
+        #expect(blocked.notes.contains { $0.contains("/Users/test/Library/Private") })
+    }
+
+    @Test("RescueVerification separates moved bytes from verified volume recovery")
+    func rescueMeasurementMismatch() {
+        let before = RescueMeasurement(volumePath: "/", totalBytes: 1_000,
+                                       availableBytes: 100, freeBytes: 100,
+                                       logicalBytes: 900, physicalBytes: 800,
+                                       measuredAt: Date(timeIntervalSince1970: 1))
+        let after = RescueMeasurement(volumePath: "/", totalBytes: 1_000,
+                                      availableBytes: 130, freeBytes: 130,
+                                      logicalBytes: 800, physicalBytes: 700,
+                                      measuredAt: Date(timeIntervalSince1970: 2))
+        let verification = RescueVerification(requestedBytes: 200, movedBytes: 100,
+                                               movedPaths: ["/tmp/one"], failedBytes: 0, failedPaths: [],
+                                               heldBytes: nil, heldPaths: nil,
+                                               measurementMismatchPaths: nil,
+                                               before: before, after: after)
+
+        #expect(verification.verifiedReclaimedBytes == 30)
+        #expect(verification.hasMeasurementMismatch)
+        #expect(!verification.targetReached)
+        #expect(verification.status == "Moved, but reclaimed space is not proven")
+
+        let unrelatedCapacityGain = RescueMeasurement(volumePath: "/", totalBytes: 1_000,
+                                                       availableBytes: 250, freeBytes: 250,
+                                                       logicalBytes: 800, physicalBytes: 700,
+                                                       measuredAt: Date(timeIntervalSince1970: 2))
+        let gainVerification = RescueVerification(requestedBytes: nil, movedBytes: 100,
+                                                   movedPaths: ["/tmp/one"], failedBytes: 0, failedPaths: [],
+                                                   heldBytes: nil, heldPaths: nil,
+                                                   measurementMismatchPaths: nil,
+                                                   before: before, after: unrelatedCapacityGain)
+        #expect(gainVerification.verifiedReclaimedBytes == 150)
+        #expect(gainVerification.hasMeasurementMismatch,
+                "An unrelated capacity gain must not be called verified reclaim")
+    }
+
+    @Test("RescueCaseStore saves and clears a local case without network state")
+    func rescueCaseRoundTrip() throws {
+        let suiteName = "TesseraTests.RescueCase.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("Could not create test defaults")
+            return
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let candidateID = "xcode::/tmp/DerivedData"
+        let candidateIdentity = ScanIdentity(path: "/tmp/DerivedData", device: 1, inode: 2,
+                                              resourceType: .directory)
+        let rescueCase = SavedRescueCase(
+            id: UUID(), sourcePath: "/Users/test", goal: .build,
+            requiredSpace: 2_000_000_000, candidateIDs: [candidateID],
+            candidateIdentities: [candidateID: candidateIdentity],
+            ruleVersion: CleanupClassifier.ruleVersion,
+            savedAt: Date(timeIntervalSince1970: 3), phase: .reviewing,
+            measurement: nil, coverage: nil, verification: nil, errorMessage: nil)
+        try RescueCaseStore.save(rescueCase, defaults: defaults)
+        let loaded = try RescueCaseStore.load(defaults: defaults)
+        #expect(loaded == rescueCase)
+
+        RescueCaseStore.clear(defaults: defaults)
+        let cleared = try RescueCaseStore.load(defaults: defaults)
+        #expect(cleared == nil)
+
+        defaults.set(Data([0x01]), forKey: "tessera.rescue.case")
+        do {
+            _ = try RescueCaseStore.load(defaults: defaults)
+            Issue.record("Corrupt rescue case data must be reported")
+        } catch {
+            // Expected: the caller can show the user that the local case is invalid.
+        }
+    }
+
+    @Test("DeletionService rejects a stale identity without mutating the file")
+    func staleIdentityDoesNotMoveFile() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let file = dir.appendingPathComponent("stale.bin")
+        try Data(count: 4096).write(to: file)
+        let staleIdentity = ScanIdentity(path: file.path + ".old", volumeIdentifier: "test-volume",
+                                         device: 1, inode: 2, resourceType: .file)
+        let node = FileNode(url: file, name: file.lastPathComponent,
+                            isDirectory: false, size: allocatedSize(at: file.path),
+                            identity: staleIdentity)
+
+        #expect(DeletionService.preflight(node) == .identityChanged)
+        let failures = try DeletionService.trash([node])
+        #expect(failures.count == 1)
+        #expect(FileManager.default.fileExists(atPath: file.path))
     }
 
     @Test("Incremental re-scan: unchanged subtree reused (same total), change detected")
@@ -1270,7 +1471,10 @@ struct EngineTests {
         try Data(count: 4096).write(to: file)
         #expect(FileManager.default.fileExists(atPath: file.path))
 
-        let failures = try DeletionService.trash([file])
+        let identity = try #require(ScanIdentity.current(at: file))
+        let node = FileNode(url: file, name: file.lastPathComponent, isDirectory: false,
+                            size: allocatedSize(at: file.path), identity: identity)
+        let failures = try DeletionService.trash([node])
         #expect(failures.isEmpty)
         // Recoverable from the Finder Trash, but no longer at the original path.
         #expect(!FileManager.default.fileExists(atPath: file.path))

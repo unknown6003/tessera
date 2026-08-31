@@ -72,7 +72,7 @@ enum DebugAutomation {
             if let report = vm.cleanupReport {
                 log("cleanup: safe=\(Theme.format(report.safeTotalBytes)) in \(report.safeGroups.count) groups, \(report.reviewGroups.count) review groups")
                 for g in report.groups {
-                    log("  [\(g.category.confidence == .safeRegenerable ? "safe" : "review")] \(g.category.title): \(Theme.format(g.totalBytes)) (\(g.nodes.count))")
+                    log("  [\(g.risk.rawValue)] \(g.category.title): \(Theme.format(g.totalBytes)) (\(g.nodes.count))")
                 }
             } else {
                 log("cleanup: no report")

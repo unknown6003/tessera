@@ -67,6 +67,7 @@ struct Sidebar: View {
                 let custom = VolumeInfo(folderURL: url)
                 customFolders = [custom] + customFolders.filter { $0.url != url }
                 selectedVolumeURL = url
+                vm.selectedSourceURL = url
             }
         }
         .sheet(isPresented: $showConnectSheet) { connectSheet }
@@ -116,6 +117,7 @@ struct Sidebar: View {
             ForEach(items) { info in
                 Button {
                     selectedVolumeURL = info.url
+                    vm.selectedSourceURL = info.url
                     // If we've already scanned this source, switch to it instantly.
                     vm.showCachedScanIfAvailable(for: info.url)
                 } label: {
@@ -344,6 +346,7 @@ struct Sidebar: View {
             Spacer(minLength: 4)
             Button("Back") {
                 selectedVolumeURL = vm.scannedURL
+                vm.selectedSourceURL = vm.scannedURL
             }
             .buttonStyle(.interactive)
             .font(.caption.weight(.semibold))
@@ -364,7 +367,7 @@ struct Sidebar: View {
         Button {
             if let url = selectedVolumeURL { vm.startScan(volumeURL: url) }
         } label: {
-            Label(scanButtonTitle, systemImage: "magnifyingglass")
+            Label(scanButtonTitle, systemImage: "lifepreserver.fill")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.flatProminent)
@@ -373,10 +376,10 @@ struct Sidebar: View {
         .padding(.horizontal, 14)
     }
 
-    /// "Rescan X" when the selection is already on screen, "Scan X" otherwise.
+    /// "Rescan X" when the selection is already on screen, "Rescue X" otherwise.
     private var scanButtonTitle: String {
-        guard let name = name(for: selectedVolumeURL) else { return "Scan" }
-        return selectedVolumeURL == vm.scannedURL ? "Rescan \(name)" : "Scan \(name)"
+        guard let name = name(for: selectedVolumeURL) else { return "Rescue" }
+        return selectedVolumeURL == vm.scannedURL ? "Rescan \(name)" : "Rescue \(name)"
     }
 
     /// Friendly name for a source URL, resolved from the discovered sources.
@@ -506,6 +509,7 @@ struct Sidebar: View {
                 let mountURL = try await NetworkShareMounter.mount(address)
                 reloadVolumes()
                 selectedVolumeURL = mountURL
+                vm.selectedSourceURL = mountURL
                 connectAddress = ""
                 isConnecting = false
                 showConnectSheet = false
@@ -524,6 +528,7 @@ struct Sidebar: View {
         if selectedVolumeURL == nil || !allSources.contains(where: { $0.url == selectedVolumeURL }) {
             selectedVolumeURL = defaultSelection
         }
+        vm.selectedSourceURL = selectedVolumeURL
     }
 
     private var defaultSelection: URL? {

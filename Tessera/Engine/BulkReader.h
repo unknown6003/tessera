@@ -12,9 +12,10 @@ typedef struct {
     uint32_t devid;         // device id (dev_t) — used to detect mount-point crossings
     uint32_t nlink;         // hard-link count (files only; 0 when unavailable)
     uint64_t inode;         // inode / file ID
+    int64_t  logical_size;  // logical file size (0 for directories)
     int64_t  alloc_size;    // on-disk allocated bytes (0 for directories)
     uint32_t flags;         // st_flags (UF_*/SF_* incl. SF_DATALESS); 0 when unavailable
-    int64_t  mod_time;      // ATTR_CMN_MODTIME tv_sec — directory content-version for incremental re-scan
+    int64_t  mod_time;      // ATTR_CMN_MODTIME in nanoseconds — directory content version
 } BREntry;
 
 // Opt-in per-syscall timing (single-threaded benchmark only — the accumulators

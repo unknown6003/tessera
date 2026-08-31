@@ -90,7 +90,9 @@ struct FileScanner: Sendable {
         // cached scan has the same listing, so we reuse its whole cached subtree
         // (and skip every getattrlistbulk inside it). Built only when a cache for
         // the same root is supplied.
-        let cacheMap = cache.map { buildCacheMap($0) }
+        let cacheMap = cache.map { cached in
+            buildCacheMap(cached, excluding: Set(cached.scanCoverageGaps))
+        }
         let allowedDevices = Self.allowedDevices(forRoot: rootPath)
         // A removed folder, disconnected share, or unmounted disk cannot produce a
         // trustworthy scan. Previously an lstat failure left this set empty and the
@@ -102,8 +104,10 @@ struct FileScanner: Sendable {
         let isVolumeRoot = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume ?? (rootPath == "/")
 
         let rootName = url.lastPathComponent.isEmpty ? rootPath : url.lastPathComponent
-        let rootNode = FileNode(url: url, name: rootName, isDirectory: true, size: 0)
-
+        let rootIdentity = ScanIdentity.current(at: url)
+            ?? ScanIdentity(path: rootPath, resourceType: .directory)
+        let rootNode = FileNode(url: url, name: rootName, isDirectory: true, size: 0,
+                                identity: rootIdentity)
         var progress = ScanProgress(currentPath: rootPath)
         // Only use the volume-bytes denominator for a true volume scan; for a
         // folder we don't know its byte total up front, so leave it 0.
@@ -159,6 +163,7 @@ struct FileScanner: Sendable {
         var hardlinks: [HardlinkCandidate] = []
         /// Count of cached subtrees reused unchanged (incremental re-scan).
         var reusedDirs = 0
+        var coverageGapPath: String?
     }
 
     // MARK: Per-directory node construction (shared hot path)
@@ -215,25 +220,68 @@ struct FileScanner: Sendable {
                 // getattrlistbulk inside it.
                 if let cached = cacheMap?[childPath],
                    cached.modTime != 0, cached.modTime == entry.modTime,
-                   cached.isDirectory, cached.kind == kind {
+                   cached.isDirectory, cached.kind == kind,
+                   cached.scanIdentity?.device == (entry.device == 0 ? nil : entry.device),
+                   cached.scanIdentity?.inode == (entry.inode == 0 ? nil : entry.inode),
+                   cached.scanIdentity?.resourceType == (kind == .package ? .package : .directory) {
                     result.children.append(cached)
                     result.reusedDirs += 1
                     continue
                 }
 
-                let childNode = FileNode(name: entry.name, isDirectory: true, size: 0,
-                                         kind: kind, modTime: entry.modTime)
+                let childNode = FileNode(
+                    name: entry.name,
+                    isDirectory: true,
+                    size: 0,
+                    kind: kind,
+                    modTime: entry.modTime,
+                    identity: ScanIdentity(
+                        device: entry.device == 0 ? nil : entry.device,
+                        inode: entry.inode == 0 ? nil : entry.inode,
+                        resourceType: kind == .package ? .package : .directory,
+                        allocatedSize: entry.allocatedSize > 0 ? entry.allocatedSize : nil,
+                        modificationTime: entry.modTime > 0 ? entry.modTime : nil
+                    )
+                )
                 result.children.append(childNode)
                 result.subdirs.append(DirWork(path: childPath, node: childNode))
 
             case .file:
-                // Dataless (online-only) file: not materialized, ~0 local disk.
-                // Skip entirely — no node, no bytes, not counted.
-                if entry.isDataless { continue }
+                // Dataless (online-only) file: keep a non-actionable boundary so
+                // coverage stays honest without counting remote bytes as local.
+                if entry.isDataless {
+                    result.children.append(FileNode(
+                        name: entry.name,
+                        isDirectory: false,
+                        size: 0,
+                        kind: .cloudOnlyStorage,
+                        modTime: entry.modTime,
+                        identity: ScanIdentity(
+                            device: entry.device == 0 ? nil : entry.device,
+                            inode: entry.inode == 0 ? nil : entry.inode,
+                            resourceType: .file,
+                            logicalSize: entry.logicalSize,
+                            allocatedSize: entry.allocatedSize,
+                            modificationTime: entry.modTime > 0 ? entry.modTime : nil
+                        )))
+                    continue
+                }
                 // Carry the file's mtime (already read by the bulk syscall — no extra
                 // cost) so age-based cleanup ("older than 6 months") works per file.
-                let childNode = FileNode(name: entry.name, isDirectory: false,
-                                         size: entry.allocatedSize, modTime: entry.modTime)
+                let childNode = FileNode(
+                    name: entry.name,
+                    isDirectory: false,
+                    size: entry.allocatedSize,
+                    modTime: entry.modTime,
+                    identity: ScanIdentity(
+                        device: entry.device == 0 ? nil : entry.device,
+                        inode: entry.inode == 0 ? nil : entry.inode,
+                        resourceType: .file,
+                        logicalSize: entry.logicalSize,
+                        allocatedSize: entry.allocatedSize,
+                        modificationTime: entry.modTime > 0 ? entry.modTime : nil
+                    )
+                )
                 result.children.append(childNode)
                 if entry.linkCount > 1, entry.inode > 0 {
                     result.hardlinks.append(HardlinkCandidate(device: entry.device, inode: entry.inode, node: childNode))
@@ -249,14 +297,19 @@ struct FileScanner: Sendable {
     /// re-scan lookups. Paths are built by cheap string concatenation (not the
     /// CFURL-based `node.url`). Synthetic nodes (hidden space, cross-volume, cloud)
     /// are excluded so they're always re-evaluated.
-    static func buildCacheMap(_ root: FileNode) -> [String: FileNode] {
+    static func buildCacheMap(_ root: FileNode, excluding invalidatedPaths: Set<String> = []) -> [String: FileNode] {
+        let invalidated = Set(invalidatedPaths.map {
+            URL(fileURLWithPath: $0).standardizedFileURL.path
+        })
         var map: [String: FileNode] = [:]
         var stack: [(node: FileNode, path: String)] = [(root, root.url.path)]
         while let (node, path) = stack.popLast() {
             guard node.isDirectory, !node.isSynthetic else { continue }
+            guard !invalidated.contains(URL(fileURLWithPath: path).standardizedFileURL.path) else { continue }
             map[path] = node
             for child in node.children where child.isDirectory && !child.isSynthetic {
-                stack.append((child, path + "/" + child.name))
+                let childPath = path == "/" ? "/" + child.name : path + "/" + child.name
+                stack.append((child, childPath))
             }
         }
         return map
@@ -291,7 +344,10 @@ struct FileScanner: Sendable {
         let rootPath = url.path
         let allowedDevices = Self.allowedDevices(forRoot: rootPath)
         let rootName = url.lastPathComponent.isEmpty ? rootPath : url.lastPathComponent
-        let root = FileNode(url: url, name: rootName, isDirectory: true, size: 0)
+        let rootIdentity = ScanIdentity.current(at: url)
+            ?? ScanIdentity(path: rootPath, resourceType: .directory)
+        let root = FileNode(url: url, name: rootName, isDirectory: true, size: 0,
+                            identity: rootIdentity)
 
         var stack: [DirWork] = [DirWork(path: rootPath, node: root)]
         var stats = SerialScanStats()
@@ -304,7 +360,13 @@ struct FileScanner: Sendable {
 
         while let work = stack.popLast() {
             let t0 = DispatchTime.now().uptimeNanoseconds
-            guard let entries = BulkDirScanner.workerEntries(atPath: work.path, scratch: scratch) else { continue }
+            guard let entries = BulkDirScanner.workerEntries(atPath: work.path, scratch: scratch) else {
+                root.addScanCoverageGap(work.path)
+                continue
+            }
+            if entries.isEmpty && !FileManager.default.isReadableFile(atPath: work.path) {
+                root.addScanCoverageGap(work.path)
+            }
             let t1 = DispatchTime.now().uptimeNanoseconds
             let result = buildResult(forEntries: entries, parentPath: work.path,
                                      allowedDevices: allowedDevices)
@@ -355,11 +417,13 @@ struct FileScanner: Sendable {
         private var cancelled = false
         private var finished = false       // continuation resumed (single-resume guard)
         private var activeWorkers = 0      // workers currently inside a directory
+        private var activePaths = Set<String>()
         /// Workers authorized to attach an enumeration result. The watchdog may
         /// only publish the tree when this is zero, otherwise SwiftUI could receive
         /// a tree while a late worker is mutating it.
         private var commitsInProgress = 0
         private var seenInodes = Set<DevIno>()
+        private var coverageGaps: [String] = []
         private var progress: ScanProgress
 
         // Watchdog stall detection (guarded by `cond`).
@@ -385,7 +449,8 @@ struct FileScanner: Sendable {
 
         init(rootNode: FileNode, rootWork: DirWork, allowedDevices: Set<UInt32>,
              cacheMap: [String: FileNode]?,
-             volumeUsed: Int64, isVolumeRoot: Bool, progress: ScanProgress,
+             volumeUsed: Int64, isVolumeRoot: Bool,
+             progress: ScanProgress,
              onProgress: @escaping @Sendable (ScanProgress) -> Void) {
             self.rootNode = rootNode
             self.allowedDevices = allowedDevices
@@ -471,6 +536,7 @@ struct FileScanner: Sendable {
                 }
                 let work = queue.removeLast()
                 activeWorkers += 1
+                activePaths.insert(work.path)
                 cond.unlock()
 
                 // Drain per directory. Each worker runs the whole scan inside a
@@ -487,6 +553,7 @@ struct FileScanner: Sendable {
                 cond.lock()
                 guard !cancelled, !finished else {
                     activeWorkers -= 1
+                    activePaths.remove(work.path)
                     cond.unlock()
                     if cancelled { resumeThrowing(CancellationError()) }
                     return
@@ -503,6 +570,7 @@ struct FileScanner: Sendable {
                 commitsInProgress -= 1
                 if cancelled {
                     activeWorkers -= 1
+                    activePaths.remove(work.path)
                     cond.broadcast()
                     cond.unlock()
                     resumeThrowing(CancellationError())
@@ -512,11 +580,13 @@ struct FileScanner: Sendable {
                 // commit is reserved, but never merge into an abandoned tree.
                 if finished {
                     activeWorkers -= 1
+                    activePaths.remove(work.path)
                     cond.unlock()
                     return
                 }
                 let progressToEmit = merge(result, for: work)
                 activeWorkers -= 1
+                activePaths.remove(work.path)
                 cond.unlock()
                 // Emit progress only after releasing the lock: `onProgress` is caller-
                 // supplied, so invoking it under `cond` would risk deadlock/priority
@@ -532,7 +602,14 @@ struct FileScanner: Sendable {
         private func enumerate(_ work: DirWork, scratch: BulkScratch) -> DirResult {
             guard let entries = BulkDirScanner.workerEntries(atPath: work.path, scratch: scratch) else {
                 // Dead/stalled directory — skip its contents, still counts as scanned.
-                return DirResult()
+                var result = DirResult()
+                result.coverageGapPath = work.path
+                return result
+            }
+            if entries.isEmpty && !FileManager.default.isReadableFile(atPath: work.path) {
+                var result = DirResult()
+                result.coverageGapPath = work.path
+                return result
             }
             return FileScanner.buildResult(forEntries: entries, parentPath: work.path,
                                            allowedDevices: allowedDevices, cacheMap: cacheMap)
@@ -556,6 +633,9 @@ struct FileScanner: Sendable {
             progress.bytesFound += result.bytes
             progress.dirsScanned += 1
             progress.dirsDiscovered += result.subdirs.count
+            if let coverageGapPath = result.coverageGapPath {
+                coverageGaps.append(coverageGapPath)
+            }
             progress.currentPath = work.path
 
             // Hard-link dedup against the shared set (under the lock).
@@ -612,12 +692,15 @@ struct FileScanner: Sendable {
             FileScanner.attachHiddenSpace(to: rootNode, volumeUsed: volumeUsed, isVolumeRoot: isVolumeRoot)
 
             cond.lock()
+            let coverageGaps = self.coverageGaps
             progress.dirsScanned = progress.dirsDiscovered
             progress.isComplete = true
             let snapshot = progress
             let cont = continuation
             continuation = nil
             cond.unlock()
+
+            rootNode.setScanCoverageGaps(rootNode.scanCoverageGaps + coverageGaps)
 
             onProgress(snapshot)
             cont?.resume(returning: rootNode)
@@ -689,6 +772,7 @@ struct FileScanner: Sendable {
                 return
             }
 
+            coverageGaps.append(contentsOf: activePaths)
             finished = true
             cond.broadcast()   // release idle workers (stuck ones are abandoned)
             cond.unlock()

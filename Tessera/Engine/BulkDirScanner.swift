@@ -8,10 +8,11 @@ struct EntryInfo {
     var inode: UInt64
     var device: UInt32
     var linkCount: UInt32
+    var logicalSize: Int64
     var allocatedSize: Int64
     var flags: UInt32
-    /// Directory modification time (tv_sec). Bumps when entries are added/removed/
-    /// renamed — the version signal for incremental re-scan.
+    /// Directory modification time in nanoseconds. Bumps when entries are
+    /// added/removed/renamed — the version signal for incremental re-scan.
     var modTime: Int64 = 0
 
     /// SF_DATALESS (0x40000000): the item is online-only / not materialized.
@@ -134,7 +135,7 @@ enum BulkDirScanner {
         // Fast path: local directory, read inline. Test seams force the guarded
         // path so the timeout/abandon logic stays exercised by the suite.
         if _testDelay == nil, _timeoutSecondsOverride == nil, !isHangProne(path) {
-            return entries(atPath: path)
+            return entriesResult(atPath: path)
         }
 
         let timeout = _timeoutSecondsOverride ?? timeoutSeconds
@@ -168,7 +169,7 @@ enum BulkDirScanner {
             // buffers (can't reuse this worker's scratch across that boundary).
             return entriesWithDeadline(atPath: path, timeoutSeconds: 10)
         }
-        return entries(atPath: path, scratch: scratch)
+        return entriesResult(atPath: path, scratch: scratch)
     }
 
     /// Synchronous, worker-thread-callable enumeration with a hard deadline.
@@ -183,7 +184,7 @@ enum BulkDirScanner {
         let sem = DispatchSemaphore(value: 0)
         let box = ResultBox()
         DispatchQueue.global(qos: .utility).async {
-            box.value = entries(atPath: path)
+            box.value = entriesResult(atPath: path)
             sem.signal()
         }
         if sem.wait(timeout: .now() + timeoutSeconds) == .timedOut {
@@ -204,16 +205,24 @@ enum BulkDirScanner {
     /// deadline path). Allocates a one-shot scratch; the hot scan path uses
     /// `entries(atPath:scratch:)` with a per-worker buffer instead.
     static func entries(atPath path: String) -> [EntryInfo] {
-        entries(atPath: path, scratch: BulkScratch())
+        entriesResult(atPath: path) ?? []
     }
 
     static func entries(atPath path: String, scratch: BulkScratch) -> [EntryInfo] {
+        entriesResult(atPath: path, scratch: scratch) ?? []
+    }
+
+    private static func entriesResult(atPath path: String) -> [EntryInfo]? {
+        entriesResult(atPath: path, scratch: BulkScratch())
+    }
+
+    private static func entriesResult(atPath path: String, scratch: BulkScratch) -> [EntryInfo]? {
         // Test-only delay hook (see `_testDelay`).
         if let delay = _testDelay, path.hasSuffix(delay.pathSuffix) {
             Thread.sleep(forTimeInterval: delay.seconds)
         }
 
-        let list = rawEntries(atPath: path, scratch: scratch)
+        guard let list = rawEntries(atPath: path, scratch: scratch) else { return nil }
 
         // Test-only dataless hook (see `_testDatalessSuffix`): force the
         // SF_DATALESS bit on any entry whose name matches, so the cloud logic can
@@ -228,7 +237,7 @@ enum BulkDirScanner {
         }
     }
 
-    private static func rawEntries(atPath path: String, scratch: BulkScratch) -> [EntryInfo] {
+    private static func rawEntries(atPath path: String, scratch: BulkScratch) -> [EntryInfo]? {
         // getattrlistbulk via C bridge, using the caller's reusable buffers so
         // there is no per-directory allocation.
         let cEntries = scratch.entryBuffer
@@ -271,6 +280,7 @@ enum BulkDirScanner {
             inode: c.inode,
             device: c.devid,
             linkCount: c.nlink,
+            logicalSize: c.logical_size,
             allocatedSize: c.alloc_size,
             flags: c.flags,
             modTime: c.mod_time
@@ -279,10 +289,14 @@ enum BulkDirScanner {
 
     // MARK: - Fallback
 
-    private static func fallbackEntries(atPath path: String) -> [EntryInfo] {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: path)) ?? []
+    private static func fallbackEntries(atPath path: String) -> [EntryInfo]? {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else {
+            return nil
+        }
 
-        return names.compactMap { name -> EntryInfo? in
+        var entries: [EntryInfo] = []
+        entries.reserveCapacity(names.count)
+        for name in names {
             var sb = Darwin.stat()
             guard Darwin.lstat(path + "/" + name, &sb) == 0 else { return nil }
             let mode = sb.st_mode & S_IFMT
@@ -298,16 +312,18 @@ enum BulkDirScanner {
                 entryType = .other
             }
 
-            return EntryInfo(
+            entries.append(EntryInfo(
                 name: name,
                 type: entryType,
                 inode: UInt64(sb.st_ino),
                 device: UInt32(bitPattern: sb.st_dev),
                 linkCount: UInt32(sb.st_nlink),
+                logicalSize: Int64(sb.st_size),
                 allocatedSize: Int64(sb.st_blocks) * 512,
                 flags: sb.st_flags,
                 modTime: Int64(sb.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(sb.st_mtimespec.tv_nsec)
-            )
+            ))
         }
+        return entries
     }
 }

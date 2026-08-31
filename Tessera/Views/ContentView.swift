@@ -10,6 +10,14 @@ struct ContentView: View {
 
     /// Whether the "permanently delete the whole collector" confirmation is showing.
     @State private var showDeleteAllConfirm = false
+    /// Separate confirmation for the recoverable Trash action.
+    @State private var showTrashConfirm = false
+    @State private var pendingTrashNodes: [FileNode] = []
+    @State private var pendingTrashSourcePath: String?
+    /// Snapshot the irreversible action too, so a confirmation cannot act on a
+    /// newer collector after a scan or selection change.
+    @State private var pendingDeleteNodes: [FileNode] = []
+    @State private var pendingDeleteSourcePath: String?
     /// Title for the failure alert ("Move to Trash Failed" / "Delete Failed").
     @State private var deleteErrorTitle = "Couldn’t Remove Items"
     @State private var deleteError: String?
@@ -36,8 +44,8 @@ struct ContentView: View {
             // chart to drag from.
             if vm.rootNode != nil {
                 CollectorDock(vm: vm, drag: drag,
-                              onTrashAll: { performTrash(vm.collector) },
-                              onDeleteAll: { showDeleteAllConfirm = true })
+                              onTrashAll: { requestTrash(vm.collector) },
+                              onDeleteAll: { requestDelete(vm.collector) })
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -83,21 +91,43 @@ struct ContentView: View {
         .onChange(of: vm.isScanning, initial: true) { _, _ in syncUpdaterBusy() }
         .onChange(of: vm.collector.isEmpty) { _, _ in syncUpdaterBusy() }
         .confirmationDialog(
-            "Permanently Delete \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s")?",
+            "Move \(pendingTrashNodes.count) Item\(pendingTrashNodes.count == 1 ? "" : "s") to Trash?",
+            isPresented: $showTrashConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Move to Trash") {
+                let nodes = pendingTrashNodes
+                pendingTrashNodes = []
+                performTrash(nodes)
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {
+                vm.cancelTrashConfirmation()
+                pendingTrashNodes = []
+            }
+        } message: {
+            Text("This moves \(Theme.format(pendingTrashNodes.reduce(0) { $0 + $1.physicalSize })) to Finder Trash (\(pendingTrashRiskSummary)). \(pendingTrashTargetSummary) The items can be restored, but Trash still uses disk space until you empty it.")
+        }
+        .confirmationDialog(
+            "Permanently Delete \(pendingDeleteNodes.count) Item\(pendingDeleteNodes.count == 1 ? "" : "s")?",
             isPresented: $showDeleteAllConfirm,
             titleVisibility: .visible
         ) {
             // Safe option first, so it reads as the default/recommended path.
             Button("Move to Trash Instead") {
-                performTrash(vm.collector)
+                let nodes = pendingDeleteNodes
+                pendingDeleteNodes = []
+                pendingDeleteSourcePath = nil
+                showDeleteAllConfirm = false
+                requestTrash(nodes)
             }
             .keyboardShortcut(.defaultAction)
-            Button("Delete \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s") Permanently", role: .destructive) {
-                performDelete(vm.collector)
+            Button("Delete \(pendingDeleteNodes.count) Item\(pendingDeleteNodes.count == 1 ? "" : "s") Permanently", role: .destructive) {
+                performDelete(pendingDeleteNodes)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This frees \(Theme.format(vm.collectorTotalSize)) immediately and cannot be undone. To keep the option to restore, move the items to the Trash instead.")
+            Text("This frees \(Theme.format(pendingDeleteNodes.reduce(0) { $0 + $1.physicalSize })) immediately and cannot be undone. To keep the option to restore, move the items to the Trash instead.")
         }
         .alert(deleteErrorTitle, isPresented: Binding(
             get: { deleteError != nil },
@@ -118,12 +148,68 @@ struct ContentView: View {
             // Returning from System Settings after granting access auto-dismisses.
             vm.refreshFullDiskAccessStatus()
         }
+        .onChange(of: showTrashConfirm) { _, isPresented in
+            if !isPresented {
+                vm.cancelTrashConfirmation()
+                pendingTrashNodes = []
+                pendingTrashSourcePath = nil
+            }
+        }
+        .onChange(of: showDeleteAllConfirm) { _, isPresented in
+            if !isPresented {
+                pendingDeleteNodes = []
+                pendingDeleteSourcePath = nil
+            }
+        }
+        .onChange(of: vm.scannedURL) { _, _ in
+            if showTrashConfirm {
+                showTrashConfirm = false
+                vm.cancelTrashConfirmation()
+                pendingTrashNodes = []
+                pendingTrashSourcePath = nil
+            }
+            if showDeleteAllConfirm {
+                showDeleteAllConfirm = false
+                pendingDeleteNodes = []
+                pendingDeleteSourcePath = nil
+            }
+        }
+    }
+
+    /// Queue the recoverable action behind its own confirmation.
+    private func requestTrash(_ nodes: [FileNode]) {
+        guard !nodes.isEmpty, !vm.isScanning,
+              let sourcePath = vm.scannedURL?.standardizedFileURL.path else { return }
+        pendingTrashNodes = nodes
+        pendingTrashSourcePath = sourcePath
+        vm.beginTrashConfirmation()
+        showTrashConfirm = true
+    }
+
+    /// Queue the irreversible action behind a source- and collector-bound
+    /// confirmation. It remains a separate legacy action from Rescue's Trash flow.
+    private func requestDelete(_ nodes: [FileNode]) {
+        guard !nodes.isEmpty, !vm.isScanning,
+              let sourcePath = vm.scannedURL?.standardizedFileURL.path else { return }
+        pendingDeleteNodes = nodes
+        pendingDeleteSourcePath = sourcePath
+        showDeleteAllConfirm = true
     }
 
     /// Move `nodes` to the Trash (recoverable), surfacing any failure as an alert.
-    /// The default action — no confirmation needed since it can be undone in Finder.
     private func performTrash(_ nodes: [FileNode]) {
         deleteError = nil
+        defer { pendingTrashSourcePath = nil }
+        let currentSourcePath = vm.scannedURL?.standardizedFileURL.path
+        let collectorIDs = Set(vm.collector.map(\.id))
+        guard !vm.isScanning,
+              pendingTrashSourcePath == currentSourcePath,
+              Set(nodes.map(\.id)).isSubset(of: collectorIDs) else {
+            vm.cancelTrashConfirmation()
+            deleteErrorTitle = "Move to Trash Failed"
+            deleteError = "The scan or cleanup list changed. Review the current plan before moving anything."
+            return
+        }
         do {
             try vm.moveToTrash(nodes)
         } catch {
@@ -132,9 +218,43 @@ struct ContentView: View {
         }
     }
 
+    private var pendingTrashRiskSummary: String {
+        guard let plan = vm.rescuePlan else { return "review the exact paths" }
+        let risks: [(CleanupRisk, String)] = [
+            (.safe, "safe"), (.review, "review"), (.protected, "protected")
+        ]
+        let parts = risks.compactMap { item -> String? in
+            let count = pendingTrashNodes.filter { node in
+                plan.recommendations.first(where: { $0.node.id == node.id })?.risk == item.0
+            }.count
+            return count > 0 ? "\(count) \(item.1)" : nil
+        }
+        return parts.isEmpty ? "review the exact paths" : parts.joined(separator: ", ")
+    }
+
+    private var pendingTrashTargetSummary: String {
+        guard let target = vm.rescuePlan?.targetSpace else {
+            return "No usable-space target is set."
+        }
+        return "Plan target: \(Theme.format(target)) usable space."
+    }
+
     /// Permanently delete `nodes`, surfacing any failure as an alert.
     private func performDelete(_ nodes: [FileNode]) {
         deleteError = nil
+        defer {
+            pendingDeleteNodes = []
+            pendingDeleteSourcePath = nil
+        }
+        let currentSourcePath = vm.scannedURL?.standardizedFileURL.path
+        let collectorIDs = Set(vm.collector.map(\.id))
+        guard !vm.isScanning,
+              pendingDeleteSourcePath == currentSourcePath,
+              Set(nodes.map(\.id)).isSubset(of: collectorIDs) else {
+            deleteErrorTitle = "Delete Failed"
+            deleteError = "The scan or cleanup list changed. Review the current plan before deleting anything."
+            return
+        }
         do {
             try vm.deletePermanently(nodes)
         } catch {
@@ -255,10 +375,20 @@ struct ContentView: View {
             VStack(spacing: 8) {
                 Text("See what's using your disk")
                     .font(.title2.weight(.semibold))
-                Text("Pick a disk in the list on the left, then click the blue **Scan** button at the bottom of that list. Tessera reads the whole drive and maps it — nothing is changed or deleted.")
+                Text("Pick a disk in the list on the left, then click the blue **Rescue** button at the bottom of that list. Tessera reads the whole drive and maps it — nothing is changed or deleted.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if let source = vm.selectedSourceURL {
+                Button {
+                    vm.startScan(volumeURL: source)
+                } label: {
+                    Label("Scan \(source.lastPathComponent.isEmpty ? "this source" : source.lastPathComponent) for Rescue",
+                          systemImage: "lifepreserver.fill")
+                }
+                .buttonStyle(.flatProminent)
+                .controlSize(.large)
             }
         }
         .multilineTextAlignment(.center)

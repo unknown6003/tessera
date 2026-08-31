@@ -7,13 +7,13 @@ struct CleanupActionBar: View {
     @ObservedObject var vm: ScanViewModel
 
     private enum Tool: String, Identifiable, CaseIterable {
-        case cleanup, apps, duplicates, byKind, largeOld, search
+        case rescue, apps, duplicates, byKind, largeOld, search
 
         var id: String { rawValue }
 
         var label: String {
             switch self {
-            case .cleanup:    return "Clean Up"
+            case .rescue:     return "Rescue Space"
             case .apps:       return "Uninstall Apps"
             case .duplicates: return "Find Duplicates"
             case .byKind:     return "Browse by Type"
@@ -24,7 +24,7 @@ struct CleanupActionBar: View {
 
         var symbol: String {
             switch self {
-            case .cleanup:    return "sparkles"
+            case .rescue:     return "lifepreserver.fill"
             case .apps:       return "trash.square"
             case .duplicates: return "doc.on.doc"
             case .byKind:     return "square.grid.2x2.fill"
@@ -35,7 +35,7 @@ struct CleanupActionBar: View {
 
         var popoverWidth: CGFloat {
             switch self {
-            case .cleanup: return 380
+            case .rescue: return 420
             case .apps, .largeOld, .search: return 420
             case .duplicates, .byKind: return 400
             }
@@ -70,10 +70,10 @@ struct CleanupActionBar: View {
     /// a conventional menu that works with mouse, keyboard, and VoiceOver.
     private var compactToolbar: some View {
         HStack(spacing: 8) {
-            toolButton(.cleanup)
+            toolButton(.rescue)
 
             Menu {
-                ForEach(Tool.allCases.filter { $0 != .cleanup }) { tool in
+                ForEach(Tool.allCases.filter { $0 != .rescue }) { tool in
                     Button {
                         presentedTool = tool
                     } label: {
@@ -105,9 +105,10 @@ struct CleanupActionBar: View {
 
     private func title(for tool: Tool) -> String {
         switch tool {
-        case .cleanup:
-            if let report = vm.cleanupReport, report.safeTotalBytes > 0 {
-                return "Clean Up · \(Theme.format(report.safeTotalBytes))"
+        case .rescue:
+            if let plan = vm.rescuePlan, !plan.safeRecommendations.isEmpty {
+                let bytes = plan.safeRecommendations.reduce(0) { $0 + $1.physicalBytes }
+                return "Rescue · \(Theme.format(bytes))"
             }
         case .duplicates:
             if vm.didRunDuplicates, !vm.duplicateGroups.isEmpty {
@@ -124,7 +125,7 @@ struct CleanupActionBar: View {
         ScrollView {
             Group {
                 switch tool {
-                case .cleanup:    CleanupSuggestionsView(vm: vm)
+                case .rescue:     CleanupSuggestionsView(vm: vm)
                 case .apps:       AppUninstallerView(vm: vm)
                 case .duplicates: DuplicateFinderView(vm: vm)
                 case .byKind:     ByKindView(vm: vm)

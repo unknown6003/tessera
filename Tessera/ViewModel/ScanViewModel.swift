@@ -30,6 +30,18 @@ final class ScanViewModel: ObservableObject {
     @Published var showFDAOnboarding = false
     private var fdaDismissedThisSession = false
 
+    // MARK: - Rescue plan
+    @Published var selectedSourceURL: URL?
+    @Published private(set) var rescuePhase: RescuePhase = .needsRescue
+    @Published private(set) var rescuePlan: RescuePlan?
+    @Published private(set) var savedRescueCase: SavedRescueCase?
+    @Published private(set) var restoredRescueCandidateIDs: Set<String> = []
+    @Published private(set) var restoredRescueCaseIsStale = false
+    @Published var rescueGoal: RescueGoal = .normalWork
+    @Published var requiredRescueSpace: Int64?
+    @Published private(set) var rescueVerification: RescueVerification?
+    @Published private(set) var lastRescueError: String?
+
     /// The volume whose scan results are currently on screen — set when a scan
     /// completes, cleared when a new scan starts. Drives the sidebar's "Viewing"
     /// indicator and the "you switched away from what's displayed" affordance.
@@ -49,6 +61,7 @@ final class ScanViewModel: ObservableObject {
     /// The last volume scanned, so a re-scan of the same volume can reuse the
     /// previous tree for incremental speedup.
     private var lastScannedURL: URL?
+    private var pendingRescueCase: SavedRescueCase?
 
     /// Completed scans kept in memory so switching between disks/cloud is instant
     /// (no re-scan). Capped (LRU) because each tree can be large.
@@ -60,6 +73,14 @@ final class ScanViewModel: ObservableObject {
         let didRunDuplicates: Bool
         let collector: [FileNode]
         let progress: ScanProgress
+        let rescuePlan: RescuePlan?
+        let rescuePhase: RescuePhase
+        let rescueGoal: RescueGoal
+        let requiredRescueSpace: Int64?
+        let rescueVerification: RescueVerification?
+        let lastRescueError: String?
+        let restoredRescueCandidateIDs: Set<String>
+        let restoredRescueCaseIsStale: Bool
     }
     private var scanCache: [URL: CachedScan] = [:]
     private var cacheLRU: [URL] = []
@@ -71,6 +92,15 @@ final class ScanViewModel: ObservableObject {
     /// Diagnostic: true when the last scan ended via CancellationError.
     private(set) var scanTaskWasCancelled = false
 
+    init() {
+        savedRescueCase = nil
+        do {
+            savedRescueCase = try RescueCaseStore.load()
+        } catch {
+            lastRescueError = "The saved rescue case could not be read. Scan again to start a new case."
+        }
+    }
+
     // MARK: - Computed
 
     var collectorTotalSize: Int64 { collector.reduce(0) { $0 + $1.size } }
@@ -78,6 +108,11 @@ final class ScanViewModel: ObservableObject {
     // MARK: - Scan
 
     func startScan(volumeURL: URL) {
+        selectedSourceURL = volumeURL
+        if let pendingRescueCase,
+           pendingRescueCase.sourcePath != volumeURL.standardizedFileURL.path {
+            self.pendingRescueCase = nil
+        }
         scanGeneration &+= 1
         let generation = scanGeneration
         scanTask?.cancel()
@@ -103,6 +138,12 @@ final class ScanViewModel: ObservableObject {
         selectedNode = nil
         collector = []
         cleanupReport = nil
+        rescuePlan = nil
+        rescuePhase = .scanning
+        restoredRescueCandidateIDs = []
+        restoredRescueCaseIsStale = false
+        rescueVerification = nil
+        lastRescueError = nil
         stopDuplicateSearch()
         duplicateGroups = []
         didRunDuplicates = false
@@ -138,7 +179,6 @@ final class ScanViewModel: ObservableObject {
                 let volumePath = volumeURL.path
                 let isVolumeRoot = volumePath == "/"
                 let isUnreadable = !FileManager.default.isReadableFile(atPath: volumePath)
-
                 // Classify cleanup suggestions off the main actor (pure CPU over the
                 // already-built tree, no I/O) BEFORE publishing it. While this runs,
                 // `node` is still exclusively owned by this task: `rootNode` /
@@ -147,8 +187,14 @@ final class ScanViewModel: ObservableObject {
                 // `children` underneath the walk. Publishing first and classifying
                 // afterwards would race the collector delete flow, which mutates the
                 // same arrays on the main actor.
-                let report = await Task.detached(priority: .utility) {
-                    CleanupClassifier.classify(root: node)
+                let ownerState = CleanupOwnerState.current()
+                self.rescuePhase = .diagnosing
+                let diagnosis = await Task.detached(priority: .utility) {
+                    let coverage = RescueCoverage.inspect(root: node, sourceIsReadable: !isUnreadable)
+                    let report = CleanupClassifier.classify(root: node, ownerState: ownerState,
+                                                            coverageComplete: coverage.state == .complete)
+                    let measurement = RescueMeasurement.capture(volumeURL: volumeURL, root: node)
+                    return (coverage, report, measurement)
                 }.value
 
                 // A newer scan may have started while classifying — it owns the UI
@@ -157,23 +203,36 @@ final class ScanViewModel: ObservableObject {
                 if treeIsEmpty && (isVolumeRoot || isUnreadable) {
                     self.needsFullDiskAccess = true
                 }
+                let (coverage, report, measurement) = diagnosis
+                let plan = RescuePlan(sourceURL: volumeURL, report: report,
+                                      measurement: measurement, coverage: coverage,
+                                      goal: self.rescueGoal,
+                                      requiredSpace: self.requiredRescueSpace)
                 // Single atomic publish point: tree and its report together.
                 self.rootNode = node
                 self.currentRoot = node
                 self.scannedURL = volumeURL
                 self.cleanupReport = report
-                // Suggestions are NOT auto-staged. The user reviews the groups and
-                // chooses what to add — per group, or all-safe at once — then deletes
-                // from the collector behind the usual confirmation.
+                self.rescuePlan = plan
+                self.rescuePhase = .planReady
+                let hasSavedCaseToReview = self.pendingRescueCase != nil
+                if !hasSavedCaseToReview {
+                    self.stageSafeCleanup()
+                }
+                self.restoreSavedRescueCaseIfNeeded(plan: plan)
+                // Safe candidates are staged for review on a fresh scan. A saved case
+                // never stages its old selection; the user must ask for that again.
             } catch is CancellationError {
                 // User stopped the current scan — not an error. A cancellation
                 // from a superseded scan must not change its replacement's state.
                 if self.scanGeneration == generation {
                     self.scanTaskWasCancelled = true
+                    self.rescuePhase = .needsRescue
                 }
             } catch {
                 if self.scanGeneration == generation {
                     self.errorMessage = error.localizedDescription
+                    self.rescuePhase = .needsRescue
                 }
             }
             if self.scanGeneration == generation {
@@ -209,7 +268,12 @@ final class ScanViewModel: ObservableObject {
         scanCache[url] = CachedScan(
             rootNode: root, currentRoot: currentRoot, cleanupReport: cleanupReport,
             duplicateGroups: duplicateGroups,
-            didRunDuplicates: didRunDuplicates, collector: collector, progress: progress)
+            didRunDuplicates: didRunDuplicates, collector: collector, progress: progress,
+            rescuePlan: rescuePlan, rescuePhase: rescuePhase, rescueGoal: rescueGoal,
+            requiredRescueSpace: requiredRescueSpace, rescueVerification: rescueVerification,
+            lastRescueError: lastRescueError,
+            restoredRescueCandidateIDs: restoredRescueCandidateIDs,
+            restoredRescueCaseIsStale: restoredRescueCaseIsStale)
         touchLRU(url)
         while cacheLRU.count > maxCachedScans {
             scanCache.removeValue(forKey: cacheLRU.removeFirst())
@@ -248,6 +312,16 @@ final class ScanViewModel: ObservableObject {
         didRunDuplicates = cached.didRunDuplicates
         collector = cached.collector
         progress = cached.progress
+        rescuePlan = cached.rescuePlan
+        rescuePhase = cached.rescuePhase
+        rescueGoal = cached.rescueGoal
+        requiredRescueSpace = cached.requiredRescueSpace
+        rescueVerification = cached.rescueVerification
+        lastRescueError = cached.lastRescueError
+        restoredRescueCandidateIDs = cached.restoredRescueCandidateIDs
+        restoredRescueCaseIsStale = cached.restoredRescueCaseIsStale
+        pendingRescueCase = nil
+        selectedSourceURL = url
         scannedURL = url
         lastScannedURL = url
 
@@ -286,6 +360,25 @@ final class ScanViewModel: ObservableObject {
 
     func addToCollector(_ node: FileNode) {
         guard !node.isSynthetic else { return }
+        // The app-uninstaller can mint nodes outside the scanned tree. Apply the
+        // path gate before consulting the current plan, so protected roots cannot
+        // enter the collector just because they have no recommendation row.
+        guard CleanupClassifier.protectedCategory(for: node.url.path) == nil else { return }
+        func isAncestorOrSame(_ ancestor: FileNode, _ descendant: FileNode) -> Bool {
+            var cursor: FileNode? = descendant
+            while let current = cursor {
+                if current.id == ancestor.id { return true }
+                cursor = current.parent
+            }
+            return false
+        }
+        if let protected = rescuePlan?.protectedRecommendations,
+           protected.contains(where: { recommendation in
+               return isAncestorOrSame(recommendation.node, node)
+                   || isAncestorOrSame(node, recommendation.node)
+           }) {
+            return
+        }
         guard !collector.contains(where: { $0.id == node.id }) else { return }
 
         // Refuse if any existing collector item is an ancestor of this node.
@@ -304,14 +397,17 @@ final class ScanViewModel: ObservableObject {
         collector.removeAll { isAncestor(node, of: $0) }
 
         collector.append(node)
+        if rescuePlan != nil { rescuePhase = .staged }
     }
 
     func removeFromCollector(_ node: FileNode) {
         collector.removeAll { $0.id == node.id }
+        if rescuePlan != nil, collector.isEmpty { rescuePhase = .reviewing }
     }
 
     func clearCollector() {
         collector = []
+        if rescuePlan != nil { rescuePhase = .reviewing }
     }
 
     /// True if `node` is staged — either directly, or covered by a collected
@@ -338,11 +434,14 @@ final class ScanViewModel: ObservableObject {
     func stageSafeCleanup() {
         guard let report = cleanupReport else { return }
         for node in report.safeNodes { addToCollector(node) }
+        if !collector.isEmpty { rescuePhase = .staged }
     }
 
     /// Add one suggestion group to the collector (used for opt-in review rows).
     func stageCleanupGroup(_ group: CleanupReport.Group) {
+        guard group.risk != .protected else { return }
         for node in group.nodes { addToCollector(node) }
+        if !collector.isEmpty { rescuePhase = .staged }
     }
 
     /// Whether every node in a group is currently staged.
@@ -360,10 +459,168 @@ final class ScanViewModel: ObservableObject {
         }
     }
 
+    func beginTrashConfirmation() {
+        guard !collector.isEmpty else { return }
+        if rescuePlan != nil { rescuePhase = .confirmingTrash }
+    }
+
+    func cancelTrashConfirmation() {
+        guard rescuePhase == .confirmingTrash else { return }
+        rescuePhase = collector.isEmpty ? .reviewing : .staged
+    }
+
     /// True once all safe groups are staged — disables the "add all safe" button.
     var safeGroupsAllStaged: Bool {
         guard let report = cleanupReport, !report.safeGroups.isEmpty else { return false }
         return report.safeGroups.allSatisfy { isGroupStaged($0) }
+    }
+
+    // MARK: - Rescue case
+
+    /// Open the current plan without staging anything. A saved case never
+    /// authorizes an action; it only restores a local review context.
+    func beginRescueReview() {
+        guard rescuePlan != nil else {
+            rescuePhase = .needsRescue
+            return
+        }
+        if rescueVerification != nil || lastRescueError != nil {
+            rescuePhase = .result
+            return
+        }
+        rescuePhase = collector.isEmpty ? .reviewing : .staged
+    }
+
+    func updateRescueGoal(_ goal: RescueGoal, requiredSpace: Int64?) {
+        let changed = rescueGoal != goal || requiredRescueSpace != requiredSpace
+        rescueGoal = goal
+        requiredRescueSpace = requiredSpace
+        if let plan = rescuePlan {
+            rescuePlan = plan.changingGoal(to: goal, requiredSpace: requiredSpace)
+            if changed, rescueVerification != nil || lastRescueError != nil {
+                rescueVerification = nil
+                lastRescueError = nil
+                rescuePhase = collector.isEmpty ? .reviewing : .staged
+            }
+        }
+    }
+
+    func saveRescueCase() {
+        guard let plan else { return }
+        let stagedIDs = Set(collector.compactMap { node in
+            plan.recommendations.first(where: { $0.node.id == node.id })?.id
+        })
+        rescuePhase = .remembering
+        persistRescueCase(candidateIDs: stagedIDs)
+    }
+
+    func discardSavedRescueCase() {
+        RescueCaseStore.clear()
+        savedRescueCase = nil
+        pendingRescueCase = nil
+        restoredRescueCandidateIDs = []
+        restoredRescueCaseIsStale = false
+    }
+
+    /// Reopen means scan the saved source again, then show the old selection as
+    /// review context. It never silently adds the old items to the collector.
+    func reopenSavedRescueCase() {
+        guard let saved = savedRescueCase else { return }
+        pendingRescueCase = saved
+        rescueGoal = saved.goal
+        requiredRescueSpace = saved.requiredSpace
+        startScan(volumeURL: URL(fileURLWithPath: saved.sourcePath))
+    }
+
+    /// Restore a saved selection only after the user explicitly asks. Protected
+    /// recommendations can never enter the collector through this path.
+    func stageRestoredRescueCase() {
+        guard let plan else { return }
+        for recommendation in plan.recommendations
+            where restoredRescueCandidateIDs.contains(recommendation.id)
+                && recommendation.risk != .protected {
+            addToCollector(recommendation.node)
+        }
+    }
+
+    private func restoreSavedRescueCaseIfNeeded(plan: RescuePlan) {
+        guard let saved = pendingRescueCase else { return }
+        pendingRescueCase = nil
+        restoredRescueCaseIsStale = saved.ruleVersion != CleanupClassifier.ruleVersion
+        guard saved.sourcePath == plan.sourcePath,
+              !restoredRescueCaseIsStale else {
+            restoredRescueCandidateIDs = []
+            rescuePhase = .reviewing
+            return
+        }
+        guard let savedIdentities = saved.candidateIdentities else {
+            // Cases written before identity persistence are review history only;
+            // a matching category/path is not enough to stage after a rescan.
+            restoredRescueCaseIsStale = true
+            restoredRescueCandidateIDs = []
+            rescuePhase = .reviewing
+            return
+        }
+        let currentRecommendations = Dictionary(uniqueKeysWithValues: plan.recommendations.map { ($0.id, $0) })
+        var restoredIDs = Set<String>()
+        var identityMismatch = false
+        for candidateID in saved.candidateIDs {
+            guard let savedIdentity = savedIdentities[candidateID],
+                  let recommendation = currentRecommendations[candidateID],
+                  let currentIdentity = recommendation.identity,
+                  savedIdentity.matches(currentIdentity) else {
+                identityMismatch = true
+                continue
+            }
+            restoredIDs.insert(candidateID)
+        }
+        restoredRescueCandidateIDs = restoredIDs
+        restoredRescueCaseIsStale = identityMismatch
+        guard !identityMismatch else {
+            rescueVerification = nil
+            lastRescueError = nil
+            rescuePhase = .reviewing
+            return
+        }
+        rescueVerification = saved.verification
+        lastRescueError = saved.errorMessage
+        rescuePhase = saved.phase == .result && (saved.verification != nil || saved.errorMessage != nil)
+            ? .result : .reviewing
+    }
+
+    private func persistRescueCase(candidateIDs: Set<String>) {
+        guard let plan else { return }
+        let wasRemembering = rescuePhase == .remembering
+        let candidateIdentities = Dictionary(uniqueKeysWithValues: plan.recommendations.compactMap { recommendation in
+            guard candidateIDs.contains(recommendation.id), let identity = recommendation.identity else { return nil }
+            return (recommendation.id, identity)
+        })
+        let rescueCase = SavedRescueCase(
+            id: savedRescueCase?.id ?? UUID(),
+            sourcePath: plan.sourcePath,
+            goal: plan.goal,
+            requiredSpace: plan.requiredSpace,
+            candidateIDs: candidateIDs.sorted(),
+            candidateIdentities: candidateIdentities,
+            ruleVersion: CleanupClassifier.ruleVersion,
+            savedAt: Date(),
+            phase: rescuePhase,
+            measurement: plan.measurement,
+            coverage: plan.coverage,
+            verification: rescueVerification,
+            errorMessage: lastRescueError
+        )
+        do {
+            try RescueCaseStore.save(rescueCase)
+            savedRescueCase = rescueCase
+        } catch {
+            if lastRescueError == nil {
+                lastRescueError = "The rescue case could not be saved on this Mac."
+            }
+            if wasRemembering {
+                rescuePhase = collector.isEmpty ? .reviewing : .staged
+            }
+        }
     }
 
     // MARK: - Duplicate finder
@@ -515,7 +772,8 @@ final class ScanViewModel: ObservableObject {
         if let existing = collector.first(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) {
             return existing
         }
-        return FileNode(url: url, name: name, isDirectory: isDirectory, size: size, kind: .regular)
+        return FileNode(url: url, name: name, isDirectory: isDirectory, size: size, kind: .regular,
+                        identity: ScanIdentity.current(at: url))
     }
 
     // MARK: - Delete
@@ -530,10 +788,85 @@ final class ScanViewModel: ObservableObject {
     /// successfully-trashed ones from both the tree and the collector. Synthetic
     /// nodes are ignored. Throws if every move failed.
     func moveToTrash(_ nodes: [FileNode]) throws {
-        let targets = nodes.filter { !$0.isSynthetic }
+        let targets = topLevelTargets(nodes.filter { !$0.isSynthetic })
         guard !targets.isEmpty else { return }
-        let failures = try DeletionService.trash(targets.map(\.url))
-        try prune(targets, failures: failures)
+        let before = currentRescueMeasurement()
+        if rescuePlan != nil {
+            rescueVerification = nil
+            lastRescueError = nil
+            rescuePhase = .moving
+        }
+
+        var attemptedTargets: [FileNode] = []
+        var failures: [DeletionService.DeletionError] = []
+        var measurementMismatchPaths: [String] = []
+        do {
+            try holdIfRescueOwnerIsActive(targets)
+            for target in targets {
+                try holdIfRescueOwnerIsActive([target])
+                attemptedTargets.append(target)
+                let itemBefore = currentRescueCapacity()
+                let itemFailures = try DeletionService.trash([target])
+                if let failure = itemFailures.first {
+                    failures.append(failure)
+                    if rescuePlan != nil {
+                        persistRescueCase(candidateIDs: stagedRescueCandidateIDs())
+                    }
+                    continue
+                }
+
+                // Prune each successful item before sampling the next one. This
+                // keeps the tree and the remaining collector aligned if capacity
+                // accounting changes between items.
+                try prune([target], failures: [])
+                if let itemBefore,
+                   let itemAfter = currentRescueCapacity(),
+                   let beforeBytes = itemBefore.primaryBytes,
+                   let afterBytes = itemAfter.primaryBytes,
+                   max(0, afterBytes - beforeBytes) != target.physicalSize {
+                    measurementMismatchPaths.append(target.url.standardizedFileURL.path)
+                }
+                if rescuePlan != nil {
+                    persistRescueCase(candidateIDs: stagedRescueCandidateIDs())
+                }
+            }
+            recordRescueResult(before: before, targets: attemptedTargets, failures: failures,
+                               measurementMismatchPaths: measurementMismatchPaths)
+            if let firstFailure = failures.first { throw firstFailure }
+        } catch {
+            if rescuePlan != nil {
+                if error is RescueActionError {
+                    let attemptedIDs = Set(attemptedTargets.map(\.id))
+                    let heldTargets = targets.filter { !attemptedIDs.contains($0.id) }
+                    recordRescueResult(before: before, targets: attemptedTargets, failures: failures,
+                                       measurementMismatchPaths: measurementMismatchPaths,
+                                       heldNodes: heldTargets,
+                                       errorMessage: error.localizedDescription)
+                } else {
+                    lastRescueError = error.localizedDescription
+                    rescuePhase = .result
+                    persistRescueCase(candidateIDs: stagedRescueCandidateIDs())
+                }
+            }
+            throw error
+        }
+    }
+
+    private func holdIfRescueOwnerIsActive(_ targets: [FileNode]) throws {
+        guard let plan = rescuePlan,
+              CleanupOwnerState.current() == .active else { return }
+        let targetIDs = Set(targets.map(\.id))
+        guard plan.recommendations.contains(where: {
+            targetIDs.contains($0.node.id) && $0.category.confidence == .safeRegenerable
+        }) else { return }
+        throw RescueActionError.ownerActive("Xcode is active. Close it, then review the rescue plan again before moving generated files.")
+    }
+
+    private func stagedRescueCandidateIDs() -> Set<String> {
+        guard let plan = rescuePlan else { return [] }
+        return Set(collector.compactMap { node in
+            plan.recommendations.first(where: { $0.node.id == node.id })?.id
+        })
     }
 
     /// Permanently delete every collected item, then prune them from the tree.
@@ -545,10 +878,77 @@ final class ScanViewModel: ObservableObject {
     /// and prune the successfully-deleted ones from both the tree and the
     /// collector. Synthetic nodes are ignored. Throws if every deletion failed.
     func deletePermanently(_ nodes: [FileNode]) throws {
-        let targets = nodes.filter { !$0.isSynthetic }
+        let targets = topLevelTargets(nodes.filter { !$0.isSynthetic })
         guard !targets.isEmpty else { return }
-        let failures = try DeletionService.delete(targets.map(\.url))
+        try holdIfRescueOwnerIsActive(targets)
+        let failures = try DeletionService.delete(targets)
         try prune(targets, failures: failures)
+    }
+
+    private func topLevelTargets(_ nodes: [FileNode]) -> [FileNode] {
+        let targetIDs = Set(nodes.map(\.id))
+        return nodes.filter { node in
+            var cursor = node.parent
+            while let parent = cursor {
+                if targetIDs.contains(parent.id) { return false }
+                cursor = parent.parent
+            }
+            return true
+        }
+    }
+
+    private func currentRescueMeasurement() -> RescueMeasurement? {
+        guard let rootNode, let scannedURL else { return nil }
+        return RescueMeasurement.capture(volumeURL: scannedURL, root: rootNode)
+    }
+
+    private func currentRescueCapacity() -> RescueMeasurement? {
+        guard let scannedURL else { return nil }
+        return RescueMeasurement.captureCapacity(volumeURL: scannedURL)
+    }
+
+    private func recordRescueResult(before: RescueMeasurement?, targets: [FileNode],
+                                    failures: [DeletionService.DeletionError],
+                                    measurementMismatchPaths: [String],
+                                    heldNodes: [FileNode] = [],
+                                    errorMessage: String? = nil) {
+        guard rescuePlan != nil else { return }
+        rescuePhase = .verifying
+        let failedURLs = Set(failures.map { $0.url.standardizedFileURL })
+        let movedBytes = targets
+            .filter { !failedURLs.contains($0.url.standardizedFileURL) }
+            .reduce(0) { $0 + $1.physicalSize }
+        let failedBytes = targets
+            .filter { failedURLs.contains($0.url.standardizedFileURL) }
+            .reduce(0) { $0 + $1.physicalSize }
+        let movedPaths = targets
+            .filter { !failedURLs.contains($0.url.standardizedFileURL) }
+            .map { $0.url.standardizedFileURL.path }
+        let attemptedIDs = Set(targets.map(\.id))
+        let explicitHeldIDs = Set(heldNodes.map(\.id))
+        let heldRecommendations = rescuePlan?.recommendations.filter {
+            !attemptedIDs.contains($0.node.id)
+                && ($0.risk != .safe || explicitHeldIDs.contains($0.node.id))
+        } ?? []
+        let heldRecommendationIDs = Set(heldRecommendations.map { $0.node.id })
+        let unplannedHeldNodes = heldNodes.filter { !heldRecommendationIDs.contains($0.id) }
+        rescueVerification = RescueVerification(
+            requestedBytes: rescuePlan?.targetSpace,
+            movedBytes: movedBytes,
+            movedPaths: movedPaths.isEmpty ? nil : movedPaths,
+            failedBytes: failedBytes,
+            failedPaths: failures.map { $0.url.standardizedFileURL.path },
+            heldBytes: heldRecommendations.reduce(0) { $0 + $1.physicalBytes }
+                + unplannedHeldNodes.reduce(0) { $0 + $1.physicalSize },
+            heldPaths: heldRecommendations.map(\.path)
+                + unplannedHeldNodes.map { $0.url.standardizedFileURL.path },
+            measurementMismatchPaths: measurementMismatchPaths.isEmpty ? nil : measurementMismatchPaths,
+            before: before,
+            after: currentRescueMeasurement()
+        )
+        lastRescueError = errorMessage ?? failures.first?.localizedDescription
+        rescuePhase = .result
+        persistRescueCase(candidateIDs: stagedRescueCandidateIDs())
     }
 
     /// Shared post-removal cleanup for both the trash and permanent-delete paths:
@@ -556,7 +956,7 @@ final class ScanViewModel: ObservableObject {
     /// reset hover/selection, keep `currentRoot` reachable, and re-throw the first
     /// failure (if any) so the caller can surface it.
     private func prune(_ targets: [FileNode], failures: [DeletionService.DeletionError]) throws {
-        let failedURLs = Set(failures.map(\.url))
+        let failedURLs = Set(failures.map { $0.url.standardizedFileURL })
 
         // Drop any target whose ancestor is also being removed: pruning the ancestor
         // already detaches the descendant, and calling `remove` for both would
@@ -574,7 +974,7 @@ final class ScanViewModel: ObservableObject {
         }
         let topLevel = targets.filter { !hasAncestorInSet($0) }
 
-        let removed = topLevel.filter { !failedURLs.contains($0.url) }
+        let removed = topLevel.filter { !failedURLs.contains($0.url.standardizedFileURL) }
         let removedIDs = Set(removed.map(\.id))
         for node in removed {
             node.parent?.remove(node)
