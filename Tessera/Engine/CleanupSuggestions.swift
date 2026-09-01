@@ -787,23 +787,32 @@ struct RescueCoverage: Codable, Equatable, Sendable {
 }
 
 struct RescuePlan: Sendable {
+    static let defaultCapacityGoal = 0.75
+    static let capacityGoalRange = 0.50...0.95
+
     let sourcePath: String
     let generatedAt: Date
     let measurement: RescueMeasurement
     let coverage: RescueCoverage
     let recommendations: [CleanupRecommendation]
+    /// The maximum share of the volume that should be in use after Rescue.
+    let capacityGoal: Double
+    // Kept for local-case compatibility with the first Rescue model. The active
+    // target is now capacityGoal, not an activity-specific space estimate.
     let goal: RescueGoal
     let requiredSpace: Int64?
     let workingSpaceBuffer: Int64
 
     init(sourceURL: URL, report: CleanupReport, measurement: RescueMeasurement,
          coverage: RescueCoverage, goal: RescueGoal = .normalWork,
-         requiredSpace: Int64? = nil) {
+         requiredSpace: Int64? = nil,
+         capacityGoal: Double = RescuePlan.defaultCapacityGoal) {
         self.sourcePath = sourceURL.standardizedFileURL.path
         self.generatedAt = measurement.measuredAt
         self.measurement = measurement
         self.coverage = coverage
         self.recommendations = report.rankedRecommendations
+        self.capacityGoal = Self.clampedCapacityGoal(capacityGoal)
         self.goal = goal
         self.requiredSpace = requiredSpace
         self.workingSpaceBuffer = goal.defaultBuffer
@@ -822,25 +831,38 @@ struct RescuePlan: Sendable {
     }
 
     var targetSpace: Int64? {
-        guard let requiredSpace, requiredSpace >= 0,
-              requiredSpace <= Int64.max - workingSpaceBuffer else { return nil }
-        return requiredSpace + workingSpaceBuffer
+        guard let total = measurement.totalBytes, total > 0 else { return nil }
+        let target = Double(total) * (1 - capacityGoal)
+        guard target.isFinite, target >= 0, target <= Double(Int64.max) else { return nil }
+        return Int64(target.rounded(.up))
     }
 
     func changingGoal(to goal: RescueGoal, requiredSpace: Int64?) -> RescuePlan {
         RescuePlan(sourcePath: sourcePath, generatedAt: generatedAt, measurement: measurement,
                    coverage: coverage, recommendations: recommendations, goal: goal,
-                   requiredSpace: requiredSpace)
+                   requiredSpace: requiredSpace, capacityGoal: capacityGoal)
+    }
+
+    func changingCapacityGoal(to capacityGoal: Double) -> RescuePlan {
+        RescuePlan(sourcePath: sourcePath, generatedAt: generatedAt, measurement: measurement,
+                   coverage: coverage, recommendations: recommendations, goal: goal,
+                   requiredSpace: requiredSpace, capacityGoal: capacityGoal)
+    }
+
+    static func clampedCapacityGoal(_ value: Double) -> Double {
+        guard value.isFinite else { return defaultCapacityGoal }
+        return min(max(value, capacityGoalRange.lowerBound), capacityGoalRange.upperBound)
     }
 
     private init(sourcePath: String, generatedAt: Date, measurement: RescueMeasurement,
                  coverage: RescueCoverage, recommendations: [CleanupRecommendation],
-                 goal: RescueGoal, requiredSpace: Int64?) {
+                 goal: RescueGoal, requiredSpace: Int64?, capacityGoal: Double) {
         self.sourcePath = sourcePath
         self.generatedAt = generatedAt
         self.measurement = measurement
         self.coverage = coverage
         self.recommendations = recommendations
+        self.capacityGoal = Self.clampedCapacityGoal(capacityGoal)
         self.goal = goal
         self.requiredSpace = requiredSpace
         self.workingSpaceBuffer = goal.defaultBuffer
@@ -899,6 +921,7 @@ struct SavedRescueCase: Codable, Equatable, Sendable {
     let sourcePath: String
     let goal: RescueGoal
     let requiredSpace: Int64?
+    let capacityGoal: Double? = nil
     let candidateIDs: [String]
     /// Scan identities are saved with the selection so a remounted or replaced
     /// path cannot look like the same candidate after a reopen.

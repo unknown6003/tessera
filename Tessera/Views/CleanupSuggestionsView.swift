@@ -1,14 +1,12 @@
 import SwiftUI
 import AppKit
 
-/// The Rescue task surface. It keeps the user's goal, the volume measurement,
-/// and the ranked review list in one readable path.
+/// The Rescue task surface. It keeps the capacity target, measurement, and
+/// ranked review list in one readable path.
 struct CleanupSuggestionsView: View {
     @ObservedObject var vm: ScanViewModel
     var onMoveToTrash: (() -> Void)? = nil
 
-    @Environment(\.dismiss) private var dismiss
-    @State private var requiredSpaceText = ""
     @State private var expandedGroups = Set<String>()
 
     var body: some View {
@@ -29,9 +27,7 @@ struct CleanupSuggestionsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             if vm.rescuePlan != nil { vm.beginRescueReview() }
-            syncRequiredSpaceText()
         }
-        .onChange(of: vm.rescuePlan?.sourcePath) { _, _ in syncRequiredSpaceText() }
     }
 
     @ViewBuilder
@@ -39,7 +35,6 @@ struct CleanupSuggestionsView: View {
         VStack(alignment: .leading, spacing: 20) {
             planHeader(plan)
             measurementCard(plan)
-            goalCard(plan)
 
             if let verification = vm.rescueVerification {
                 verificationCard(verification)
@@ -98,7 +93,7 @@ struct CleanupSuggestionsView: View {
     }
 
     private func planHeader(_ plan: RescuePlan) -> some View {
-        HStack(alignment: .top, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("Rescue space")
                     .font(.title2.weight(.semibold))
@@ -111,8 +106,6 @@ struct CleanupSuggestionsView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-
-            Spacer(minLength: 12)
             phaseBadge
         }
     }
@@ -139,39 +132,79 @@ struct CleanupSuggestionsView: View {
         let fraction = capacityFraction(plan.measurement)
 
         return VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(primary.map(Theme.format) ?? "Unknown")
-                        .font(.system(.largeTitle, design: .rounded).weight(.semibold).monospacedDigit())
-                    Text("available now")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(primary.map(Theme.format) ?? "Unknown")
+                            .font(.system(.largeTitle, design: .rounded).weight(.semibold).monospacedDigit())
+                        Text("available now")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 16)
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(targetTitle(plan))
+                            .font(.title3.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(targetColor(plan))
+                        Text(targetLabel(plan))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
                 }
+                .fixedSize(horizontal: true, vertical: false)
 
-                Spacer(minLength: 16)
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(targetTitle(plan))
-                        .font(.title3.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(targetColor(plan))
-                    Text(targetLabel(plan))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(primary.map(Theme.format) ?? "Unknown")
+                            .font(.system(.largeTitle, design: .rounded).weight(.semibold).monospacedDigit())
+                        Text("available now")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(targetTitle(plan))
+                            .font(.title3.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(targetColor(plan))
+                        Text(targetLabel(plan))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
             if let fraction {
                 ProgressView(value: fraction)
                     .tint(targetColor(plan))
-                    .accessibilityLabel("Available capacity")
+                    .accessibilityLabel("Free capacity")
                     .accessibilityValue(primary.map(Theme.format) ?? "Unknown")
+                HStack {
+                    Text("Free capacity")
+                    Spacer()
+                    Text("Goal: \(100 - capacityGoalPercent)% free")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 20) {
-                metric("Free", plan.measurement.freeBytes.map(Theme.format) ?? "Unknown")
-                metric("Logical", Theme.format(plan.measurement.logicalBytes))
-                metric("Physical", Theme.format(plan.measurement.physicalBytes))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 20) {
+                    metric("Free", plan.measurement.freeBytes.map(Theme.format) ?? "Unknown")
+                    metric("Logical", Theme.format(plan.measurement.logicalBytes))
+                    metric("Physical", Theme.format(plan.measurement.physicalBytes))
+                }
+                .fixedSize(horizontal: true, vertical: false)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    metric("Free", plan.measurement.freeBytes.map(Theme.format) ?? "Unknown")
+                    metric("Logical", Theme.format(plan.measurement.logicalBytes))
+                    metric("Physical", Theme.format(plan.measurement.physicalBytes))
+                }
             }
+
+            capacityGoalControl
 
             Text("Measured locally · \(plan.measurement.primarySource)")
                 .font(.caption)
@@ -184,50 +217,38 @@ struct CleanupSuggestionsView: View {
             .strokeBorder(Theme.borderStrong, lineWidth: 1))
     }
 
-    private func goalCard(_ plan: RescuePlan) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("What are you trying to finish?")
-                    .font(.headline.weight(.semibold))
-                Text("The target includes a little working room for the next step.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+    private var capacityGoalControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Capacity goal")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
 
-            Picker("Goal", selection: Binding(
-                get: { vm.rescueGoal },
-                set: { vm.updateRescueGoal($0, requiredSpace: parsedRequiredSpace) }
-            )) {
-                ForEach(RescueGoal.allCases, id: \.self) { goal in
-                    Text(goal.title).tag(goal)
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Keep used space under")
+                        .font(.subheadline.weight(.medium))
+                    Text("Adjust with the stepper.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-            }
-            .pickerStyle(.segmented)
 
-            HStack(spacing: 10) {
-                Text("Extra space needed")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                TextField("Optional GB", text: $requiredSpaceText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 110)
-                    .onSubmit(commitRequiredSpace)
-                Text("+ \(Theme.format(plan.workingSpaceBuffer)) working room")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                Spacer(minLength: 8)
 
-            if let target = plan.targetSpace {
-                Text("Plan target: \(Theme.format(target)) of usable space.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Stepper(value: Binding(
+                    get: { vm.rescueCapacityGoal },
+                    set: { vm.updateRescueCapacityGoal($0) }
+                ), in: RescuePlan.capacityGoalRange, step: 0.05) {
+                    Text("\(capacityGoalPercent)%")
+                        .font(.headline.monospacedDigit())
+                        .frame(minWidth: 42, alignment: .trailing)
+                }
+                .controlSize(.small)
+                .accessibilityLabel("Used space limit")
+                .accessibilityValue("\(capacityGoalPercent) percent")
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(Theme.border, lineWidth: 1))
+        .padding(12)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func coverageCard(_ coverage: RescueCoverage) -> some View {
@@ -268,7 +289,7 @@ struct CleanupSuggestionsView: View {
 
     private func candidatesHeader(_ report: CleanupReport) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Suggested cleanup")
                     .font(.title3.weight(.semibold))
                 Spacer()
@@ -293,28 +314,24 @@ struct CleanupSuggestionsView: View {
         prominent: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.headline.weight(.semibold))
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 10)
-                if let action, let actionTitle {
-                    if prominent {
-                        Button(actionTitle, action: action)
-                            .buttonStyle(.flatProminent)
-                            .controlSize(.small)
-                            .disabled(actionDisabled)
-                    } else {
-                        Button(actionTitle, action: action)
-                            .buttonStyle(.flat)
-                            .controlSize(.small)
-                            .disabled(actionDisabled)
-                    }
+            Text(title)
+                .font(.headline.weight(.semibold))
+            Text(subtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let action, let actionTitle {
+                if prominent {
+                    Button(actionTitle, action: action)
+                        .buttonStyle(.flatProminent)
+                        .controlSize(.small)
+                        .disabled(actionDisabled)
+                } else {
+                    Button(actionTitle, action: action)
+                        .buttonStyle(.flat)
+                        .controlSize(.small)
+                        .disabled(actionDisabled)
                 }
             }
 
@@ -345,38 +362,43 @@ struct CleanupSuggestionsView: View {
             }
             .padding(.top, 4)
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: group.category.symbol)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(color(for: group.risk))
-                    .frame(width: 24)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: group.category.symbol)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(color(for: group.risk))
+                        .frame(width: 24)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(group.category.title)
-                        .font(.subheadline.weight(.semibold))
-                    Text("\(group.nodes.count) item\(group.nodes.count == 1 ? "" : "s") · \(group.category.explanation)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: 8)
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(Theme.format(group.totalBytes))
-                        .font(.subheadline.monospacedDigit().weight(.semibold))
-                    riskTag(group.risk)
-                }
-
-                if group.risk != .protected {
-                    Button(vm.isGroupStaged(group) ? "Added" : "Add") {
-                        vm.toggleCleanupGroup(group)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(group.category.title)
+                            .font(.subheadline.weight(.semibold))
+                        Text("\(group.nodes.count) item\(group.nodes.count == 1 ? "" : "s") · \(group.category.explanation)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .buttonStyle(.flat)
-                    .controlSize(.small)
-                } else {
-                    Text("Owner handoff")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(Theme.format(group.totalBytes))
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
+                        riskTag(group.risk)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    if group.risk != .protected {
+                        Button(vm.isGroupStaged(group) ? "Added" : "Add") {
+                            vm.toggleCleanupGroup(group)
+                        }
+                        .buttonStyle(.flat)
+                        .controlSize(.small)
+                    } else {
+                        Text("Owner handoff")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
                 }
             }
             .padding(.vertical, 11)
@@ -412,15 +434,12 @@ struct CleanupSuggestionsView: View {
                                     ? "Remove from review queue" : "Add to review queue")
 
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(recommendation.node.name)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        Text(Theme.format(recommendation.physicalBytes))
-                            .font(.subheadline.monospacedDigit().weight(.semibold))
-                            .fixedSize()
-                    }
+                    Text(recommendation.node.name)
+                        .font(.subheadline.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(Theme.format(recommendation.physicalBytes))
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
 
                     Text(recommendation.path)
                         .font(.caption.monospaced())
@@ -428,29 +447,20 @@ struct CleanupSuggestionsView: View {
                         .lineLimit(2)
                         .truncationMode(.middle)
 
-                    HStack(spacing: 7) {
-                        Text("\(Theme.format(recommendation.physicalBytes)) allocated")
-                        if let logical = recommendation.logicalBytes {
-                            Text("· \(Theme.format(logical)) logical")
-                        }
-                    }
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    Text(sizeSummary(for: recommendation))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
 
                     Text(recommendation.reason)
                         .font(.subheadline)
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    HStack(spacing: 8) {
-                        Text(recommendation.owner)
-                        Text("·")
-                        Text(recommendation.confidence.title)
-                        Text("·")
-                        Text(recommendation.action.title)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Text([recommendation.owner, recommendation.confidence.title,
+                          recommendation.action.title].joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Text("May change: \(recommendation.sideEffect)")
                         .font(.caption)
@@ -479,6 +489,14 @@ struct CleanupSuggestionsView: View {
         }
     }
 
+    private func sizeSummary(for recommendation: CleanupRecommendation) -> String {
+        var summary = "\(Theme.format(recommendation.physicalBytes)) allocated"
+        if let logical = recommendation.logicalBytes {
+            summary += " · \(Theme.format(logical)) logical"
+        }
+        return summary
+    }
+
     private func verificationCard(_ verification: RescueVerification) -> some View {
         let color: Color = verification.hasMeasurementMismatch || verification.failedBytes > 0
             ? .orange : Theme.electricBlue
@@ -497,12 +515,14 @@ struct CleanupSuggestionsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 18) {
-                metric("Moved to Trash", Theme.format(verification.movedBytes))
-                metric("Failed", Theme.format(verification.failedBytes))
-                if let reclaimed = verification.verifiedReclaimedBytes {
-                    metric(verification.hasMeasurementMismatch ? "Measured change" : "Verified change",
-                           Theme.format(reclaimed))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 18) {
+                    verificationMetrics(verification)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    verificationMetrics(verification)
                 }
             }
 
@@ -526,6 +546,16 @@ struct CleanupSuggestionsView: View {
         .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
             .strokeBorder(color.opacity(0.35), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func verificationMetrics(_ verification: RescueVerification) -> some View {
+        metric("Moved to Trash", Theme.format(verification.movedBytes))
+        metric("Failed", Theme.format(verification.failedBytes))
+        if let reclaimed = verification.verifiedReclaimedBytes {
+            metric(verification.hasMeasurementMismatch ? "Measured change" : "Verified change",
+                   Theme.format(reclaimed))
+        }
     }
 
     @ViewBuilder
@@ -589,11 +619,10 @@ struct CleanupSuggestionsView: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             } else if !vm.restoredRescueCandidateIDs.isEmpty {
-                HStack {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("\(vm.restoredRescueCandidateIDs.count) old selection\(vm.restoredRescueCandidateIDs.count == 1 ? "" : "s") found again.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Spacer()
                     Button("Stage for review") { vm.stageRestoredRescueCase() }
                         .buttonStyle(.flat)
                         .controlSize(.small)
@@ -650,34 +679,35 @@ struct CleanupSuggestionsView: View {
     }
 
     private func reviewFooter(_ moveToTrash: @escaping () -> Void) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "checklist")
-                .font(.title3)
-                .foregroundStyle(.tint)
-                .frame(width: 32, height: 32)
-                .background(Theme.selectionTint, in: Circle())
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "checklist")
+                    .font(.title3)
+                    .foregroundStyle(.tint)
+                    .frame(width: 32, height: 32)
+                    .background(Theme.selectionTint, in: Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Review queue ready")
-                    .font(.subheadline.weight(.semibold))
-                Text("\(vm.collector.count) item\(vm.collector.count == 1 ? "" : "s") · \(Theme.format(vm.collectorTotalSize))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Text("A confirmation comes next. Finder Trash is recoverable.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Review queue ready")
+                        .font(.subheadline.weight(.semibold))
+                    Text("\(vm.collector.count) item\(vm.collector.count == 1 ? "" : "s") · \(Theme.format(vm.collectorTotalSize))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Text("A confirmation comes next. Finder Trash is recoverable.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-
-            Spacer(minLength: 8)
 
             Button {
                 moveToTrash()
-                dismiss()
             } label: {
                 Label("Move to Trash", systemImage: "trash.fill")
             }
             .buttonStyle(.flatProminent)
             .controlSize(.regular)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -717,15 +747,17 @@ struct CleanupSuggestionsView: View {
         guard let target = plan.targetSpace, let available = plan.measurement.primaryBytes else {
             return "—"
         }
-        return Theme.format(max(0, target - available))
+        return target > available ? Theme.format(target - available) : "On target"
     }
 
     private func targetLabel(_ plan: RescuePlan) -> String {
-        guard plan.targetSpace != nil else { return "set a target to plan" }
+        guard plan.targetSpace != nil else { return "capacity target unavailable" }
         guard let target = plan.targetSpace, let available = plan.measurement.primaryBytes else {
-            return "more space needed"
+            return "capacity target unavailable"
         }
-        return target > available ? "more space needed" : "target covered"
+        return target > available
+            ? "more free space to reach \(capacityGoalPercent)% used"
+            : "\(capacityGoalPercent)% used limit met"
     }
 
     private func targetColor(_ plan: RescuePlan) -> Color {
@@ -741,22 +773,7 @@ struct CleanupSuggestionsView: View {
         return min(1, max(0, Double(primary) / Double(total)))
     }
 
-    private var parsedRequiredSpace: Int64? {
-        let value = requiredSpaceText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let number = Double(value), number.isFinite, number >= 0,
-              number <= Double(Int64.max) / 1_000_000_000 else { return nil }
-        return Int64(number * 1_000_000_000)
-    }
-
-    private func commitRequiredSpace() {
-        vm.updateRescueGoal(vm.rescueGoal, requiredSpace: parsedRequiredSpace)
-    }
-
-    private func syncRequiredSpaceText() {
-        guard let required = vm.rescuePlan?.requiredSpace else {
-            requiredSpaceText = ""
-            return
-        }
-        requiredSpaceText = String(format: "%.1f", Double(required) / 1_000_000_000)
+    private var capacityGoalPercent: Int {
+        Int((vm.rescueCapacityGoal * 100).rounded())
     }
 }

@@ -2,6 +2,14 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
+    private enum AppMode: String, CaseIterable, Identifiable {
+        case explore
+        case rescue
+
+        var id: String { rawValue }
+        var title: String { rawValue.capitalized }
+    }
+
     @StateObject private var vm = ScanViewModel()
     /// Drives drag-and-drop of chart wedges into the bottom dock.
     @StateObject private var drag = CollectorDragController()
@@ -21,6 +29,7 @@ struct ContentView: View {
     /// Title for the failure alert ("Move to Trash Failed" / "Delete Failed").
     @State private var deleteErrorTitle = "Couldn’t Remove Items"
     @State private var deleteError: String?
+    @State private var appMode: AppMode = .explore
 
     var body: some View {
         VStack(spacing: 14) {
@@ -28,22 +37,18 @@ struct ContentView: View {
                 Sidebar(vm: vm)
                     .frame(width: 238)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    appHeader
-                    if vm.rootNode != nil {
-                        CleanupActionBar(vm: vm, onTrashAll: { requestTrash(vm.collector) })
-                    }
-                    centerArea
+                if appMode == .rescue {
+                    rescueWorkspace
+                } else {
+                    exploreWorkspace
+                    InspectorView(vm: vm)
+                        .frame(width: 278)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                InspectorView(vm: vm)
-                    .frame(width: 278)
             }
 
             // Full-width collector dock + trash drop-zone, shown once there's a
             // chart to drag from.
-            if vm.rootNode != nil {
+            if appMode == .explore, vm.rootNode != nil {
                 CollectorDock(vm: vm, drag: drag,
                               onTrashAll: { requestTrash(vm.collector) },
                               onDeleteAll: { requestDelete(vm.collector) })
@@ -171,6 +176,57 @@ struct ContentView: View {
         }
     }
 
+    private var exploreWorkspace: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            appHeader
+            modeSwitcher
+            if vm.rootNode != nil {
+                CleanupActionBar(vm: vm, onRescue: {
+                    withAnimation(.smooth(duration: 0.25)) {
+                        appMode = .rescue
+                    }
+                })
+            }
+            centerArea
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var rescueWorkspace: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            appHeader
+            modeSwitcher
+
+            ScrollView(.vertical, showsIndicators: true) {
+                CleanupSuggestionsView(vm: vm, onMoveToTrash: {
+                    requestTrash(vm.collector)
+                })
+                .padding(.trailing, 4)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var modeSwitcher: some View {
+        HStack(spacing: 8) {
+            Text("Workspace")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            Picker("Workspace", selection: $appMode) {
+                ForEach(AppMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+
+            Spacer(minLength: 0)
+        }
+    }
+
     /// Queue the recoverable action behind its own confirmation.
     private func requestTrash(_ nodes: [FileNode]) {
         guard !nodes.isEmpty, !vm.isScanning,
@@ -228,10 +284,11 @@ struct ContentView: View {
     }
 
     private var pendingTrashTargetSummary: String {
-        guard let target = vm.rescuePlan?.targetSpace else {
-            return "No usable-space target is set."
+        guard let plan = vm.rescuePlan, let target = plan.targetSpace else {
+            return "No capacity target is available."
         }
-        return "Plan target: \(Theme.format(target)) usable space."
+        let goal = Int((plan.capacityGoal * 100).rounded())
+        return "Target: keep used space below \(goal)% (\(Theme.format(target)) free)."
     }
 
     /// Permanently delete `nodes`, surfacing any failure as an alert.

@@ -1,19 +1,18 @@
 import SwiftUI
 
-/// The app-level task switcher. Rescue is the primary path; the other views are
-/// named tools that open in a roomy sheet instead of a cramped popover.
+/// The app-level task switcher. Rescue is the primary path; specialist tools
+/// open in a roomy sheet instead of a cramped popover.
 struct CleanupActionBar: View {
     @ObservedObject var vm: ScanViewModel
-    var onTrashAll: () -> Void
+    var onRescue: () -> Void
 
     private enum Tool: String, Identifiable, CaseIterable {
-        case rescue, apps, duplicates, byKind, largeOld, search
+        case apps, duplicates, byKind, largeOld, search
 
         var id: String { rawValue }
 
         var label: String {
             switch self {
-            case .rescue: return "Rescue"
             case .apps: return "Uninstall Apps"
             case .duplicates: return "Find Duplicates"
             case .byKind: return "Browse by Type"
@@ -24,7 +23,6 @@ struct CleanupActionBar: View {
 
         var symbol: String {
             switch self {
-            case .rescue: return "lifepreserver.fill"
             case .apps: return "trash.square"
             case .duplicates: return "doc.on.doc"
             case .byKind: return "square.grid.2x2.fill"
@@ -35,7 +33,6 @@ struct CleanupActionBar: View {
 
         var description: String {
             switch self {
-            case .rescue: return "A short, safe plan for making room."
             case .apps: return "Remove apps and their matching leftovers."
             case .duplicates: return "Compare identical files before staging copies."
             case .byKind: return "See which file types use the most space."
@@ -44,7 +41,7 @@ struct CleanupActionBar: View {
             }
         }
 
-        var sheetWidth: CGFloat { self == .rescue ? 780 : 720 }
+        var sheetWidth: CGFloat { 720 }
     }
 
     @State private var presentedTool: Tool?
@@ -52,9 +49,9 @@ struct CleanupActionBar: View {
     var body: some View {
         HStack(spacing: 10) {
             Button {
-                presentedTool = .rescue
+                onRescue()
             } label: {
-                Label(rescueTitle, systemImage: Tool.rescue.symbol)
+                Label(rescueTitle, systemImage: "lifepreserver.fill")
             }
             .buttonStyle(.flatProminent)
             .controlSize(.regular)
@@ -62,7 +59,7 @@ struct CleanupActionBar: View {
 
             Menu {
                 Section("Tools") {
-                    ForEach(Tool.allCases.filter { $0 != .rescue }) { tool in
+                    ForEach(Tool.allCases) { tool in
                         Button {
                             presentedTool = tool
                         } label: {
@@ -78,14 +75,6 @@ struct CleanupActionBar: View {
             .help("Open another way to explore this scan")
 
             Spacer(minLength: 0)
-
-            if !vm.collector.isEmpty {
-                Label("\(vm.collector.count) ready for review · \(Theme.format(vm.collectorTotalSize))",
-                      systemImage: "checklist")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(item: $presentedTool) { tool in
@@ -128,7 +117,6 @@ struct CleanupActionBar: View {
             ScrollView(.vertical, showsIndicators: true) {
                 Group {
                     switch tool {
-                    case .rescue: CleanupSuggestionsView(vm: vm, onMoveToTrash: onTrashAll)
                     case .apps: AppUninstallerView(vm: vm)
                     case .duplicates: DuplicateFinderView(vm: vm)
                     case .byKind: ByKindView(vm: vm)

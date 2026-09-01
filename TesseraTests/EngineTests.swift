@@ -816,6 +816,30 @@ struct EngineTests {
         }
     }
 
+    @Test("Rescue defaults to a 75 percent used-space limit and adjusts its target")
+    func rescueCapacityGoal() {
+        let measurement = RescueMeasurement(
+            volumePath: "/tmp/rescue",
+            totalBytes: 100,
+            availableBytes: 10,
+            freeBytes: 10,
+            logicalBytes: 90,
+            physicalBytes: 90,
+            measuredAt: Date(timeIntervalSince1970: 4))
+        let plan = RescuePlan(
+            sourceURL: URL(fileURLWithPath: "/tmp/rescue"),
+            report: CleanupReport(recommendations: []),
+            measurement: measurement,
+            coverage: RescueCoverage(state: .complete, notes: []))
+
+        #expect(plan.capacityGoal == 0.75)
+        #expect(plan.targetSpace == 25)
+        #expect(plan.changingCapacityGoal(to: 0.90).targetSpace == 10)
+        #expect(plan.changingCapacityGoal(to: 0.50).targetSpace == 50)
+        #expect(RescuePlan.clampedCapacityGoal(0.10) == 0.50)
+        #expect(RescuePlan.clampedCapacityGoal(1.0) == 0.95)
+    }
+
     @Test("DeletionService rejects a stale identity without mutating the file")
     func staleIdentityDoesNotMoveFile() throws {
         let dir = try makeTempDir()

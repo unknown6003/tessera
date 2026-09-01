@@ -37,6 +37,8 @@ final class ScanViewModel: ObservableObject {
     @Published private(set) var savedRescueCase: SavedRescueCase?
     @Published private(set) var restoredRescueCandidateIDs: Set<String> = []
     @Published private(set) var restoredRescueCaseIsStale = false
+    @Published var rescueCapacityGoal: Double = RescuePlan.defaultCapacityGoal
+    // Kept to decode and reopen rescue cases created by the previous goal model.
     @Published var rescueGoal: RescueGoal = .normalWork
     @Published var requiredRescueSpace: Int64?
     @Published private(set) var rescueVerification: RescueVerification?
@@ -75,6 +77,7 @@ final class ScanViewModel: ObservableObject {
         let progress: ScanProgress
         let rescuePlan: RescuePlan?
         let rescuePhase: RescuePhase
+        let rescueCapacityGoal: Double
         let rescueGoal: RescueGoal
         let requiredRescueSpace: Int64?
         let rescueVerification: RescueVerification?
@@ -96,6 +99,9 @@ final class ScanViewModel: ObservableObject {
         savedRescueCase = nil
         do {
             savedRescueCase = try RescueCaseStore.load()
+            if let savedGoal = savedRescueCase?.capacityGoal {
+                rescueCapacityGoal = RescuePlan.clampedCapacityGoal(savedGoal)
+            }
         } catch {
             lastRescueError = "The saved rescue case could not be read. Scan again to start a new case."
         }
@@ -207,7 +213,8 @@ final class ScanViewModel: ObservableObject {
                 let plan = RescuePlan(sourceURL: volumeURL, report: report,
                                       measurement: measurement, coverage: coverage,
                                       goal: self.rescueGoal,
-                                      requiredSpace: self.requiredRescueSpace)
+                                      requiredSpace: self.requiredRescueSpace,
+                                      capacityGoal: self.rescueCapacityGoal)
                 // Single atomic publish point: tree and its report together.
                 self.rootNode = node
                 self.currentRoot = node
@@ -269,7 +276,8 @@ final class ScanViewModel: ObservableObject {
             rootNode: root, currentRoot: currentRoot, cleanupReport: cleanupReport,
             duplicateGroups: duplicateGroups,
             didRunDuplicates: didRunDuplicates, collector: collector, progress: progress,
-            rescuePlan: rescuePlan, rescuePhase: rescuePhase, rescueGoal: rescueGoal,
+            rescuePlan: rescuePlan, rescuePhase: rescuePhase,
+            rescueCapacityGoal: rescueCapacityGoal, rescueGoal: rescueGoal,
             requiredRescueSpace: requiredRescueSpace, rescueVerification: rescueVerification,
             lastRescueError: lastRescueError,
             restoredRescueCandidateIDs: restoredRescueCandidateIDs,
@@ -314,6 +322,7 @@ final class ScanViewModel: ObservableObject {
         progress = cached.progress
         rescuePlan = cached.rescuePlan
         rescuePhase = cached.rescuePhase
+        rescueCapacityGoal = cached.rescueCapacityGoal
         rescueGoal = cached.rescueGoal
         requiredRescueSpace = cached.requiredRescueSpace
         rescueVerification = cached.rescueVerification
@@ -505,6 +514,19 @@ final class ScanViewModel: ObservableObject {
         }
     }
 
+    func updateRescueCapacityGoal(_ value: Double) {
+        let goal = RescuePlan.clampedCapacityGoal(value)
+        guard rescueCapacityGoal != goal else { return }
+        rescueCapacityGoal = goal
+        guard let plan = rescuePlan else { return }
+        rescuePlan = plan.changingCapacityGoal(to: goal)
+        if rescueVerification != nil || lastRescueError != nil {
+            rescueVerification = nil
+            lastRescueError = nil
+            rescuePhase = collector.isEmpty ? .reviewing : .staged
+        }
+    }
+
     func saveRescueCase() {
         guard let plan = rescuePlan else { return }
         let stagedIDs = Set(collector.compactMap { node in
@@ -527,6 +549,8 @@ final class ScanViewModel: ObservableObject {
     func reopenSavedRescueCase() {
         guard let saved = savedRescueCase else { return }
         pendingRescueCase = saved
+        rescueCapacityGoal = RescuePlan.clampedCapacityGoal(
+            saved.capacityGoal ?? RescuePlan.defaultCapacityGoal)
         rescueGoal = saved.goal
         requiredRescueSpace = saved.requiredSpace
         startScan(volumeURL: URL(fileURLWithPath: saved.sourcePath))
@@ -600,6 +624,7 @@ final class ScanViewModel: ObservableObject {
             sourcePath: plan.sourcePath,
             goal: plan.goal,
             requiredSpace: plan.requiredSpace,
+            capacityGoal: plan.capacityGoal,
             candidateIDs: candidateIDs.sorted(),
             candidateIdentities: candidateIdentities,
             ruleVersion: CleanupClassifier.ruleVersion,
