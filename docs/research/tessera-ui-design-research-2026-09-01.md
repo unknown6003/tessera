@@ -13,8 +13,8 @@ is the safety boundary.
 The redesign uses this sequence:
 
 1. Choose a source and scan it.
-2. See one clear answer: how much space is available, what the user is trying
-   to finish, and how much space the plan needs.
+2. See one clear answer: how much space is available and how much is needed to
+   bring the volume below the chosen used-space limit.
 3. Review a short ranked list. Safe candidates are easy to approve; uncertain
    and protected candidates stay visible but do not compete for attention.
 4. Move the approved list to Trash. Show the new measurement and the paths that
@@ -122,8 +122,8 @@ held paths, failed paths, and any mismatch.
 | Evidence | Design rule | Tessera decision |
 | --- | --- | --- |
 | Apple design principles | Keep only what is necessary; establish hierarchy | One primary task per view. Rescue leads; the map and specialist tools support it. |
-| Apple layout | Put important information near the top and leading edge; align related content | Put source, goal, measurement, and next action in the main reading path. |
-| Apple macOS guidance | Use the large window for fewer nested levels; let people resize and hide views | Use a larger Rescue sheet and compact rails. Avoid a narrow tool popover for a safety decision. |
+| Apple layout | Put important information near the top and leading edge; align related content | Put source, capacity target, measurement, and next action in the main reading path. |
+| Apple macOS guidance | Use the large window for fewer nested levels; let people resize and hide views | Give Rescue a full main-window mode. Keep specialist tools in sheets and avoid a nested safety workflow. |
 | Apple sidebars | Use succinct groups, familiar symbols, and a single clear selection | Simplify source rows to one selected/viewing state. Keep source actions discoverable. |
 | Apple materials | Keep Liquid Glass to controls/navigation; do not use it in the content layer | Keep the map and rescue content on solid surfaces. Use depth only where it explains hierarchy. |
 | Apple typography | Prefer system fonts and readable weights; avoid light text at small sizes | Remove tiny decorative labels and small caps. Use system text styles and monospaced digits only for measurements. |
@@ -141,9 +141,9 @@ works against that safety model:
 - The main window is a fixed three-column composition with two large rounded
   rails, a narrow center, and a full-width bottom dock. The window feels like a
   collection of panels rather than one task.
-- All six tools compete in the same toolbar. Rescue opens in a 420-point
-  popover, which forces measurement, goals, coverage, risk, ownership, proof,
-  and exact paths into a narrow scroll area.
+- The old action bar put all six tools in the same path. Rescue opened in a
+  narrow popover, which forced measurement, goals, coverage, risk, ownership,
+  proof, and exact paths into a cramped scroll area.
 - Rescue shows too many equally weighted bordered cards. "Available", "Free",
   "Logical", "Physical", source, target, coverage, confidence, side effect, and
   proof are all present, but the user has no strong reading order.
@@ -177,7 +177,8 @@ works against that safety model:
 - Keep the current source and the current measurement in the same header block.
 - Show one large, readable available-space value. Keep Free, Logical, and
   Physical as supporting values.
-- Ask for the user's goal before presenting a long candidate list.
+- Set a sensible capacity target before presenting a long candidate list. Let
+  the user change it without answering an unrelated task question.
 - Use one clear horizontal hierarchy: safe suggestions first, review-only next,
   protected handoffs last.
 - Show exact paths in a stable monospaced secondary line. Let names and sizes
@@ -193,7 +194,8 @@ works against that safety model:
 
 ### Don't
 
-- Do not make the rescue plan a narrow popover.
+- Do not make the rescue plan a narrow popover or hide it behind a transient
+  overlay.
 - Do not make every piece of information its own rounded card.
 - Do not put important confirmation actions only in a bottom dock.
 - Do not make the user decode "collector", "purgeable", "orphan", "logical", or
@@ -219,10 +221,12 @@ works against that safety model:
 - The system font carries hierarchy. Headlines use regular/semibold weights;
   measurements use monospaced digits; paths use a monospaced face only where it
   helps recognition.
-- Tool navigation uses one primary Rescue action plus a named Tools menu. The
-  tool content opens in a larger sheet with enough width for exact paths.
-- The Rescue sheet has this reading order: source and phase → available space
-  and goal → coverage → suggested cleanup → review-only and protected items.
+- Tool navigation uses one primary Rescue action plus a named Tools menu.
+  Rescue switches the main window into a focused workspace; specialist tools
+  still open in sheets.
+- The Rescue workspace has this reading order: source and phase → available
+  space and capacity limit → coverage → suggested cleanup → review-only and
+  protected items.
 - Recommendation rows show name/path/size first, then reason, then expandable
   proof. Group actions stay on the group header.
 - The review queue stays a visible drop target, but its controls use clear
@@ -233,8 +237,8 @@ works against that safety model:
 
 ## Acceptance checklist
 
-- [x] Rescue uses a roomy sheet instead of a cramped popover.
-- [x] The primary path is visible: goal → measured space → ranked candidates → review → Trash → verify.
+- [x] Rescue uses a focused main-window workspace instead of a transient popup.
+- [x] The primary path is visible: capacity limit → measured space → ranked candidates → review → Trash → verify.
 - [x] Safe, review-only, and protected candidates remain distinct.
 - [x] Exact path, owner, physical/logical size, reason, side effect, confidence,
   and proof remain available.
@@ -250,7 +254,8 @@ works against that safety model:
 The authoring environment is Linux, so the native visual pass is still open.
 The source screenshots above validate the research direction; the macOS CI
 build validates compilation and tests, but it does not replace rendered
-visual inspection.
+visual inspection. The Rescue rows now use stacked layouts for narrow
+proposals, but that behavior still needs confirmation in the finished app.
 
 ## Source notes
 
