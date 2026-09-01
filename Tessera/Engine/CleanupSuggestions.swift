@@ -921,7 +921,7 @@ struct SavedRescueCase: Codable, Equatable, Sendable {
     let sourcePath: String
     let goal: RescueGoal
     let requiredSpace: Int64?
-    let capacityGoal: Double? = nil
+    let capacityGoal: Double?
     let candidateIDs: [String]
     /// Scan identities are saved with the selection so a remounted or replaced
     /// path cannot look like the same candidate after a reopen.

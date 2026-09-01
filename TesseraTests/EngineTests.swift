@@ -794,7 +794,7 @@ struct EngineTests {
                                               resourceType: .directory)
         let rescueCase = SavedRescueCase(
             id: UUID(), sourcePath: "/Users/test", goal: .build,
-            requiredSpace: 2_000_000_000, candidateIDs: [candidateID],
+            requiredSpace: 2_000_000_000, capacityGoal: nil, candidateIDs: [candidateID],
             candidateIdentities: [candidateID: candidateIdentity],
             ruleVersion: CleanupClassifier.ruleVersion,
             savedAt: Date(timeIntervalSince1970: 3), phase: .reviewing,
