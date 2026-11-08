@@ -965,6 +965,17 @@ private struct WindowedRows<Row: View>: View {
 
     private final class Edges {
         var rect: CGRect = .zero
+        /// Set after the first valid geometry has revealed the selection.
+        var hasRevealed = false
+    }
+
+    /// Everything that can move the selected row. One handler compares old
+    /// and new, so a folder change and a selection change in the same update
+    /// make one scroll, not two competing ones.
+    private struct RevealKey: Equatable {
+        let folderID: ObjectIdentifier?
+        let selectedIndex: Int?
+        let pitch: CGFloat
     }
 
     var body: some View {
@@ -983,13 +994,30 @@ private struct WindowedRows<Row: View>: View {
         .scrollContainer(position: $position) { rect in
             edges.rect = rect
             updateWindow()
+            // A view made after the selection (Items ↔ Details, a new window
+            // layout) starts at the top. Reveal the selection once, on the
+            // first valid geometry. Later geometry never scrolls, so a scroll
+            // cannot feed back into another scroll.
+            if !edges.hasRevealed, rect.height > 0 {
+                edges.hasRevealed = true
+                if let selectedIndex { show(selectedIndex) }
+            }
         }
-        .onChange(of: selectedIndex) { _, index in
-            if let index { show(index) }
+        .onChange(of: RevealKey(folderID: folderID, selectedIndex: selectedIndex, pitch: pitch)) { old, new in
+            if old.folderID != new.folderID {
+                // New folder: start at the top, or at the least offset that
+                // shows a selection that belongs to the new folder.
+                position.scrollTo(y: new.selectedIndex.map { offsetFromTop(showing: $0) } ?? 0)
+                return
+            }
+            // Resizing can switch between one- and two-line rows; the window
+            // is recomputed for the new pitch before the selection is shown.
+            if old.pitch != new.pitch { updateWindow() }
+            if let index = new.selectedIndex,
+               old.selectedIndex != new.selectedIndex || old.pitch != new.pitch {
+                show(index)
+            }
         }
-        // Resizing can switch between one- and two-line rows.
-        .onChange(of: pitch) { _, _ in updateWindow() }
-        .onChange(of: folderID) { _, _ in position.scrollTo(y: 0) }
     }
 
     private func updateWindow() {
@@ -1012,17 +1040,34 @@ private struct WindowedRows<Row: View>: View {
         return max(0, count - 2 * Self.overscan)..<count
     }
 
-    /// Scroll the least distance that shows row `index` in full.
+    /// Scroll the least distance that shows row `index` in full. Does
+    /// nothing when the row is already fully visible, or before the first
+    /// valid geometry (the first-geometry reveal handles that case).
     private func show(_ index: Int) {
         let rect = edges.rect
         guard rect.height > 0 else { return }
         let top = Self.padding + CGFloat(index) * pitch
         let bottom = top + pitch
+        let target: CGFloat
         if top < rect.minY {
-            position.scrollTo(y: max(0, top - Self.padding))
+            target = max(0, top - Self.padding)
         } else if bottom > rect.maxY {
-            position.scrollTo(y: max(0, bottom + Self.padding - rect.height))
+            target = max(0, bottom + Self.padding - rect.height)
+        } else {
+            return
         }
+        guard abs(target - rect.minY) >= 0.5 else { return }
+        position.scrollTo(y: target)
+    }
+
+    /// The offset that shows row `index` when the list starts at the top:
+    /// 0 if the row is already in the first screenful, else the least offset
+    /// that brings its bottom edge into view.
+    private func offsetFromTop(showing index: Int) -> CGFloat {
+        let height = edges.rect.height
+        let bottom = Self.padding + CGFloat(index + 1) * pitch
+        guard height > 0, bottom + Self.padding > height else { return 0 }
+        return bottom + Self.padding - height
     }
 }
 

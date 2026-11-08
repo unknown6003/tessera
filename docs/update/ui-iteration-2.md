@@ -332,3 +332,40 @@ matches the c590 profile, and `SO_` automation keeps analytics off.
 7. Accessibility Inspector: the browser lists the visible rows, and AX
    calls stay under 200 ms while idle.
 8. `LayoutTests` and the full test suite pass.
+
+### Round 5 follow-up: keep the selection visible
+
+Scope: `ContentView.swift` (`WindowedRows`) and this note. Not compiled.
+
+Source review of `b689388` found that `WindowedRows` revealed the selected
+row only when `selectedIndex` changed. A browser made after the selection
+(for example Items, then Details, then Items) started at row 0. A pitch
+change on resize recomputed the window but did not reveal the selection.
+
+Now:
+
+- On the first valid geometry of a new `WindowedRows`, the selection is
+  revealed once. The flag sits in the non-rendering `Edges` box, so later
+  geometry callbacks never scroll. A scroll therefore cannot trigger another.
+- One `onChange` watches folder, selected index and pitch together, so one
+  update makes one scroll:
+  - New folder: offset 0, or the least offset from the top that shows the
+    selection when the selection belongs to the new map.
+  - Pitch change: recompute the row window, then reveal the selection.
+  - Selection change: reveal it.
+- Reveal scrolls the least distance, does nothing when the row is fully
+  visible, and skips moves under 0.5 pt.
+
+Bound: each reveal is O(1) arithmetic on `index × pitch`. Drawing stays
+O(visible rows + 16).
+
+Native checks added to round 5:
+
+9. Select the last row of `Wide100k` with End. Switch to Details, then back
+   to Items (narrow window): the last row is visible and selected.
+10. With row 50,000 selected, resize from 1240 to 820 and back: the row stays
+    visible after each resize with no key press.
+11. Select a child, open it, then ⌘↑: the previous child is selected and
+    visible in the parent's list.
+12. Scroll by hand after a reveal: the list does not jump back to the
+    selection.
