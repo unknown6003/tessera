@@ -86,7 +86,14 @@ struct ContentView: View {
 
     private var removalBusy: Bool { vm.isDeleting || removalRequested }
 
+    // The body is split into stages so each modifier chain type-checks on
+    // its own (Swift 6 timed out on one long chain). The stages nest in the
+    // original modifier order, so handler order and behaviour are unchanged.
     var body: some View {
+        withLifecycle(withPresentation(withAnalyticsHandlers(withStateHandlers(withWindowChrome(windowLayout)))))
+    }
+
+    private var windowLayout: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
                 Sidebar(vm: vm, sourceNames: $sourceNames)
@@ -128,148 +135,173 @@ struct ContentView: View {
             .disabled(vm.showFDAOnboarding)
             .accessibilityHidden(vm.showFDAOnboarding)
         }
-        .frame(minWidth: 820, minHeight: 600)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
-            changeBrowserHost { windowWidth = width }
-        }
-        .background(Theme.bg.ignoresSafeArea())
-        .background(TransparentWindowConfigurator())
-        .background(KeyboardShortcuts(vm: vm, onQuickLook: quickLook)
-            .disabled(removalBusy || vm.isScanning || vm.showFDAOnboarding))
-        .tint(Theme.electricBlue)
-        .preferredColorScheme(.dark)
-        .coordinateSpace(.named(CollectorDragController.appSpace))
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button { changeBrowserHost { showSidebar.toggle() } } label: {
-                    Label("Sources", systemImage: "sidebar.left")
-                }
-                .keyboardShortcut("s", modifiers: [.command, .control])
-                .help(showSidebar ? "Hide sources (⌃⌘S)" : "Show sources (⌃⌘S)")
-                .disabled(vm.showFDAOnboarding)
+    }
+
+    private func withWindowChrome(_ content: some View) -> some View {
+        content
+            .frame(minWidth: 820, minHeight: 600)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                changeBrowserHost { windowWidth = width }
             }
-            ToolbarItem(placement: .principal) {
-                Picker("Workspace", selection: $appMode) {
-                    ForEach(AppMode.allCases) { mode in Text(mode.title).tag(mode) }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 190)
-                .disabled(vm.showFDAOnboarding)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                CleanupActionBar(vm: vm, returnScreen: modeScreen, onRescue: { appMode = .rescue })
-                    .disabled(removalBusy || vm.isScanning || vm.rootNode == nil || vm.showFDAOnboarding)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                // Wide windows show Details beside the map; narrow windows
-                // show it inline below the map. No popover.
-                Button {
-                    changeBrowserHost {
-                        showInspector.toggle()
-                        if showInspector { compactPane = .details }
-                    }
-                } label: {
-                    Label("Details", systemImage: "sidebar.right")
-                }
-                .keyboardShortcut("i", modifiers: [.command, .control])
-                .help("Show or hide selected item details (⌃⌘I)")
-                .disabled(appMode != .explore || vm.showFDAOnboarding)
-            }
-        }
-        .overlay {
-            if let node = drag.node {
-                DragPreview(node: node).position(drag.location).allowsHitTesting(false)
-            }
-        }
-        .overlay {
-            if vm.showFDAOnboarding { FullDiskAccessOnboarding(vm: vm) }
-        }
-        .transaction { if reduceMotion { $0.animation = nil } }
-        .onChange(of: vm.isScanning, initial: true) { _, _ in syncUpdaterBusy() }
-        .onChange(of: vm.isDeleting) { _, _ in syncUpdaterBusy() }
-        .onChange(of: vm.currentRoot?.id, initial: true) { _, _ in refreshMap() }
-        .onChange(of: vm.treeRevision) { _, _ in refreshMap() }
-        .onChange(of: vm.selectedNode?.id) { _, id in if id != nil { hasSelectedOnce = true } }
-        // A pending refocus is only for the next rebuild. Once the browser has
-        // focus, or the user leaves Explore, drop it.
-        .onChange(of: browserFocused) { _, focused in if focused { refocusBrowserOnAppear = false } }
-        .onChange(of: appMode) { _, _ in
-            refocusBrowserOnAppear = false
-            browserFocusBeforeDetails = false
-        }
-        // A read refused during a removal runs again when the removal ends.
-        .onChange(of: vm.isDeleting) { _, deleting in if !deleting { refreshMap() } }
-        .quickLookPreview($quickLookURL)
-        .onAppear(perform: installQuickLookKeyMonitor)
-        .onDisappear {
-            if let monitor = quickLookKeyMonitor { NSEvent.removeMonitor(monitor) }
-            quickLookKeyMonitor = nil
-        }
-        // Analytics: fixed screen names and counts only. No names or paths.
-        .onChange(of: appMode, initial: true) { _, _ in
-            if reviewSnapshot == nil { recordScreen(modeScreen) }
-        }
-        .onChange(of: reviewSnapshot?.id) { _, id in
-            if let id, let snapshot = reviewSnapshot, snapshot.id == id {
-                recordScreen(.review)
-                analytics.capture(.cleanupReviewOpened, values: ["items": .integer(snapshot.nodes.count)])
-            } else if id == nil {
-                recordScreen(modeScreen)
-            }
-        }
-        .onChange(of: vm.showFDAOnboarding, initial: true) { _, shown in
-            if shown { analytics.capture(.permissionPrompted) }
-        }
-        .onChange(of: removalRequested) { _, _ in syncUpdaterBusy() }
-        .onChange(of: vm.collector.isEmpty) { _, _ in syncUpdaterBusy() }
-        .sheet(item: $reviewSnapshot, onDismiss: finishReview) { snapshot in
-            CleanupReviewSheet(vm: vm, nodes: snapshot.nodes, sourcePath: snapshot.sourcePath,
-                                   rootID: snapshot.rootID, revision: snapshot.revision,
-                                   startedInRescue: snapshot.startedInRescue,
-                                   confirmOnOpen: snapshot.confirmOnOpen,
-                                   onTrash: { nodes in
-                                       queueReviewAction(nodes, permanent: false)
-                                   }, onDelete: { nodes in
-                                       queueReviewAction(nodes, permanent: true)
-                                   })
-        }
-        .alert(deleteErrorTitle, isPresented: Binding(
-            get: { deleteError != nil }, set: { if !$0 { deleteError = nil } }
-        )) { Button("OK") { deleteError = nil } } message: { Text(deleteError ?? "") }
-        .onAppear {
-            vm.refreshFullDiskAccessStatus()
-            SharedScanContext.shared.register(vm)
-            DebugAutomation.runIfRequested(vm: vm)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            vm.refreshFullDiskAccessStatus()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("Tessera.captureState"))) { note in
-            guard ProcessInfo.processInfo.environment["SO_CAPTURE_VARIANTS"] == "1",
-                  let source = vm.scannedURL,
-                  source.resolvingSymlinksInPath().path.contains("/tmp/tessera-"),
-                  let state = note.userInfo?["state"] as? String else { return }
-            reviewSnapshot = nil
-            showInspector = state == "details"
-            if state == "details" { compactPane = .details }
-            if state == "details" { vm.selectedNode = vm.rootNode?.largestChildren(limit: 1).first }
-            appMode = state == "rescue" ? .rescue : .explore
-            if state == "review" || state == "confirm" {
-                for node in vm.rootNode?.largestChildren(limit: 3) ?? [] { vm.addToCollector(node) }
-                if state == "review" { openReview() }
-                else if var snapshot = self.snapshot(vm.collector) {
-                    snapshot.confirmOnOpen = true
-                    reviewSnapshot = snapshot
+            .background(Theme.bg.ignoresSafeArea())
+            .background(TransparentWindowConfigurator())
+            .background(KeyboardShortcuts(vm: vm, onQuickLook: quickLook)
+                .disabled(removalBusy || vm.isScanning || vm.showFDAOnboarding))
+            .tint(Theme.electricBlue)
+            .preferredColorScheme(.dark)
+            .coordinateSpace(.named(CollectorDragController.appSpace))
+            .toolbar { toolbarItems }
+            .overlay {
+                if let node = drag.node {
+                    DragPreview(node: node).position(drag.location).allowsHitTesting(false)
                 }
             }
+            .overlay {
+                if vm.showFDAOnboarding { FullDiskAccessOnboarding(vm: vm) }
+            }
+            .transaction { if reduceMotion { $0.animation = nil } }
+    }
+
+    @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button { changeBrowserHost { showSidebar.toggle() } } label: {
+                Label("Sources", systemImage: "sidebar.left")
+            }
+            .keyboardShortcut("s", modifiers: [.command, .control])
+            .help(showSidebar ? "Hide sources (⌃⌘S)" : "Show sources (⌃⌘S)")
+            .disabled(vm.showFDAOnboarding)
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-            DebugAutomation.cleanPreferences()
+        ToolbarItem(placement: .principal) {
+            Picker("Workspace", selection: $appMode) {
+                ForEach(AppMode.allCases) { mode in Text(mode.title).tag(mode) }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 190)
+            .disabled(vm.showFDAOnboarding)
         }
-        .onChange(of: vm.isScanning) { _, scanning in
-            if scanning {
-                reviewSnapshot = nil
-                drag.reset()
+        ToolbarItem(placement: .primaryAction) {
+            CleanupActionBar(vm: vm, returnScreen: modeScreen, onRescue: { appMode = .rescue })
+                .disabled(removalBusy || vm.isScanning || vm.rootNode == nil || vm.showFDAOnboarding)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            // Wide windows show Details beside the map; narrow windows
+            // show it inline below the map. No popover.
+            Button {
+                changeBrowserHost {
+                    showInspector.toggle()
+                    if showInspector { compactPane = .details }
+                }
+            } label: {
+                Label("Details", systemImage: "sidebar.right")
+            }
+            .keyboardShortcut("i", modifiers: [.command, .control])
+            .help("Show or hide selected item details (⌃⌘I)")
+            .disabled(appMode != .explore || vm.showFDAOnboarding)
+        }
+    }
+
+    private func withStateHandlers(_ content: some View) -> some View {
+        content
+            .onChange(of: vm.isScanning, initial: true) { _, _ in syncUpdaterBusy() }
+            .onChange(of: vm.isDeleting) { _, _ in syncUpdaterBusy() }
+            .onChange(of: vm.currentRoot?.id, initial: true) { _, _ in refreshMap() }
+            .onChange(of: vm.treeRevision) { _, _ in refreshMap() }
+            .onChange(of: vm.selectedNode?.id) { _, id in if id != nil { hasSelectedOnce = true } }
+            // A pending refocus is only for the next rebuild. Once the browser
+            // has focus, or the user leaves Explore, drop it.
+            .onChange(of: browserFocused) { _, focused in if focused { refocusBrowserOnAppear = false } }
+            .onChange(of: appMode) { _, _ in
+                refocusBrowserOnAppear = false
+                browserFocusBeforeDetails = false
+            }
+            // A read refused during a removal runs again when the removal ends.
+            .onChange(of: vm.isDeleting) { _, deleting in if !deleting { refreshMap() } }
+            .quickLookPreview($quickLookURL)
+            .onAppear(perform: installQuickLookKeyMonitor)
+            .onDisappear(perform: uninstallQuickLookKeyMonitor)
+    }
+
+    /// Analytics: fixed screen names and counts only. No names or paths.
+    private func withAnalyticsHandlers(_ content: some View) -> some View {
+        content
+            .onChange(of: appMode, initial: true) { _, _ in
+                if reviewSnapshot == nil { recordScreen(modeScreen) }
+            }
+            .onChange(of: reviewSnapshot?.id) { _, id in recordReviewScreen(id) }
+            .onChange(of: vm.showFDAOnboarding, initial: true) { _, shown in
+                if shown { analytics.capture(.permissionPrompted) }
+            }
+            .onChange(of: removalRequested) { _, _ in syncUpdaterBusy() }
+            .onChange(of: vm.collector.isEmpty) { _, _ in syncUpdaterBusy() }
+    }
+
+    private func recordReviewScreen(_ id: UUID?) {
+        if let id, let snapshot = reviewSnapshot, snapshot.id == id {
+            recordScreen(.review)
+            analytics.capture(.cleanupReviewOpened, values: ["items": .integer(snapshot.nodes.count)])
+        } else if id == nil {
+            recordScreen(modeScreen)
+        }
+    }
+
+    private func withPresentation(_ content: some View) -> some View {
+        content
+            .sheet(item: $reviewSnapshot, onDismiss: finishReview) { snapshot in
+                CleanupReviewSheet(vm: vm, nodes: snapshot.nodes, sourcePath: snapshot.sourcePath,
+                                       rootID: snapshot.rootID, revision: snapshot.revision,
+                                       startedInRescue: snapshot.startedInRescue,
+                                       confirmOnOpen: snapshot.confirmOnOpen,
+                                       onTrash: { nodes in
+                                           queueReviewAction(nodes, permanent: false)
+                                       }, onDelete: { nodes in
+                                           queueReviewAction(nodes, permanent: true)
+                                       })
+            }
+            .alert(deleteErrorTitle, isPresented: Binding(
+                get: { deleteError != nil }, set: { if !$0 { deleteError = nil } }
+            )) { Button("OK") { deleteError = nil } } message: { Text(deleteError ?? "") }
+    }
+
+    private func withLifecycle(_ content: some View) -> some View {
+        content
+            .onAppear {
+                vm.refreshFullDiskAccessStatus()
+                SharedScanContext.shared.register(vm)
+                DebugAutomation.runIfRequested(vm: vm)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                vm.refreshFullDiskAccessStatus()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .init("Tessera.captureState")),
+                       perform: handleCaptureState)
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                DebugAutomation.cleanPreferences()
+            }
+            .onChange(of: vm.isScanning) { _, scanning in
+                if scanning {
+                    reviewSnapshot = nil
+                    drag.reset()
+                }
+            }
+    }
+
+    /// Automation only: shows a fixed UI state for capture runs.
+    private func handleCaptureState(_ note: Notification) {
+        guard ProcessInfo.processInfo.environment["SO_CAPTURE_VARIANTS"] == "1",
+              let source = vm.scannedURL,
+              source.resolvingSymlinksInPath().path.contains("/tmp/tessera-"),
+              let state = note.userInfo?["state"] as? String else { return }
+        reviewSnapshot = nil
+        showInspector = state == "details"
+        if state == "details" { compactPane = .details }
+        if state == "details" { vm.selectedNode = vm.rootNode?.largestChildren(limit: 1).first }
+        appMode = state == "rescue" ? .rescue : .explore
+        if state == "review" || state == "confirm" {
+            for node in vm.rootNode?.largestChildren(limit: 3) ?? [] { vm.addToCollector(node) }
+            if state == "review" { openReview() }
+            else if var snapshot = self.snapshot(vm.collector) {
+                snapshot.confirmOnOpen = true
+                reviewSnapshot = snapshot
             }
         }
     }
@@ -613,6 +645,11 @@ struct ContentView: View {
         }
     }
 
+    private func uninstallQuickLookKeyMonitor() {
+        if let monitor = quickLookKeyMonitor { NSEvent.removeMonitor(monitor) }
+        quickLookKeyMonitor = nil
+    }
+
     private func quickLook(_ node: FileNode) {
         guard !node.isSynthetic else { return }
         quickLookURL = quickLookURL == nil ? node.url : nil
@@ -726,6 +763,7 @@ struct ContentView: View {
         // Muted text is 3.57:1 on the focused fill, so selected rows use the
         // foreground colour for size and percent (9.06:1 or more).
         let secondary = selected ? Theme.foreground : Theme.mutedForeground
+        let fill: Color = !selected ? .clear : (focused ? Theme.electricBlue.opacity(0.26) : Theme.selectionTint)
         let color = map?.color(for: node, highContrast: highContrast)
             ?? Theme.wedgeColor(palette: nil, depth: 0, highContrast: highContrast)
         let dot = Circle().fill(color).frame(width: 8, height: 8)
@@ -763,8 +801,7 @@ struct ContentView: View {
         // Exact height: the window and the scroll offsets depend on it. Two
         // lines of callout plus one caption line fit in the two-line pitch.
         .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .leading)
-        .background(selected ? (focused ? Theme.electricBlue.opacity(0.26) : Theme.selectionTint) : .clear,
-                    in: RoundedRectangle(cornerRadius: 6))
+        .background(fill, in: RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(Theme.electricBlue, lineWidth: 1)

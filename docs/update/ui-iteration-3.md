@@ -201,3 +201,36 @@ Native checks:
 5. Quick Look open, or the review sheet open, during a resize or ⌃⌘I: focus
    stays in the panel or sheet.
 6. ⌃⌘S with the browser focused: the browser keeps focus.
+
+## CI compile fix: split the ContentView body
+
+Base: `2cb7d85`. Scope: `ContentView.swift` and this note.
+
+CI failure at `e2a23dc` (Xcode 26.6, SDK 26.5, Swift 6):
+`ContentView.swift:188:13: the compiler is unable to type-check this
+expression in reasonable time`. Line 188 was the `quickLookKeyMonitor = nil`
+assignment inside `body`'s `.onDisappear` closure. The cause is the length
+of `body`'s single modifier chain, which the visual round made longer, not
+that assignment.
+
+Fix, with no change in behaviour and no type erasure:
+
+- `body` is now five nested stage functions, each a short chain that
+  type-checks on its own: `withWindowChrome` (frame, geometry, backgrounds,
+  tint, toolbar, overlays, transaction), `withStateHandlers`,
+  `withAnalyticsHandlers`, `withPresentation` (review sheet, error alert)
+  and `withLifecycle` (appear, notifications, scan reset). They nest in the
+  original modifier order, so every `onChange` keeps its place.
+- The toolbar is a `@ToolbarContentBuilder` property.
+- `uninstallQuickLookKeyMonitor()` replaces the `onDisappear` closure.
+- `recordReviewScreen(_:)` and `handleCaptureState(_:)` replace two inline
+  closures. The capture hook's guards and states are unchanged.
+- The browser row's fill colour is a typed constant instead of a nested
+  ternary inside `.background`.
+
+Source check: a count of modifier calls before and after matches (the one
+apparent difference is `.onDisappear { }` becoming
+`.onDisappear(perform:)`). Brackets balance. No compiler limit was raised.
+
+Native check: the CI build and the full test suite must pass with Xcode
+26.6. If another expression times out, the log names its line.
