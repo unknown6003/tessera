@@ -61,6 +61,7 @@ int br_directory_read(BRDirectory *directory, BREntry *out, int maxEntries,
     alist.bitmapcount = ATTR_BIT_MAP_COUNT;
     // Request returned-attrs first so we can defensively check which fields are present
     alist.commonattr = (attrgroup_t)(ATTR_CMN_RETURNED_ATTRS |
+                                     ATTR_CMN_ERROR          |
                                      ATTR_CMN_NAME           |
                                      ATTR_CMN_DEVID          |
                                      ATTR_CMN_OBJTYPE        |
@@ -103,6 +104,12 @@ int br_directory_read(BRDirectory *directory, BREntry *out, int maxEntries,
             uint32_t ret_file   = r32(ptr + 16); // fileattr word of attribute_set_t
 
             const char *field = ptr + 24; // first attribute data
+            if (ret_common & ATTR_CMN_ERROR) {
+                if (recordEnd - field < 4 || r32(field) != 0) return -1;
+                field += 4;
+            }
+            uint32_t required = ATTR_CMN_NAME | ATTR_CMN_DEVID | ATTR_CMN_OBJTYPE | ATTR_CMN_FILEID;
+            if ((ret_common & required) != required) return -1;
 
             BREntry e;
             memset(&e, 0, sizeof(e));
@@ -177,6 +184,8 @@ int br_directory_read(BRDirectory *directory, BREntry *out, int maxEntries,
                 e.logical_size = ri64(field);
                 field += 8;
             }
+
+            if (e.type == BR_TYPE_REG && !(ret_file & ATTR_FILE_ALLOCSIZE)) return -1;
 
             // ATTR_FILE_ALLOCSIZE: int64_t
             if (ret_file & ATTR_FILE_ALLOCSIZE) {

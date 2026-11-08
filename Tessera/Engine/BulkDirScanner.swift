@@ -222,9 +222,12 @@ enum BulkDirScanner {
         let provider = providerRoot(path)
         guard session.canRead(provider) else { return nil }
         let deadline = DispatchTime.now() + timeoutSeconds
-        guard helperSlots.wait(timeout: deadline) == .success else {
-            session.hold(provider)
-            return nil
+        while helperSlots.wait(timeout: min(deadline, .now() + .milliseconds(50))) == .timedOut {
+            if session.isCancelled { return nil }
+            if DispatchTime.now() >= deadline {
+                session.hold(provider)
+                return nil
+            }
         }
         let sem = DispatchSemaphore(value: 0)
         let box = ResultBox()
