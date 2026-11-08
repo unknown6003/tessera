@@ -34,21 +34,9 @@ struct ScanProgress: Sendable {
     var fraction: Double? {
         if isComplete { return 1.0 }
 
-        // Whole-volume scan: report bytes found against the volume's used bytes.
-        // This is what the user compares against ("550 GB of 900 GB"), and unlike
-        // a directory-count ratio it can never race ahead of the data actually
-        // discovered. Capped just under 1.0 until the final tick, because a little
-        // used space is unreachable (snapshots, purgeable, protected files) and is
-        // reconciled as "Hidden Space" at the end.
-        if volumeUsedTotal > 0 {
-            return min(0.99, Double(bytesFound) / Double(volumeUsedTotal))
-        }
-
-        // Folder scan: no known byte total, so fall back to directories scanned
-        // vs. discovered (guaranteed to reach 1.0 — every dir is eventually seen).
-        if dirsScanned >= dirsDiscovered && dirsScanned > 0 { return 1.0 }
-        guard dirsDiscovered >= 16 else { return nil }
-        return min(1.0, Double(dirsScanned) / Double(dirsDiscovered))
+        // Enumeration discovers new work as it runs. Neither bytes nor the
+        // directory count is a valid completion denominator.
+        return nil
     }
 }
 
@@ -86,13 +74,9 @@ struct FileScanner: Sendable {
         onProgress: @Sendable @escaping (ScanProgress) -> Void
     ) async throws -> FileNode {
         let rootPath = url.path
-        // Incremental re-scan: a directory whose modtime is unchanged since the
-        // cached scan has the same listing, so we reuse its whole cached subtree
-        // (and skip every getattrlistbulk inside it). Built only when a cache for
-        // the same root is supplied.
-        let cacheMap = cache.map { cached in
-            buildCacheMap(cached, excluding: Set(cached.scanCoverageGaps))
-        }
+        // A directory's mtime cannot validate file writes or deeper changes.
+        // Keep the cache argument for source switching, but always enumerate a rescan.
+        let cacheMap: [String: FileNode]? = nil
         let allowedDevices = Self.allowedDevices(forRoot: rootPath)
         // A removed folder, disconnected share, or unmounted disk cannot produce a
         // trustworthy scan. Previously an lstat failure left this set empty and the
@@ -693,7 +677,6 @@ struct FileScanner: Sendable {
 
             cond.lock()
             let coverageGaps = self.coverageGaps
-            progress.dirsScanned = progress.dirsDiscovered
             progress.isComplete = true
             let snapshot = progress
             let cont = continuation
@@ -763,16 +746,17 @@ struct FileScanner: Sendable {
                 return
             }
 
-            // No advance. Only force-finish if there is no queued work left to do —
-            // i.e. the remaining `pending` dirs are all stuck in-flight in workers.
+            // Queued work must not prevent termination when every worker stalls.
             let stalledNanos = DispatchTime.now().uptimeNanoseconds &- lastAdvanceAt.uptimeNanoseconds
             let stalled = Double(stalledNanos) / 1_000_000_000 >= Self.stallTimeoutSeconds
-            guard stalled, pending > 0, queue.isEmpty, commitsInProgress == 0 else {
+            guard stalled, pending > 0, commitsInProgress == 0 else {
                 cond.unlock()
                 return
             }
 
             coverageGaps.append(contentsOf: activePaths)
+            coverageGaps.append(contentsOf: queue.map(\.path))
+            queue.removeAll()
             finished = true
             cond.broadcast()   // release idle workers (stuck ones are abandoned)
             cond.unlock()

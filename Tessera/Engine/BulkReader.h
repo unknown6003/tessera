@@ -7,7 +7,7 @@
 #define BR_TYPE_LNK  5  // symbolic link
 
 typedef struct {
-    char     name[256];     // entry name, NUL-terminated (NAME_MAX is 255 on APFS/HFS+; overlong names clamp to fit)
+    char     name[768];     // Full UTF-8 name, including up to three bytes per filesystem character.
     uint32_t type;          // BR_TYPE_REG / BR_TYPE_DIR / BR_TYPE_LNK / 0
     uint32_t devid;         // device id (dev_t) — used to detect mount-point crossings
     uint32_t nlink;         // hard-link count (files only; 0 when unavailable)
@@ -36,3 +36,14 @@ uint64_t br_get_close_ns(void);
 /// A return value equal to `maxEntries` may indicate truncation.
 int br_scan_directory(const char *path, BREntry *entries, int maxEntries,
                       void *readbuf, int readbuf_len);
+
+// Cursor owns one open directory. Reads resume inside the same kernel batch.
+typedef struct {
+    int fd;
+    int remaining;
+    int offset;
+} BRDirectory;
+int br_directory_open(const char *path, BRDirectory *directory);
+int br_directory_read(BRDirectory *directory, BREntry *entries, int capacity,
+                      void *readbuf, int readbuf_len);
+void br_directory_close(BRDirectory *directory);

@@ -185,9 +185,19 @@ final class FileNode: Identifiable, @unchecked Sendable {
     /// for this (selection, reveal in Finder, delete, inspector), so the cost is
     /// kept off the scan's hot path.
     var url: URL {
-        if let explicitURL { return explicitURL }
-        if let parent { return parent.url.appendingPathComponent(name, isDirectory: isDirectory) }
-        return URL(fileURLWithPath: name)
+        var components: [String] = []
+        var cursor: FileNode? = self
+        while let node = cursor {
+            if let base = node.explicitURL {
+                let suffix = components.reversed().joined(separator: "/")
+                if suffix.isEmpty { return base }
+                let path = base.path == "/" ? "/" + suffix : base.path + "/" + suffix
+                return URL(fileURLWithPath: path, isDirectory: isDirectory)
+            }
+            components.append(node.name)
+            cursor = node.parent
+        }
+        return URL(fileURLWithPath: components.reversed().joined(separator: "/"), isDirectory: isDirectory)
     }
 
     /// Hot-path initializer for scanned children: stores no URL — the location is
@@ -290,13 +300,20 @@ final class FileNode: Identifiable, @unchecked Sendable {
 
     /// Remove a child node (after deletion). Propagates size reduction up the tree.
     func remove(_ node: FileNode) {
-        let delta = node.size
-        children.removeAll { $0.id == node.id }
-        propagateSizeChange(-delta)
+        removeChildren(withIDs: [node.id])
     }
 
-    private func propagateSizeChange(_ delta: Int64) {
-        size += delta
-        parent?.propagateSizeChange(delta)
+    func removeChildren(withIDs ids: Set<ObjectIdentifier>) {
+        var removedBytes: Int64 = 0
+        children.removeAll { child in
+            guard ids.contains(child.id) else { return false }
+            removedBytes += child.size
+            return true
+        }
+        var cursor: FileNode? = self
+        while let node = cursor {
+            node.size -= removedBytes
+            cursor = node.parent
+        }
     }
 }

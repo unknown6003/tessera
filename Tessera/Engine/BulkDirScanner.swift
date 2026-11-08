@@ -40,9 +40,7 @@ private let packageExtensions: Set<String> = [
 /// for each of a million directories. One instance per worker; never shared
 /// between threads concurrently.
 final class BulkScratch {
-    /// Max entries returned per directory before falling back to readdir+lstat.
-    /// Almost all directories are far smaller; the few that aren't are rare
-    /// enough that the slow fallback is acceptable.
+    /// Maximum decoded entries per batch. Large folders continue on the same descriptor.
     static let entryCapacity = 8192
     /// Kernel listing buffer for getattrlistbulk. Larger = fewer syscalls.
     static let readBufferBytes = 512 * 1024
@@ -241,19 +239,20 @@ enum BulkDirScanner {
         // getattrlistbulk via C bridge, using the caller's reusable buffers so
         // there is no per-directory allocation.
         let cEntries = scratch.entryBuffer
-        let count = br_scan_directory(path, cEntries.baseAddress, Int32(BulkScratch.entryCapacity),
-                                      scratch.readBuffer, Int32(BulkScratch.readBufferBytes))
-        if count >= 0 {
-            // A completely full buffer may mean the directory was truncated;
-            // re-read with the unbounded fallback to avoid silently dropping entries.
-            if Int(count) == BulkScratch.entryCapacity {
-                return fallbackEntries(atPath: path)
-            }
-            return (0 ..< Int(count)).compactMap { swiftEntry(from: cEntries[$0]) }
+        var directory = BRDirectory()
+        guard br_directory_open(path, &directory) == 0 else {
+            return fallbackEntries(atPath: path)
         }
-
-        // Fallback: readdir via FileManager + lstat
-        return fallbackEntries(atPath: path)
+        defer { br_directory_close(&directory) }
+        var entries: [EntryInfo] = []
+        while true {
+            let count = br_directory_read(&directory, cEntries.baseAddress,
+                                          Int32(BulkScratch.entryCapacity), scratch.readBuffer,
+                                          Int32(BulkScratch.readBufferBytes))
+            guard count >= 0 else { return fallbackEntries(atPath: path) }
+            if count == 0 { return entries }
+            entries.append(contentsOf: (0 ..< Int(count)).compactMap { swiftEntry(from: cEntries[$0]) })
+        }
     }
 
     // MARK: - BREntry → EntryInfo
