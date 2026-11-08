@@ -739,9 +739,11 @@ struct CleanupSuggestionsView: View {
             plan.measurement.availableBytes != nil
                 ? "Available for use counts space macOS can reclaim by removing caches and other purgeable files. Free now is the space macOS reports as free at this moment."
                 : nil,
-            plan.measurement.volumePath != plan.sourcePath
-                ? "These figures are for the whole volume, not only the selected folder."
-                : nil,
+            // True for a volume root and for a folder alike, so it needs no
+            // path test. (`volumePath` is the selected source path, not the
+            // mount point, so comparing it with `sourcePath` cannot tell them
+            // apart.)
+            "Capacity figures cover the whole drive that holds this source. Logical and physical totals cover only the scanned source.",
         ].compactMap { $0 }
         if !notes.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
