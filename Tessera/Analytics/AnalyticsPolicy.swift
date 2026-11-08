@@ -48,7 +48,7 @@ enum AnalyticsSource: String, Sendable {
         if providerRoots.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return (.cloud, "folder") }
         let count = getfsstat(nil, 0, MNT_NOWAIT)
         guard count > 0, count <= 4096 else { return (.unknown, "unknown") }
-        var mounts = [statfs](repeating: statfs(), count: Int(count))
+        var mounts = Array<statfs>(repeating: statfs(), count: Int(count))
         let capacityBytes = Int32(mounts.count * MemoryLayout<statfs>.stride)
         let filled = mounts.withUnsafeMutableBufferPointer { getfsstat($0.baseAddress, capacityBytes, MNT_NOWAIT) }
         guard filled > 0 else { return (.unknown, "unknown") }
