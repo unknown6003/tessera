@@ -83,6 +83,8 @@ struct LayoutTests {
         #expect(ring.filter { $0.node.kind == .aggregate }.map(\.node.size) == [600])
         #expect(ring.reduce(Int64(0)) { $0 + $1.node.size } == folder.size)
         #expect(folder.children.count == 264)
+        #expect(SunburstChart.layoutWork(of: root, exceeds: 264))
+        #expect(!SunburstChart.layoutWork(of: root, exceeds: 265))
     }
 
     /// All wedge angles must be finite and ordered; no NaN/inf can reach Canvas.
