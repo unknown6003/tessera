@@ -15,9 +15,10 @@ PostHog project before publication. It checks the app and dSYM UUIDs first and
 uses pinned `@posthog/cli@0.19.0`. It does not upload source files. The private
 project key is the Actions secret `POSTHOG_TESSERA_API_KEY`; the public ingest
 token alone is in the app. A missing key or failed symbol upload stops release.
-For a local release, run `tools/upload_posthog_symbols.py` through the shared
-`posthog-tessera` vault with the documented CLI environment aliases before
-publishing. Keep the private key out of build settings and app resources.
+The local `release.sh` also requires this upload before signing or publication.
+Run it through the shared `posthog-tessera` vault with `posthog-cli` 0.19.0 on
+PATH. The uploader maps the vault names to the official CLI environment aliases.
+Keep the private key out of build settings and app resources.
 
 ## 0. One-time setup
 

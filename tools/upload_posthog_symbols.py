@@ -33,6 +33,11 @@ def main():
         raise ValueError("Refusing symbols for a different app")
     if not symbols.is_dir() or symbol_uuids(app / "Contents/MacOS/Tessera") != symbol_uuids(symbols):
         raise ValueError("Release binary and dSYM UUIDs do not match")
+    # The shared vault uses service-wide names; the official CLI uses CLI aliases.
+    for cli_key, vault_key in [("POSTHOG_CLI_API_KEY", "POSTHOG_API_KEY"),
+                               ("POSTHOG_CLI_PROJECT_ID", "POSTHOG_PROJECT_ID"),
+                               ("POSTHOG_CLI_HOST", "POSTHOG_API_ENDPOINT")]:
+        os.environ.setdefault(cli_key, os.environ.get(vault_key, ""))
     if not os.environ.get("POSTHOG_CLI_API_KEY") or os.environ.get("POSTHOG_CLI_PROJECT_ID") != "340688" or os.environ.get("POSTHOG_CLI_HOST") != "https://eu.posthog.com":
         raise ValueError("Dedicated Tessera PostHog access is required")
     subprocess.run([str(args.cli.resolve()), "dsym", "upload", "--directory", str(symbols.resolve()),

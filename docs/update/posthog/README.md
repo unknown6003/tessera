@@ -17,8 +17,10 @@ The native 1–5 survey has an active Settings flag with matching survey and
 question UUIDs. The SDK public flags request returned the expected payload.
 The survey itself is draft pending native qualification. The presentation-only
 browser experiment and its flag are draft and inactive. Its variants differ
-only in four versus eight visible rows. It has no metrics yet and must not launch
-before native review and a metric have been set. Scan and cleanup protections
+only in four versus eight visible rows. Its primary metric is opening the exact-path review after exposure; its
+secondary metric is finishing cleanup, both within seven days. The server
+accepted and returned both metric definitions without seed events. It must not
+launch before native review. Scan and cleanup protections
 are outside the flags.
 
 Project settings read back IP anonymization on, generic autocapture off, native
@@ -47,6 +49,9 @@ counted as passed verification.
 - Live ingestion without test or benchmark events in production analytics.
 - Exact-release dSYM upload and a resolved native stack.
 - Survey submission and presentation experiment qualification.
+
+A later empty batch handshake returned HTTP 400 because it was not a valid
+nonempty capture. It recorded no test events and does not prove live ingestion.
 
 The official API references used were
 [dashboard](https://posthog.com/docs/api/dashboards),

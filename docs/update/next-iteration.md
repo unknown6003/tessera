@@ -66,7 +66,7 @@ Tessera now has a dedicated EU PostHog project, ID 340688, its own public ingest
 token and a project-scoped control key in the shared vault. Normal configured
 builds collect anonymous data without an opt-out, per Ammar's updated request.
 Automated tests and benchmarks remain excluded. Thirteen server resources and the survey flag payload are verified. Live
-ingestion, survey submission, experiment metrics, dSYM upload and a resolved
+ingestion, survey submission, experiment qualification, dSYM upload and a resolved
 native stack still need proof. The SDK cannot provide
 macOS replay or built-in macOS survey UI. The fixed native rating flow is the
 supported survey route.

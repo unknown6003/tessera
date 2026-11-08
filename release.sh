@@ -60,6 +60,13 @@ xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
 APP="$DERIVED/Build/Products/Release/$SCHEME.app"
 [[ -d "$APP" ]] || fail "build produced no app at $APP"
 
+step "Upload matching native debug symbols"
+POSTHOG_CLI_BIN="${POSTHOG_CLI_BIN:-$(command -v posthog-cli || true)}"
+[[ -x "$POSTHOG_CLI_BIN" ]] || fail "Install the pinned @posthog/cli@0.19.0 release tool first."
+python3 tools/run_bounded.py --timeout 210 --log "$DIST/posthog-symbols.log" -- \
+  python3 tools/upload_posthog_symbols.py \
+  --products "$DERIVED/Build/Products/Release" --cli "$POSTHOG_CLI_BIN"
+
 step "Code-sign the app (Developer ID, hardened runtime)"
 codesign --force --deep --options runtime --timestamp --sign "$DEV_ID" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"

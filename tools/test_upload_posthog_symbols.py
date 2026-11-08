@@ -35,6 +35,15 @@ class SymbolUploadTests(unittest.TestCase):
         self.assertEqual(args[-1], '12')
         self.assertEqual(run.call_args.kwargs['timeout'], 180)
 
+    def test_shared_vault_aliases_reach_the_cli_only_in_its_environment(self):
+        self.env = {'POSTHOG_API_KEY': 'owned-private-sentinel', 'POSTHOG_PROJECT_ID': '340688', 'POSTHOG_API_ENDPOINT': 'https://eu.posthog.com'}
+        observed = {}
+        def observe(*args, **kwargs):
+            observed.update({key: os.environ.get(key) for key in ['POSTHOG_CLI_API_KEY', 'POSTHOG_CLI_PROJECT_ID', 'POSTHOG_CLI_HOST']})
+        with patch.object(upload, 'symbol_uuids', return_value={'owned-uuid'}), patch.object(upload.subprocess, 'run', side_effect=observe):
+            self.invoke()
+        self.assertEqual(observed, {'POSTHOG_CLI_API_KEY': 'owned-private-sentinel', 'POSTHOG_CLI_PROJECT_ID': '340688', 'POSTHOG_CLI_HOST': 'https://eu.posthog.com'})
+
     def test_mismatched_symbols_do_not_upload(self):
         with patch.object(upload, 'symbol_uuids', side_effect=[{'app'}, {'other'}]), patch.object(upload.subprocess, 'run') as run:
             with self.assertRaisesRegex(ValueError, 'do not match'):
