@@ -105,3 +105,11 @@ The primary reviewed the small `fd1d84e` automation delta. It creates the captur
 directory, reports aggregate coverage and dismisses a lingering Review sheet
 before automatic termination. No deletion policy or production navigation
 changed. Native execution remains required for the teardown behavior.
+
+Native `298201d` proved the capacity refresh and finite teardown, but the new
+resource-fork test still failed. The scanner and lstat returned 20,480 allocated
+bytes; Foundation fileAllocatedSize returned only the 4,096-byte data fork.
+The probe also showed Foundation totalFileAllocatedSize returning 20,480.
+`0fcd162` uses that total in the live identity. The primary reviewed this small
+API-key change against the raw values and existing fallback. It does not relax
+the equality check. The same native regression must pass before release.

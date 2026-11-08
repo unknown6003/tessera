@@ -66,13 +66,23 @@ The original images and raw native logs remain on the linked Mac under
 
 `163c245` saved all seven finite layout variants but did not autoquit within its
 120-second deadline. `fd1d84e` creates the output folder and dismisses the Review
-sheet before termination. That narrow fix needs native execution.
+sheet before termination. That narrow fix passed at `298201d`. All seven images were saved and the app
+exited 0 in 8.813 seconds. The final log reported `attachedSheet=false`.
 
 The PR review then found two valid defects. `298201d` uses data-fork logical size
 in both the bulk scan and removal identity. It also refreshes the Rescue plan
 from the post-cleanup measurement, so capacity and target text use the same
-sample as verification. The new resource-fork regression and updated capacity
-checks need native execution before release.
+sample as verification. The capacity checks passed. The resource-fork regression still failed because
+Foundation fileAllocatedSize excluded the resource fork. The scan and lstat both
+reported 20,480 allocated bytes; Foundation totalFileAllocatedSize also reported
+20,480. Commit `0fcd162` uses that total in the live identity. Its native check
+remains required.
 
 Final CI, release signing, the signed launch smoke test, Sparkle signature and
 published asset checks remain gates. No release is claimed by this document.
+
+The root app run at `298201d` completed in 134.52 seconds and reported partial
+coverage with 303 gaps. Sampled peak RSS was 1,650,032,640 bytes. Its longest
+heartbeat interval was 4,093.7 ms. The app completed, but that run did not meet
+the two-minute target or prove continuous UI response. Native profiling remains
+a gate for that unresolved cost. The old 96.69-second result stays historical.

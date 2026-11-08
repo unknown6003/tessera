@@ -123,6 +123,28 @@
         "Full keyboard focus and native query/source-change reset unproved."
       ],
       "fixtureHashesUnchanged": true
+    },
+    {
+      "revision": "298201d1981266dd867a98cb2a399edc152fabe9",
+      "qualified": false,
+      "debugTestsPassed": 69,
+      "debugTestsFailed": 1,
+      "debugFailure": "Resource fork allocation 20480 in scan versus 4096 in Foundation live check. Four issues in one test.",
+      "fixedBy": "0fcd162 pending native qualification",
+      "releaseBuild": "passed",
+      "finiteUiVariants": 7,
+      "finiteAutoquit": "passed",
+      "finiteWallSeconds": 8.813,
+      "finiteAttachedSheet": false,
+      "fixtureLiveIdentityAuditRuns": 3,
+      "fixtureFiles": 124581,
+      "fixtureDirectoriesIncludingRoot": 455,
+      "fixtureUniqueUrls": 125036,
+      "fixtureIdentityMismatches": 0,
+      "fixtureCoverageGaps": 0,
+      "auditTimeLimit": "13.26-16.31 seconds includes per-node live checks, not scan-only timing.",
+      "capacityRefreshRegression": "passed",
+      "fixtureHashesUnchanged": true
     }
   ],
   "evidence": [
@@ -148,6 +170,10 @@
     },
     {
       "root": "/tmp/tessera-native-verification.1GZiGk/at163c245",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at298201d-79721",
       "report": "REPORT.md"
     }
   ],
@@ -175,6 +201,22 @@
       "heartbeatMilliseconds": 120.8,
       "coverageGaps": null,
       "coverageLimit": "Not logged. This is a live root, not a controlled comparison."
+    },
+    {
+      "revision": "298201d1981266dd867a98cb2a399edc152fabe9",
+      "configuration": "Release",
+      "completed": true,
+      "seconds": 134.52,
+      "filesLastObserved": 4476804,
+      "directoriesIncludingRoot": 1284487,
+      "sampledPeakRssBytes": 1650032640,
+      "heartbeatMilliseconds": 4093.7,
+      "coverageState": "partial",
+      "coverageGaps": 303,
+      "limits": [
+        "Last progress file count, not a separately logged final count.",
+        "A 4.09-second heartbeat interval prevents a continuously responsive claim."
+      ]
     }
   ],
   "controlledFixtureComparison": {
