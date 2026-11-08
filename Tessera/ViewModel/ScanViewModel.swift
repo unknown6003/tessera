@@ -850,7 +850,7 @@ final class ScanViewModel: ObservableObject {
 
         let root = rootNode
         let source = scannedURL
-        let before = try await Self.offMain {
+        let before = try await Self.offMain { () -> RescueMeasurement? in
             if let root, let source { return RescueMeasurement.capture(volumeURL: source, root: root) }
             return nil as RescueMeasurement?
         }
@@ -882,7 +882,7 @@ final class ScanViewModel: ObservableObject {
         }
         // The background pass is done. It cannot read the arrays as they are pruned.
         try? prune(attemptedTargets, failures: failures)
-        let after = try await Self.offMain {
+        let after = try await Self.offMain { () -> RescueMeasurement? in
             if let root, let source { return RescueMeasurement.capture(volumeURL: source, root: root) }
             return nil as RescueMeasurement?
         }
