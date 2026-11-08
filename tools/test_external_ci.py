@@ -1,0 +1,114 @@
+import copy
+import os
+from pathlib import Path
+import sys
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+
+from ci.common import RECIPE_FILES, REQUIRED_STEPS, build_environment, policy_hash, run, seal, verify
+from ci.pipeline import regression
+from ci.runner import trusted_pull
+
+
+class ExternalCITests(unittest.TestCase):
+    def report(self):
+        return {"revision": "a" * 40, "lane": "web", "policy": "pinned",
+                "result": "success", "finishedAt": time.time(),
+                "steps": [{"name": name, "result": "success"} for name in REQUIRED_STEPS["web"]]}
+
+    def test_exact_commit_policy_and_lane_are_required(self):
+        key = b"x" * 32
+        envelope = seal(self.report(), key)
+        self.assertEqual(verify(envelope, key, "a" * 40, "web", "pinned")["result"], "success")
+        for revision, lane, policy in (("b" * 40, "web", "pinned"), ("a" * 40, "native", "pinned"),
+                                       ("a" * 40, "web", "changed")):
+            with self.subTest(revision=revision, lane=lane, policy=policy), self.assertRaises(ValueError):
+                verify(envelope, key, revision, lane, policy)
+
+    def test_modified_or_unsigned_evidence_fails(self):
+        envelope = seal(self.report(), b"x" * 32)
+        envelope["report"]["result"] = "failure"
+        with self.assertRaises(ValueError):
+            verify(envelope, b"x" * 32, "a" * 40, "web", "pinned")
+        with self.assertRaises(ValueError):
+            verify(seal(self.report(), b"y" * 32), b"x" * 32, "a" * 40, "web", "pinned")
+
+    def test_missing_failed_and_stale_steps_fail_even_when_signed(self):
+        for change in ("missing", "failed", "stale", "future", "empty"):
+            report = self.report()
+            if change == "missing": report["steps"].pop()
+            if change == "failed": report["steps"][0]["result"] = "failure"
+            if change == "stale": report["finishedAt"] -= 8 * 86400
+            if change == "future": report["finishedAt"] += 86400
+            if change == "empty": report["steps"] = []
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                verify(seal(report, b"x" * 32), b"x" * 32, "a" * 40, "web", "pinned")
+
+    def test_build_environment_strips_service_and_signing_credentials(self):
+        with patch.dict(os.environ, {"GH_TOKEN": "private", "GITHUB_TOKEN": "private", "POSTHOG_API_KEY": "private",
+                                     "SPARKLE_PRIVATE_KEY": "private", "MACOS_CERT_PASSWORD": "private"}):
+            env = build_environment("a" * 12)
+        self.assertFalse(any(key in env for key in ("GH_TOKEN", "GITHUB_TOKEN", "POSTHOG_API_KEY",
+                                                    "SPARKLE_PRIVATE_KEY", "MACOS_CERT_PASSWORD")))
+        self.assertEqual(env["SO_CI_JOB"], "a" * 12)
+        self.assertEqual(env["SO_CI"], "1")
+        self.assertEqual(env["TEST_RUNNER_SO_CI"], "1")
+        self.assertEqual(env["TEST_RUNNER_SO_CI_JOB"], "a" * 12)
+
+    def test_changing_the_performance_checker_changes_the_trusted_recipe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in RECIPE_FILES:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("original")
+            original = policy_hash(root)
+            (root / "tools/analyze_scan_performance.py").write_text("changed")
+            self.assertNotEqual(original, policy_hash(root))
+
+    def test_forks_and_other_pr_authors_never_run(self):
+        valid = {"head": {"repo": {"full_name": "unknown6003/tessera"}},
+                 "base": {"repo": {"full_name": "unknown6003/tessera"}}, "user": {"login": "unknown6003"}}
+        self.assertTrue(trusted_pull(valid))
+        for field in ("head", "base", "user", "deleted"):
+            pull = copy.deepcopy(valid)
+            if field in ("head", "base"): pull[field]["repo"]["full_name"] = "fork/tessera"
+            if field == "user": pull["user"]["login"] = "someone-else"
+            if field == "deleted": pull["head"]["repo"] = None
+            self.assertFalse(trusted_pull(pull))
+
+    def test_real_timeout_cannot_leave_a_child_running(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            child = "import time,pathlib; time.sleep(1); pathlib.Path('escaped').write_text('bad')"
+            leader = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',sys.argv[1]]); time.sleep(5)"
+            with self.assertRaises(RuntimeError):
+                run([sys.executable, "-c", leader, child], cwd=root, log=root / "deadline.log", timeout=0.1)
+            time.sleep(1.1)
+            self.assertFalse((root / "escaped").exists())
+            self.assertFalse((root / "deadline.log.pid").exists())
+
+    def test_successful_leader_also_stops_its_children(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            child = "import time,pathlib; time.sleep(1); pathlib.Path('escaped').write_text('bad')"
+            run([sys.executable, "-c", "import subprocess,sys; subprocess.Popen([sys.executable,'-c',sys.argv[1]])", child],
+                cwd=root, log=root / "finished.log", timeout=5)
+            time.sleep(1.1)
+            self.assertFalse((root / "escaped").exists())
+
+    def test_relative_p99_regression_is_not_silently_accepted(self):
+        before = {"metadata": {"hardware": "M1"}, "cohorts": {"wide100k": {"empiricalP99MS": 1000}}}
+        after = copy.deepcopy(before)
+        after["cohorts"]["wide100k"]["empiricalP99MS"] = 2000
+        with self.assertRaises(ValueError): regression(after, before)
+        after["cohorts"]["wide100k"]["empiricalP99MS"] = 1200
+        regression(after, before)
+        after["metadata"]["hardware"] = "different"
+        with self.assertRaises(ValueError): regression(after, before)
+
+
+if __name__ == "__main__":
+    unittest.main()

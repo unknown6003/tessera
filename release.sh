@@ -36,6 +36,8 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO
 
 python3 tools/validate_release.py
 
+python3 -m ci.verify_release --key "${TESSERA_CI_KEY_FILE:-$HOME/.local/share/tessera-ci/attestation.key}"
+
 # --- locate the Developer ID identity ---
 DEV_ID="${DEV_ID:-$(security find-identity -v -p codesigning 2>/dev/null \
   | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')}"
