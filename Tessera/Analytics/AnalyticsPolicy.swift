@@ -67,6 +67,13 @@ enum AnalyticsSource: String, Sendable {
     }
 }
 
+enum AnalyticsRunPolicy {
+    /// Collection is part of normal app runs. Automation must never pollute production data.
+    static func collects(environment: [String: String]) -> Bool {
+        !environment.keys.contains { $0.hasPrefix("SO_") || $0.hasPrefix("XCTest") }
+    }
+}
+
 enum AnalyticsPolicy {
     static let flagKeys: Set<String> = ["tessera-compact-legend", "tessera-feedback-survey"]
     static let variants: Set<String> = ["control", "compact", "expanded", "enabled", "disabled"]

@@ -4,7 +4,7 @@ A fast, private, native macOS disk visualizer and cleaner. Scan any disk, cloud
 folder, or network share; see what's using space in an interactive sunburst;
 and review cleanup with duplicate detection, an app
 uninstaller, dev-junk cleanup, and hidden-space tools. Disk analysis runs on your
-Mac. Optional anonymous diagnostics contain no file names, paths or contents.
+Mac. Anonymous diagnostics contain no file names, paths or contents.
 
 **Free and open source** under the [GPL-3.0](LICENSE).
 
@@ -46,13 +46,13 @@ Mac. Optional anonymous diagnostics contain no file names, paths or contents.
 Disk contents and file paths stay on your Mac. Sparkle checks for signed updates.
 Tessera also reads any network shares you choose to scan.
 
-Anonymous PostHog analytics is optional and off by default. Turn it on in
-Settings to share fixed screen names, scan times, counts, source type and cleanup
+Tessera sends anonymous usage and performance data through PostHog in normal
+app runs. Collection is enabled in the build and has no in-app off switch.
+It includes fixed screen names, scan times, counts, source type and cleanup
 outcomes. No file names, paths, contents, searches or account names enter those
 payloads. Crash reports omit error text and file paths. Location enrichment is
-off. PostHog receives the network connection. Turning sharing off cancels
-analytics requests and clears the local queue and random anonymous ID. It cannot
-recall data already sent. There is no screen recording or account.
+off. PostHog receives the network connection. There is no screen recording or
+account. Automated tests and benchmarks do not send production analytics.
 
 ## Requirements
 

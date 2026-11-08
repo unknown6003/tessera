@@ -49,19 +49,22 @@ Its design changes have not had a fresh native score review. The initial
 Opus scorecards and reference images are preserved in `opus-reviews/`.
 No Tessera area is qualified at 9/10 yet.
 
-The second Opus implementation failed twice before edits with the Claude rate
-limit. Native Opus work failed with `503 auth_unavailable`, then the rate limit.
-The first implementation and its locked child workspace remain preserved.
+The second Opus implementation recovered after provider failures. It is integrated
+at `e9a2e5a`. Native qualification of `c0f1872` passed 83 tests and Release,
+but found inactive list keys, list rows overlapping Review, and poor narrow
+window names and map size. These need another implementation and native check.
+No new score is justified yet.
 
-The next CI campaign requests 400 full pipelines, 100 each for mixed 20,000
-files, a 100,000-file folder, a 420-level tree and 2,000 long Unicode names.
-Its report requires the exact case inventory and hardware, workload, cache
-and coverage data. It qualifies only those warm-cache runner cohorts. Broader
-local-drive and device p99 remains unproved.
+All 400 warm-cache pipeline trials passed on the CI VM at the exact `02c6a34`
+source tree. See `native/02c6a34/` for raw rows, provenance and cohort p99.
+The widest cohort had a 7.10 second p99. The worst heartbeat gap was 819 ms.
+This proves only those four runner workloads. Broader drive and device p99
+and wide-folder UI responsiveness remain open.
 
-The official PostHog SDK and anonymous boundary compile, but the Tessera
-project token is still empty. The private control-key card timed out without
-a reply. Another app's ingest key was not reused. Live ingestion, dashboards,
-flag and survey setup, and dSYM upload remain blocked on dedicated access.
-The SDK cannot provide macOS replay or built-in macOS survey UI. The fixed
-native rating flow is the supported survey route.
+Tessera now has a dedicated EU PostHog project, ID 340688, its own public ingest
+token and a project-scoped control key in the shared vault. Normal configured
+builds collect anonymous data without an opt-out, per Ammar's updated request.
+Automated tests and benchmarks remain excluded. Live ingestion, server
+resources and dSYM upload still need verification. The SDK cannot provide
+macOS replay or built-in macOS survey UI. The fixed native rating flow is the
+supported survey route.

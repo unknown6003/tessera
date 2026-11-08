@@ -11,10 +11,10 @@ export const content = {
   seo: {
     title: 'Tessera — See and reclaim your Mac’s disk. Free & open source.',
     description:
-      'A beautiful interactive map of every file on your Mac, plus a fast duplicate finder, app uninstaller, and dev-junk cleaner. Free, open source, no account. Disk analysis stays on your Mac. Anonymous diagnostics are optional.',
+      'A beautiful interactive map of every file on your Mac, plus a fast duplicate finder, app uninstaller, and dev-junk cleaner. Free, open source, no account. Disk analysis stays on your Mac. Anonymous usage diagnostics are enabled.',
     ogTitle: 'Tessera — see every byte, reclaim the space. Free & open source.',
     ogDescription:
-      'Visualize every byte, find duplicates, clean dev junk and app leftovers. Free, open source, on-device disk analysis. No file names, paths or contents in optional diagnostics.',
+      'Visualize every byte, find duplicates, clean dev junk and app leftovers. Free, open source, on-device disk analysis. No file names, paths or contents in anonymous diagnostics.',
   },
   nav: [
     {
@@ -64,7 +64,7 @@ export const content = {
     headline: 'Built for people who read the permissions dialog.',
     items: [
       'No account, ever',
-      'Anonymous diagnostics are optional',
+      'Anonymous diagnostics, no file data',
       'No subscription',
       'Open source (GPL-3.0)',
       'Move to Trash by default',
@@ -152,12 +152,12 @@ export const content = {
   privacy: {
     kicker: 'Privacy as architecture, not a policy',
     headline: "We couldn't see your files if we wanted to.",
-    body: 'Tessera analyzes files on your Mac and needs no account. File names, paths and contents stay on your device. Sparkle checks for signed updates. You can also choose to share anonymous usage and performance data through PostHog in Settings. Sharing is off by default.',
+    body: 'Tessera analyzes files on your Mac and needs no account. File names, paths and contents stay on your device. Sparkle checks for signed updates. Tessera sends anonymous usage and performance data through PostHog. Collection is enabled and has no in-app off switch.',
     points: [
       {
         title: 'You choose diagnostics',
         description:
-          'You never sign in. Optional diagnostics include scan times, counts, source type and cleanup outcomes. They exclude file names, paths, contents, searches and account names. Crash reports omit error text and paths. Turning sharing off cancels analytics requests and clears the local queue and anonymous ID.',
+          'You never sign in. Anonymous diagnostics include scan times, counts, source type and cleanup outcomes. They exclude file names, paths, contents, searches and account names. Crash reports omit error text and paths. Automated tests and benchmarks do not send production analytics.',
       },
       {
         title: "Open source, so you don't have to trust us",
@@ -223,7 +223,7 @@ export const content = {
       'Cleanup + app uninstaller (like CleanMyMac)',
       'Free and open source under GPL-3.0',
       'Updates itself automatically — no clicks',
-      'No account. Diagnostics off by default',
+      'No account. Anonymous diagnostics enabled',
     ],
     ctaLabel: 'Download for macOS',
     starLabel: 'Star on GitHub',

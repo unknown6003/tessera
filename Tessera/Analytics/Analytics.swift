@@ -40,8 +40,7 @@ struct AnalyticsFlagSnapshot: Sendable {
 }
 
 enum AnalyticsCrashStorage {
-    /// The native crash handler cannot be uninstalled. A new consent period
-    /// must discard reports it may have written while collection was disabled.
+    /// Discard reports from builds before the current anonymous payload policy.
     static func purge(cacheRoot: URL, bundleIdentifier: String) throws {
         guard bundleIdentifier == "com.abdwy.Tessera" else { throw CocoaError(.fileWriteNoPermission) }
         let report = cacheRoot.appendingPathComponent("com.plausiblelabs.crashreporter.data")
@@ -55,12 +54,12 @@ private actor AnalyticsBackend {
     private var sdk: PostHogSDK?
     private var configuration: AnalyticsConfiguration?
 
-    func start(_ configuration: AnalyticsConfiguration, generation: UInt64, newConsentPeriod: Bool) -> Bool {
+    func start(_ configuration: AnalyticsConfiguration, generation: UInt64, initializeStorage: Bool) -> Bool {
         guard AnalyticsNetworkGate.shared.allows(generation) else { return false }
         if sdk != nil { stop(eraseStorage: false) }
-        if newConsentPeriod {
+        if initializeStorage {
             do { try purgeStorage(configuration) }
-            catch { return false } // Do not upload a report with unknown consent.
+            catch { return false } // Reject reports from before the current payload policy.
         }
         self.configuration = configuration
         let config = PostHogConfig(projectToken: configuration.projectToken, host: configuration.host)
@@ -102,8 +101,8 @@ private actor AnalyticsBackend {
             return record
         }
         let sdk = PostHogSDK.with(config)
-        // Our explicit consent is authoritative. A prior stop may have left
-        // the SDK's own persisted opt-out bit set.
+        // Normal runs collect anonymous data. Ignore an SDK opt-out bit left by
+        // a previous build or an internal shutdown.
         sdk.optIn()
         self.sdk = sdk
         return true
@@ -168,7 +167,7 @@ private actor AnalyticsBackend {
 @MainActor
 final class Analytics: ObservableObject {
     static let shared = Analytics()
-    @Published private(set) var isEnabled: Bool
+    @Published private(set) var isEnabled = false
     @Published private(set) var isConfigured = false
     @Published private(set) var compactLegend = false
     @Published private(set) var surveyID: UUID?
@@ -180,32 +179,21 @@ final class Analytics: ObservableObject {
     private var lastScreen: AnalyticsScreen?
     private var setupTask: Task<Void, Never>?
     private var pendingUpdateOutcome: AnalyticsUpdateOutcome?
-    private static let enabledKey = "TesseraAnonymousAnalyticsEnabled"
-    private static let consentPeriodKey = "TesseraAnalyticsConsentPeriodActive"
+    private static let storagePolicyKey = "TesseraAnalyticsAnonymousStoragePolicyV1"
 
     static var isSuppressed: Bool {
-        let env = ProcessInfo.processInfo.environment
-        return env.keys.contains(where: { $0.hasPrefix("SO_") || $0.hasPrefix("XCTest") })
-            || env["TESSERA_DISABLE_ANALYTICS"] == "1"
+        !AnalyticsRunPolicy.collects(environment: ProcessInfo.processInfo.environment)
     }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        // Prior releases promised no analytics. Existing users make an explicit choice.
-        isEnabled = defaults.bool(forKey: Self.enabledKey)
     }
 
     func start() {
         guard !started, !Self.isSuppressed else { return }
         started = true
         isConfigured = AnalyticsConfiguration.load() != nil
-        configure()
-    }
-
-    func setEnabled(_ enabled: Bool) {
-        guard !Self.isSuppressed else { return }
-        isEnabled = enabled
-        defaults.set(enabled, forKey: Self.enabledKey)
+        isEnabled = isConfigured
         configure()
     }
 
@@ -218,16 +206,15 @@ final class Analytics: ObservableObject {
         surveyQuestionID = nil
         lastScreen = nil
         let configuration = isEnabled && !Self.isSuppressed ? AnalyticsConfiguration.load() : nil
-        if configuration == nil { defaults.set(false, forKey: Self.consentPeriodKey) }
-        let newConsentPeriod = !defaults.bool(forKey: Self.consentPeriodKey)
+        let initializeStorage = !defaults.bool(forKey: Self.storagePolicyKey)
         AnalyticsNetworkGate.shared.configure(generation: revision, hosts: configuration?.allowedHosts ?? [])
         setupTask = Task {
             await backend.stop(eraseStorage: configuration == nil)
             guard !Task.isCancelled, let configuration else { return }
-            let didStart = await backend.start(configuration, generation: revision, newConsentPeriod: newConsentPeriod)
+            let didStart = await backend.start(configuration, generation: revision, initializeStorage: initializeStorage)
             guard !Task.isCancelled, generation == revision else { return }
             guard didStart else { return }
-            defaults.set(true, forKey: Self.consentPeriodKey)
+            defaults.set(true, forKey: Self.storagePolicyKey)
             await backend.capture(AnalyticsEvent.appOpened.rawValue, values: [:])
             if let outcome = pendingUpdateOutcome {
                 pendingUpdateOutcome = nil

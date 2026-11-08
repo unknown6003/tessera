@@ -2,8 +2,24 @@ import Foundation
 import Testing
 @testable import Tessera
 
-@Suite("Analytics privacy and consent")
+@Suite("Anonymous analytics policy")
 struct AnalyticsTests {
+    @Test("Normal builds collect without a user preference or environment opt-out")
+    func normalCollectionPolicy() {
+        #expect(AnalyticsRunPolicy.collects(environment: [:]))
+        #expect(AnalyticsRunPolicy.collects(environment: ["TESSERA_DISABLE_ANALYTICS": "1"]))
+        #expect(!AnalyticsRunPolicy.collects(environment: ["SO_BENCH": "/owned/fixture"]))
+        #expect(!AnalyticsRunPolicy.collects(environment: ["SO_AUTOSCAN": "/owned/fixture"]))
+        #expect(!AnalyticsRunPolicy.collects(environment: ["XCTestConfigurationFilePath": "/test/config"]))
+    }
+
+    @Test("The app build has its own valid public ingest configuration")
+    func configuredBuild() throws {
+        let configuration = try #require(AnalyticsConfiguration.load())
+        #expect(configuration.host == "https://eu.i.posthog.com")
+        #expect(configuration.projectToken.count > 20)
+    }
+
     @Test("Late progress cannot replace final scan telemetry")
     func finalTelemetryWins() {
         let telemetry = ScanTelemetry()
@@ -23,15 +39,15 @@ struct AnalyticsTests {
         #expect(AnalyticsSource.inspect(cloud).source == .cloud)
     }
 
-    @Test("A new consent period removes only Tessera's pending native crash")
-    func discardOptedOutCrash() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tessera-crash-consent-\(UUID())")
+    @Test("Storage migration removes only Tessera's pending native crash")
+    func discardHistoricalCrash() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tessera-crash-migration-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
         let report = root.appendingPathComponent("com.plausiblelabs.crashreporter.data/com.abdwy.Tessera/live_report.plcrash")
         let other = root.appendingPathComponent("com.plausiblelabs.crashreporter.data/other.app/live_report.plcrash")
         for url in [report, other] {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Data("owned opted-out report".utf8).write(to: url)
+            try Data("owned historical report".utf8).write(to: url)
         }
         try AnalyticsCrashStorage.purge(cacheRoot: root, bundleIdentifier: "com.abdwy.Tessera")
         #expect(!FileManager.default.fileExists(atPath: report.path))
@@ -39,8 +55,8 @@ struct AnalyticsTests {
         try AnalyticsCrashStorage.purge(cacheRoot: root, bundleIdentifier: "com.abdwy.Tessera")
     }
 
-    @Test("Both SDK hosts inherit the consent generation without network traffic")
-    func consentHeaderAcrossHosts() async throws {
+    @Test("Both SDK hosts inherit the run generation without network traffic")
+    func runHeaderAcrossHosts() async throws {
         let config = AnalyticsTransport.sdkSessionConfiguration(generation: 73)
         config.protocolClasses = [AnalyticsHeaderProbe.self]
         let session = URLSession(configuration: config)
@@ -104,7 +120,7 @@ struct AnalyticsTests {
         #expect(survey["$survey_response"] == nil)
     }
 
-    @Test("Revoking consent rejects old and future requests until a new run is enabled")
+    @Test("Stopping a run rejects stale requests until the next valid run")
     func networkGate() {
         let gate = AnalyticsNetworkGate()
         let session = URLSession(configuration: .ephemeral)

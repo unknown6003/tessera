@@ -21,7 +21,7 @@
 	<key>CFBundleVersion</key>
 	<string>12</string>
 	<key>PostHogProjectToken</key>
-	<string></string>
+	<string>phc_nf4hQ5GYH2TKqyQeem38YncqSZKn3jwmthkpp2LQoddH</string>
 	<key>PostHogHost</key>
 	<string>https://eu.i.posthog.com</string>
 	<key>LSApplicationCategoryType</key>

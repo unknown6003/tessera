@@ -18,9 +18,10 @@ Sources checked on 8 November 2026:
 
 Use a random anonymous install ID. Never identify a person or register person
 properties. Disable GeoIP enrichment. Every event passes a typed allowlist
-before it enters the SDK, then a final SDK before-send filter. Keep automated
-runs and tests disabled by default. Provide a clear setting to stop collection
-and erase the local queue and ID.
+before it enters the SDK, then a final SDK before-send filter. Collect in normal configured builds, with no user preference or manual
+environment opt-out. Automated runs and tests must stay excluded from production
+analytics. This replaces the prior optional policy at Ammar's explicit request
+on 8 November 2026. Settings must state what is sent.
 
 No names, paths, search text, contents, volume labels, account names, hardware
 serials or raw error messages may enter any event, log or crash report. Keep
@@ -46,7 +47,8 @@ visible in the capability report.
 
 ## Access
 
-The existing local PostHog credential is an ingest token for another project.
-Do not send Tessera data to it. A dedicated Tessera project token and control
-API access are needed for live ingestion, dashboards, flags, surveys and dSYM
-upload. The private input is the only route for a new personal API key.
+Tessera has a dedicated EU project, ID 340688, in its own Tessera organization.
+The public ingest token is embedded in the app. The project-scoped private
+control key is stored only in the shared vault as `posthog-tessera`. The key
+can configure product analytics, flags, experiments, surveys and error tracking.
+No personal API key enters the app, source or build artifact.
