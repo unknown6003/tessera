@@ -6,7 +6,7 @@ DerivedData/
 __pycache__/
 
 # Disk-analysis cloud backends are not shipped. File names, paths and contents
-# must stay on-device; optional anonymous diagnostics use the typed SDK boundary.
+# must stay on-device; anonymous diagnostics use the typed SDK boundary.
 backend/
 
 # Release artifacts (signed builds, appcast) produced by release.sh

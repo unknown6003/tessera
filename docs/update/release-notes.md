@@ -22,6 +22,6 @@ Scan time depends on the device, filesystem, permissions and provider state.
 Partial coverage stays marked. This release does not promise a complete scan of
 every possible drive in two minutes.
 
-This release stays in the 0.x series. Anonymous PostHog diagnostics are optional
-and off by default. Scan times include outcomes above the 120-second local-drive
+This release stays in the 0.x series. Anonymous PostHog diagnostics collect in normal
+configured builds with no in-app off switch. Tests and benchmarks stay excluded. Scan times include outcomes above the 120-second local-drive
 performance goal. That goal is not a scan timeout.

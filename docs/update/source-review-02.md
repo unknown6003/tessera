@@ -56,3 +56,19 @@ New consent also requires successful deletion of this project's SDK storage
 before setup, so a failed opt-out erase cannot reuse the old queue or ID.
 Normal enabled launches retain the same consent period. All these native paths
 still need the new CI and live SDK checks.
+
+## Always-on policy delta, 9f16d6d
+
+Three independent native Codex source reads covered `c0f1872..9f16d6d` on
+Standards, Spec and Risk. The latest user instruction makes anonymous
+collection part of every normal configured run, without an opt-out. Tests and
+benchmarks stay excluded. The token is public; private control access stays in
+the vault and CI secret.
+
+Standards retained no finding. Spec found one stale web heading, "You choose
+diagnostics", above the new always-on text. Source inspection confirmed it;
+the heading now reads "Anonymous diagnostics". Risk retained no finding.
+Settings' temporary old setter was excluded because the Opus writer owned its
+replacement. That change is now integrated in `a18a0b5`. These source reads do
+not prove native default collection or live ingestion. The later real-SDK wire
+probe and symbol-upload changes need their own validation.

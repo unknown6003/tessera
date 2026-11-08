@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@preconcurrency import PostHog
 @testable import Tessera
 
 @Suite("Anonymous analytics policy")
@@ -18,6 +19,57 @@ struct AnalyticsTests {
         let configuration = try #require(AnalyticsConfiguration.load())
         #expect(configuration.host == "https://eu.i.posthog.com")
         #expect(configuration.projectToken.count > 20)
+    }
+
+    @Test("The configured SDK sends only allowed events and logs through an intercepted transport")
+    func sdkWirePayload() async throws {
+        let token = "phc_owned_probe_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        let configuration = AnalyticsConfiguration(projectToken: token, host: "https://eu.i.posthog.com")
+        AnalyticsNetworkGate.shared.configure(generation: 91, hosts: configuration.allowedHosts)
+        let config = AnalyticsSDKConfiguration.make(configuration, generation: 91)
+        #expect(config.errorTrackingConfig.autoCapture)
+        #expect(config.personProfiles == .never)
+        #expect(config.disableGeoIp && !config.captureApplicationLifecycleEvents && !config.captureScreenViews)
+        // No crash handler or external request runs in this test process.
+        config.errorTrackingConfig.autoCapture = false
+        config.urlSessionConfiguration?.protocolClasses = [AnalyticsWireProbe.self]
+        config.compression = .none
+        config.flushAt = 1
+        AnalyticsWireProbe.requests.clear()
+        let sdk = PostHogSDK.with(config)
+        sdk.optIn()
+        defer {
+            sdk.close()
+            AnalyticsNetworkGate.shared.configure(generation: 92, hosts: [])
+            if let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
+               let bundle = Bundle.main.bundleIdentifier {
+                try? FileManager.default.removeItem(at: base.appendingPathComponent(bundle).appendingPathComponent(token))
+            }
+        }
+        let sentinel = "owned_sensitive_sentinel"
+        sdk.capture(AnalyticsEvent.scanCompleted.rawValue, properties: ["source_class": "local_unknown",
+            "coverage": "complete", "duration_ms": 121000, "path": sentinel, "$set": ["name": sentinel]])
+        sdk.capture(sentinel, properties: [:])
+        sdk.captureLog("scan_complete", level: .info, attributes: ["duration_ms": 121000, "path": sentinel])
+        sdk.flush()
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline && !AnalyticsWireProbe.requests.hasEventAndLog {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let bodies = AnalyticsWireProbe.requests.snapshot
+        #expect(AnalyticsWireProbe.requests.hasEventAndLog)
+        for body in bodies {
+            let text = String(decoding: body, as: UTF8.self)
+            #expect(!text.contains(sentinel))
+        }
+        let batches = bodies.compactMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            .flatMap { $0["batch"] as? [[String: Any]] ?? [] }
+        let event = try #require(batches.first { $0["event"] as? String == AnalyticsEvent.scanCompleted.rawValue })
+        let properties = try #require(event["properties"] as? [String: Any])
+        #expect(properties["duration_ms"] as? Int == 121000)
+        #expect(properties["application"] as? String == "Tessera")
+        #expect(properties["$process_person_profile"] as? Bool == false)
+        #expect(UUID(uuidString: event["distinct_id"] as? String ?? "") != nil)
     }
 
     @Test("Late progress cannot replace final scan telemetry")
@@ -149,4 +201,45 @@ private final class AnalyticsHeaderProbe: URLProtocol, @unchecked Sendable {
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+}
+
+/// Intercepts the real SDK before DNS or HTTP. It never forwards a request.
+private final class AnalyticsWireProbe: URLProtocol, @unchecked Sendable {
+    static let requests = AnalyticsWireRequests()
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard let url = request.url else { return }
+        var body = request.httpBody ?? Data()
+        if body.isEmpty, let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable && body.count < 1_000_000 {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                guard count > 0 else { break }
+                body.append(contentsOf: buffer.prefix(count))
+            }
+        }
+        Self.requests.append(body, path: url.path)
+        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                                       headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        let reply = url.path.hasPrefix("/flags")
+            ? "{\"flags\":{},\"errorsWhileComputingFlags\":false}"
+            : "{\"status\":1}"
+        client?.urlProtocol(self, didLoad: Data(reply.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+private final class AnalyticsWireRequests: @unchecked Sendable {
+    private let lock = NSLock()
+    private var bodies: [Data] = []
+    private var paths: Set<String> = []
+    var snapshot: [Data] { lock.withLock { bodies } }
+    var hasEventAndLog: Bool { lock.withLock { paths.contains("/batch") && paths.contains("/i/v1/logs") } }
+    func clear() { lock.withLock { bodies.removeAll(); paths.removeAll() } }
+    func append(_ body: Data, path: String) { lock.withLock { bodies.append(body); paths.insert(path) } }
 }

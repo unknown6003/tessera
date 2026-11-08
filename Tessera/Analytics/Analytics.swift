@@ -50,18 +50,8 @@ enum AnalyticsCrashStorage {
     }
 }
 
-private actor AnalyticsBackend {
-    private var sdk: PostHogSDK?
-    private var configuration: AnalyticsConfiguration?
-
-    func start(_ configuration: AnalyticsConfiguration, generation: UInt64, initializeStorage: Bool) -> Bool {
-        guard AnalyticsNetworkGate.shared.allows(generation) else { return false }
-        if sdk != nil { stop(eraseStorage: false) }
-        if initializeStorage {
-            do { try purgeStorage(configuration) }
-            catch { return false } // Reject reports from before the current payload policy.
-        }
-        self.configuration = configuration
+enum AnalyticsSDKConfiguration {
+    static func make(_ configuration: AnalyticsConfiguration, generation: UInt64) -> PostHogConfig {
         let config = PostHogConfig(projectToken: configuration.projectToken, host: configuration.host)
         config.personProfiles = .never
         config.setDefaultPersonProperties = false
@@ -100,6 +90,23 @@ private actor AnalyticsBackend {
             if let id = record.distinctId, UUID(uuidString: id) == nil { record.distinctId = nil }
             return record
         }
+        return config
+    }
+}
+
+private actor AnalyticsBackend {
+    private var sdk: PostHogSDK?
+    private var configuration: AnalyticsConfiguration?
+
+    func start(_ configuration: AnalyticsConfiguration, generation: UInt64, initializeStorage: Bool) -> Bool {
+        guard AnalyticsNetworkGate.shared.allows(generation) else { return false }
+        if sdk != nil { stop(eraseStorage: false) }
+        if initializeStorage {
+            do { try purgeStorage(configuration) }
+            catch { return false } // Reject reports from before the current payload policy.
+        }
+        self.configuration = configuration
+        let config = AnalyticsSDKConfiguration.make(configuration, generation: generation)
         let sdk = PostHogSDK.with(config)
         // Normal runs collect anonymous data. Ignore an SDK opt-out bit left by
         // a previous build or an internal shutdown.

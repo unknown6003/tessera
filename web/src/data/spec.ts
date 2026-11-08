@@ -155,7 +155,7 @@ export const content = {
     body: 'Tessera analyzes files on your Mac and needs no account. File names, paths and contents stay on your device. Sparkle checks for signed updates. Tessera sends anonymous usage and performance data through PostHog. Collection is enabled and has no in-app off switch.',
     points: [
       {
-        title: 'You choose diagnostics',
+        title: 'Anonymous diagnostics',
         description:
           'You never sign in. Anonymous diagnostics include scan times, counts, source type and cleanup outcomes. They exclude file names, paths, contents, searches and account names. Crash reports omit error text and paths. Automated tests and benchmarks do not send production analytics.',
       },

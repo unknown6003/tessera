@@ -234,6 +234,21 @@ jobs:
           hdiutil create -volname Tessera -srcfolder "$stage" -ov -format UDZO \
             "$updates/Tessera-$version.dmg"
 
+      - name: Upload matching native symbols to Tessera PostHog
+        env:
+          POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_TESSERA_API_KEY }}
+          POSTHOG_CLI_PROJECT_ID: '340688'
+          POSTHOG_CLI_HOST: https://eu.posthog.com
+        run: |
+          set -euo pipefail
+          [[ -n "$POSTHOG_CLI_API_KEY" ]] || { echo 'Missing dedicated PostHog symbol upload access' >&2; exit 1; }
+          python3 tools/run_bounded.py --timeout 180 --log "$RUNNER_TEMP/posthog-install.log" -- \
+            npm install --prefix "$RUNNER_TEMP/posthog-tools" --no-audit --no-fund --save-exact @posthog/cli@0.19.0
+          python3 tools/run_bounded.py --timeout 210 --log "$RUNNER_TEMP/posthog-symbols.log" -- \
+            python3 tools/upload_posthog_symbols.py \
+            --products "$RUNNER_TEMP/DerivedData/Build/Products/Release" \
+            --cli "$RUNNER_TEMP/posthog-tools/node_modules/.bin/posthog-cli"
+
       - name: Generate and verify the signed Sparkle appcast
         env:
           RELEASE_DIR: ${{ runner.temp }}/release

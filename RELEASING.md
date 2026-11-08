@@ -5,10 +5,19 @@ packaged as a **.dmg**, and auto-updated via **Sparkle**. This is the full runbo
 You need an Apple Developer account (for the Developer ID certificate + notarization)
 and a one-time Sparkle signing key.
 
-> Disk analysis stays on-device. Sparkle checks for updates. Optional anonymous
-> PostHog diagnostics are off by default. Never include file data or paths in
+> Disk analysis stays on-device. Sparkle checks for updates. Anonymous
+> PostHog diagnostics collect in normal builds with no in-app off switch. Never include file data or paths in
 > analytics. Configure only a dedicated Tessera project ingest token in the
 > processed plist; personal PostHog API keys belong in private CI/vault access.
+
+The release workflow uploads matching native debug symbols to Tessera's EU
+PostHog project before publication. It checks the app and dSYM UUIDs first and
+uses pinned `@posthog/cli@0.19.0`. It does not upload source files. The private
+project key is the Actions secret `POSTHOG_TESSERA_API_KEY`; the public ingest
+token alone is in the app. A missing key or failed symbol upload stops release.
+For a local release, run `tools/upload_posthog_symbols.py` through the shared
+`posthog-tessera` vault with the documented CLI environment aliases before
+publishing. Keep the private key out of build settings and app resources.
 
 ## 0. One-time setup
 
