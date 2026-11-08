@@ -85,3 +85,23 @@ Native build, test, performance and screenshot evidence is recorded separately.
 No release may be labelled qualified until the final source revision passes the
 combined app checks. Keyboard and drag behavior need actual input proof; staged
 capture states alone do not establish it.
+
+## PR findings
+
+The GitHub Codex review of `5836a68` found two valid defects. The primary agent
+checked both against the current source and Apple's attribute definitions.
+`298201d` replaces all-fork logical size with data-fork length in the bulk record.
+It keeps allocated size across all forks. The data-fork field follows allocated
+size in bitmap order. A native resource-fork fixture checks identity, preflight
+and disposable removal. Rescan and current identity use the same size metric.
+
+The second finding was stale capacity text after cleanup. The final measurement
+now replaces the plan measurement before the result is saved. Existing capacity
+labels, target math and confirmation text all read that refreshed plan. The
+regression checks both the live plan and saved case against verification.after.
+The pure capacity check also changes total and available capacity together.
+
+The primary reviewed the small `fd1d84e` automation delta. It creates the capture
+directory, reports aggregate coverage and dismisses a lingering Review sheet
+before automatic termination. No deletion policy or production navigation
+changed. Native execution remains required for the teardown behavior.

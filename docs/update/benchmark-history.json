@@ -85,6 +85,44 @@
         "Confirmation cacheDisplay bitmap unreadable; real-window proof pending.",
         "No keyboard or drag input proof."
       ]
+    },
+    {
+      "revision": "f80598ccde649060707d9bc993ad24fee0ce8481",
+      "debugTestsPassed": 68,
+      "releaseBuild": "passed",
+      "confirmation": "Real compositor capture readable; earlier cacheDisplay bitmap was not accepted."
+    },
+    {
+      "revision": "5836a6822f5218fdd20416f6cd7e75105e5f9f13",
+      "debugTestsPassed": 68,
+      "releaseBuild": "passed",
+      "finiteUiVariants": 7,
+      "finiteAutoquit": "passed",
+      "reviewFirstOpen": "Failed: empty 100x80 sheet, fixed by a0626c4."
+    },
+    {
+      "revision": "163c245770ffde073c6aa1c6c511154b9de11251",
+      "debugTestsPassed": 69,
+      "releaseBuild": "passed",
+      "realInputProof": [
+        "Global HID drag from Media chart wedge to Cleanup List.",
+        "Populated 700x620 Review at first opening and two repeat openings.",
+        "Trash confirmation and permanent confirmation opened; AX Cancel dismissed both.",
+        "Command-Control-I opened Details once."
+      ],
+      "toolProof": [
+        "Browse by Type totals and Video expansion match known fixture.",
+        "Big & Old Files has zero matches at 1GB and 100MB.",
+        "Search example returns one 2MiB PDF in Downloads.",
+        "Duplicates returns no matches."
+      ],
+      "finiteUiVariants": 7,
+      "finiteAutoquit": "Failed at 120-second deadline; narrow teardown fix fd1d84e needs qualification.",
+      "nativeLimits": [
+        "Escape guard refused to post because frontmost PID differed.",
+        "Full keyboard focus and native query/source-change reset unproved."
+      ],
+      "fixtureHashesUnchanged": true
     }
   ],
   "evidence": [
@@ -99,6 +137,77 @@
     {
       "root": "/tmp/tessera-native-verification.1GZiGk/at2a9c99f",
       "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/atf80598c",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at5836a68",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at163c245",
+      "report": "REPORT.md"
     }
-  ]
+  ],
+  "rootAppRuns": [
+    {
+      "revision": "f80598ccde649060707d9bc993ad24fee0ce8481",
+      "configuration": "Release",
+      "completed": true,
+      "seconds": 132.56,
+      "files": 4465626,
+      "directoriesIncludingRoot": 1285043,
+      "sampledPeakRssBytes": 1647722496,
+      "heartbeatMilliseconds": 228.9,
+      "coverageGaps": null,
+      "coverageLimit": "Not logged; directory counters do not establish complete coverage."
+    },
+    {
+      "revision": "5836a6822f5218fdd20416f6cd7e75105e5f9f13",
+      "configuration": "Release",
+      "completed": true,
+      "seconds": 96.69,
+      "files": 4469000,
+      "directoriesIncludingRoot": 1285196,
+      "sampledPeakRssBytes": 1648885760,
+      "heartbeatMilliseconds": 120.8,
+      "coverageGaps": null,
+      "coverageLimit": "Not logged. This is a live root, not a controlled comparison."
+    }
+  ],
+  "controlledFixtureComparison": {
+    "revisions": [
+      "301cb2506118442f9f2b28f774fb38252dd5295c",
+      "f80598ccde649060707d9bc993ad24fee0ce8481"
+    ],
+    "files": 124581,
+    "directoriesIncludingRoot": 455,
+    "coverageGaps": 0,
+    "serialSeconds": [
+      [
+        0.645474,
+        0.608423,
+        0.63429
+      ],
+      [
+        0.619715,
+        0.618136,
+        0.681435
+      ]
+    ],
+    "medianPeakRssBytes": [
+      61538304,
+      50003968
+    ],
+    "medianChildBuildMilliseconds": [
+      18.302,
+      12.053
+    ],
+    "limits": [
+      "Alternating warm processes. Kernel cache and host load are not controlled.",
+      "Total time ranges overlap. No robust total-time gain is claimed."
+    ]
+  }
 }

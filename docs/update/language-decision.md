@@ -39,3 +39,9 @@ Try a Rust core only if final native profiles show node allocation, ARC or layou
 - Swift documents native C++ interoperability: https://www.swift.org/documentation/cxx-interop/ . A measured core replacement can stay behind the existing native app instead of requiring a whole-app rewrite.
 
 The language comparison is an engineering assessment, not a cross-language benchmark. No Rust, C++, Zig or Go scanner was measured in this update.
+
+The later classifier change completed the actual root app pipeline in 96.69
+seconds at `5836a68`. That run did not expose its coverage-gap count and the live
+filesystem changed between trials. The [qualification record](qualification.md)
+keeps those limits beside the native results. It supports improving the existing
+implementation, not a cross-language performance claim.
