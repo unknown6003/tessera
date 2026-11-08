@@ -42,7 +42,7 @@ export const content = {
     kicker: 'Native macOS · Apple Silicon · Free & open source',
     headline: 'See every byte on your Mac. Reclaim the space.',
     subhead:
-      'A gorgeous interactive sunburst maps your whole disk, then helps you clear duplicates, dev junk, and app leftovers — with no account, no telemetry, and nothing leaving your Mac. Free and open source.',
+      'An interactive sunburst maps your disk, then helps you clear duplicates, dev junk and app leftovers. Disk analysis stays on your Mac. Anonymous usage diagnostics are enabled. Free, open source, no account.',
     primaryCta: {
       label: 'Download for macOS',
       href: '#download',
@@ -53,8 +53,8 @@ export const content = {
     },
     highlights: [
       'Free & open source (GPL-3.0)',
-      'No account, no telemetry',
-      'Nothing leaves your Mac',
+      'No account needed',
+      'File data stays on your Mac',
       'Move to Trash by default',
     ],
     footnote:
@@ -167,7 +167,7 @@ export const content = {
       {
         title: 'Clear network boundaries',
         description:
-          'Tessera checks for signed updates and reads network shares you choose to scan. If you enable diagnostics, PostHog receives anonymous events and the network connection. Location enrichment is off. There is no screen recording.',
+          'Tessera checks for signed updates and reads network shares you choose to scan. PostHog receives anonymous events and the network connection. Location enrichment is off. There is no screen recording.',
       },
       {
         title: 'Outside the App Store, on purpose',
@@ -241,7 +241,7 @@ export const content = {
     },
     {
       q: 'macOS says "unidentified developer" or won\'t open it. Is that safe?',
-      a: "Yes. Tessera is a direct download outside the App Store, and the current build is unsigned, so macOS asks you to approve it on first launch. Drag Tessera to Applications, right-click it and choose Open (or open System Settings → Privacy & Security and click Open Anyway). You only do this once. Because it's open source, you can read exactly what it does — and watch it stay silent with a tool like Little Snitch.",
+      a: 'Tessera is a direct download outside the App Store. The current channel uses a stable self-signed certificate and is not notarized. macOS may ask you to approve it. Use the release linked here and check its published checksum. Disk analysis stays on your Mac; anonymous usage diagnostics and signed update checks use the network.',
     },
     {
       q: "Why isn't it on the Mac App Store?",
@@ -249,11 +249,11 @@ export const content = {
     },
     {
       q: 'How is this different from CleanMyMac?',
-      a: "Same useful jobs — cleanup, uninstalling, finding junk — without the two things people resent: the subscription and the surveillance. CleanMyMac is about $40 every year; Tessera is free and open source, with no telemetry. Plus you get a real disk visualization and a duplicate finder CleanMyMac doesn't offer.",
+      a: 'Tessera is free and open source. It has a disk map, duplicate search, app removal and developer cleanup tools. It needs no account. Anonymous usage diagnostics are enabled and exclude file names, paths and contents.',
     },
     {
       q: 'How do updates work?',
-      a: "Automatically, with nothing for you to do. Tessera checks on its own using Sparkle, then downloads, installs and relaunches the new version in the background — no store, no account, no clicks. It waits until you're not mid-scan so it never interrupts you. Every update is cryptographically signed and verified before it installs, so silent doesn't mean unchecked. It's the only thing the app does on the network without you asking.",
+      a: "Automatically, with nothing for you to do. Tessera checks on its own using Sparkle, then downloads, installs and relaunches the new version in the background — no store, no account, no clicks. It waits until you're not mid-scan so it never interrupts you. Every update is cryptographically signed and verified before it installs, so silent doesn't mean unchecked. Tessera also sends anonymous usage diagnostics. File data stays on your Mac.",
     },
     {
       q: 'What are the system requirements?',
@@ -267,7 +267,7 @@ export const content = {
   finalCta: {
     headline: 'Reclaim your disk — and your trust.',
     subhead:
-      'See every byte, clear what you don’t need, and never wonder where it goes — because nothing leaves your Mac. Free, open source, yours.',
+      'See your disk and review what to clear. File analysis stays on your Mac. Anonymous usage diagnostics help improve Tessera. Free and open source.',
     cta: {
       label: 'Download for macOS',
       href: '#download',
