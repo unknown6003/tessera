@@ -1,0 +1,79 @@
+{
+  "revision": "e21b62f214c9967d27606a2dce0f540115ab219d",
+  "method": "nearest rank; full pipeline plus 100 ms UI settle; slow and failed trials retained",
+  "scope": "Empirical p99 for these local fixture cohorts and this host. Population and other-device p99 are not established.",
+  "metadata": {
+    "hardware": "VirtualMac2,1",
+    "os": "macOS-26.7.2-arm64-arm-64bit-Mach-O",
+    "memoryBytes": 7516192768,
+    "cacheState": "warm filesystem cache; fixtures written immediately before trials; mixed20k also scanned earlier",
+    "workload": [
+      {
+        "cohort": "ci_mixed20k",
+        "files": 20000,
+        "directories": 251,
+        "trials": 100
+      },
+      {
+        "cohort": "ci_wide100k",
+        "files": 100000,
+        "directories": 1,
+        "trials": 100
+      },
+      {
+        "cohort": "ci_deep420",
+        "files": 420,
+        "directories": 421,
+        "trials": 100
+      },
+      {
+        "cohort": "ci_unicode2k",
+        "files": 2000,
+        "directories": 1,
+        "trials": 100
+      }
+    ]
+  },
+  "cohorts": {
+    "ci_deep420": {
+      "samples": 100,
+      "empiricalP99MS": 534.726166,
+      "maxMS": 576.684042,
+      "over120Seconds": 0,
+      "failedOrPartial": 0,
+      "cloudRemoteOrUnknown": 0,
+      "longestHeartbeatMS": 263.71475,
+      "goalMetForThisCohort": true
+    },
+    "ci_mixed20k": {
+      "samples": 100,
+      "empiricalP99MS": 830.906375,
+      "maxMS": 1029.723333,
+      "over120Seconds": 0,
+      "failedOrPartial": 0,
+      "cloudRemoteOrUnknown": 0,
+      "longestHeartbeatMS": 614.423584,
+      "goalMetForThisCohort": true
+    },
+    "ci_unicode2k": {
+      "samples": 100,
+      "empiricalP99MS": 467.849208,
+      "maxMS": 529.134416,
+      "over120Seconds": 0,
+      "failedOrPartial": 0,
+      "cloudRemoteOrUnknown": 0,
+      "longestHeartbeatMS": 310.098125,
+      "goalMetForThisCohort": true
+    },
+    "ci_wide100k": {
+      "samples": 100,
+      "empiricalP99MS": 7103.306875,
+      "maxMS": 8153.349125,
+      "over120Seconds": 0,
+      "failedOrPartial": 0,
+      "cloudRemoteOrUnknown": 0,
+      "longestHeartbeatMS": 818.561292,
+      "goalMetForThisCohort": true
+    }
+  }
+}
