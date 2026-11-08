@@ -47,14 +47,30 @@ enum DeletionService {
         }
     }
 
+    struct AncestorIdentity: Sendable {
+        let path: String
+        let device: UInt32
+        let inode: UInt64
+    }
+
     struct PreparedRemoval: Sendable {
         let url: URL
         let identity: ScanIdentity?
         let check: DeletionPreflight
+        let ancestors: [AncestorIdentity]
     }
 
     static func prepare(_ node: FileNode) -> PreparedRemoval {
-        PreparedRemoval(url: node.url, identity: node.scanIdentity, check: preflight(node))
+        var ancestors: [AncestorIdentity] = []
+        var cursor = node.parent
+        while let parent = cursor {
+            if let identity = parent.scanIdentity, let device = identity.device, let inode = identity.inode {
+                ancestors.append(AncestorIdentity(path: parent.url.path, device: device, inode: inode))
+            }
+            cursor = parent.parent
+        }
+        return PreparedRemoval(url: node.url, identity: node.scanIdentity, check: preflight(node),
+                               ancestors: ancestors)
     }
 
     /// The immutable target crosses back from validation before the final action.
@@ -62,6 +78,13 @@ enum DeletionService {
     static func perform(_ target: PreparedRemoval, permanently: Bool) -> DeletionError? {
         guard target.check == .ready else {
             return DeletionError(url: target.url, underlying: PreflightError(result: target.check))
+        }
+        for ancestor in target.ancestors {
+            var stat = Darwin.stat()
+            guard Darwin.lstat(ancestor.path, &stat) == 0, stat.st_mode & S_IFMT == S_IFDIR,
+                  UInt32(bitPattern: stat.st_dev) == ancestor.device, UInt64(stat.st_ino) == ancestor.inode else {
+                return DeletionError(url: target.url, underlying: PreflightError(result: .identityChanged))
+            }
         }
         guard let expected = target.identity,
               let current = ScanIdentity.current(at: target.url), expected.matches(current) else {

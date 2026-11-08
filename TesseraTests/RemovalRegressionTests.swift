@@ -37,6 +37,24 @@ struct RemovalRegressionTests {
         #expect(FileManager.default.fileExists(atPath: nested.path))
     }
 
+    @Test("A parent replaced by a symlink after preparation cannot redirect removal")
+    func replacedAncestor() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let original = url.appendingPathComponent("original")
+        let moved = url.appendingPathComponent("moved")
+        try FileManager.default.createDirectory(at: original, withIntermediateDirectories: true)
+        try Data([1]).write(to: original.appendingPathComponent("data"))
+        let root = try await FileScanner.scan(url: url) { _ in }
+        let file = try #require(root.children.first?.children.first)
+        let prepared = DeletionService.prepare(file)
+        #expect(prepared.check == .ready)
+        try FileManager.default.moveItem(at: original, to: moved)
+        try FileManager.default.createSymbolicLink(at: original, withDestinationURL: moved)
+        #expect(DeletionService.perform(prepared, permanently: true) != nil)
+        #expect(FileManager.default.fileExists(atPath: moved.appendingPathComponent("data").path))
+    }
+
     @Test("Old saved results decode as recoverable Trash moves")
     func oldResultCompatibility() throws {
         let json = Data("""
