@@ -4,6 +4,34 @@ import Testing
 
 @Suite("Analytics privacy and consent")
 struct AnalyticsTests {
+    @Test("A new consent period removes only Tessera's pending native crash")
+    func discardOptedOutCrash() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tessera-crash-consent-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let report = root.appendingPathComponent("com.plausiblelabs.crashreporter.data/com.abdwy.Tessera/live_report.plcrash")
+        let other = root.appendingPathComponent("com.plausiblelabs.crashreporter.data/other.app/live_report.plcrash")
+        for url in [report, other] {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("owned opted-out report".utf8).write(to: url)
+        }
+        try AnalyticsCrashStorage.purge(cacheRoot: root, bundleIdentifier: "com.abdwy.Tessera")
+        #expect(!FileManager.default.fileExists(atPath: report.path))
+        #expect(FileManager.default.fileExists(atPath: other.path))
+        try AnalyticsCrashStorage.purge(cacheRoot: root, bundleIdentifier: "com.abdwy.Tessera")
+    }
+
+    @Test("Both SDK hosts inherit the consent generation without network traffic")
+    func consentHeaderAcrossHosts() async throws {
+        let config = AnalyticsTransport.sdkSessionConfiguration(generation: 73)
+        config.protocolClasses = [AnalyticsHeaderProbe.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        for host in ["eu.i.posthog.com", "eu-assets.i.posthog.com", "us.i.posthog.com", "us-assets.i.posthog.com"] {
+            let (data, _) = try await session.data(from: #require(URL(string: "https://\(host)/test")))
+            #expect(String(decoding: data, as: UTF8.self) == "73")
+        }
+    }
+
     @Test("Payloads drop private fields, arbitrary values and future SDK context")
     func strictPayloadBoundary() throws {
         let secret = "/Users/person/Private/secret.pdf"
@@ -72,4 +100,18 @@ struct AnalyticsTests {
         gate.configure(generation: 3, hosts: ["eu.i.posthog.com"])
         #expect(!gate.allows(1) && gate.allows(3))
     }
+}
+
+/// Replies inside URLSession. No DNS lookup or live PostHog project is used.
+private final class AnalyticsHeaderProbe: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard let url = request.url else { return }
+        client?.urlProtocol(self, didReceive: URLResponse(url: url, mimeType: "text/plain", expectedContentLength: -1, textEncodingName: "utf-8"), cacheStoragePolicy: .notAllowed)
+        let value = request.value(forHTTPHeaderField: AnalyticsTransport.generationHeader) ?? "missing"
+        client?.urlProtocol(self, didLoad: Data(value.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }

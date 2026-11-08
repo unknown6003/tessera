@@ -39,13 +39,31 @@ struct AnalyticsFlagSnapshot: Sendable {
     var surveyQuestionID: UUID?
 }
 
+enum AnalyticsCrashStorage {
+    /// The native crash handler cannot be uninstalled. A new consent period
+    /// must discard reports it may have written while collection was disabled.
+    static func purge(cacheRoot: URL, bundleIdentifier: String) throws {
+        guard bundleIdentifier == "com.abdwy.Tessera" else { throw CocoaError(.fileWriteNoPermission) }
+        let report = cacheRoot.appendingPathComponent("com.plausiblelabs.crashreporter.data")
+            .appendingPathComponent(bundleIdentifier).appendingPathComponent("live_report.plcrash")
+        do { try FileManager.default.removeItem(at: report) }
+        catch let error as CocoaError where error.code == .fileNoSuchFile { return }
+    }
+}
+
 private actor AnalyticsBackend {
     private var sdk: PostHogSDK?
     private var configuration: AnalyticsConfiguration?
 
-    func start(_ configuration: AnalyticsConfiguration, generation: UInt64) {
-        guard AnalyticsNetworkGate.shared.allows(generation) else { return }
+    func start(_ configuration: AnalyticsConfiguration, generation: UInt64, purgePendingCrash: Bool) -> Bool {
+        guard AnalyticsNetworkGate.shared.allows(generation) else { return false }
         if sdk != nil { stop(eraseStorage: false) }
+        if purgePendingCrash {
+            guard let root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first,
+                  let bundle = Bundle.main.bundleIdentifier else { return false }
+            do { try AnalyticsCrashStorage.purge(cacheRoot: root, bundleIdentifier: bundle) }
+            catch { return false } // Do not upload a report with unknown consent.
+        }
         self.configuration = configuration
         let config = PostHogConfig(projectToken: configuration.projectToken, host: configuration.host)
         config.personProfiles = .never
@@ -66,14 +84,7 @@ private actor AnalyticsBackend {
         config.logs.rateCapWindowSeconds = 60
         config.logs.serviceName = "Tessera"
         config.requestHeaders = [AnalyticsTransport.generationHeader: String(generation)]
-        let session = URLSessionConfiguration.ephemeral
-        session.protocolClasses = [AnalyticsTransport.self]
-        session.httpCookieStorage = nil
-        session.urlCredentialStorage = nil
-        session.urlCache = nil
-        session.timeoutIntervalForRequest = 10
-        session.timeoutIntervalForResource = 20
-        config.urlSessionConfiguration = session
+        config.urlSessionConfiguration = AnalyticsTransport.sdkSessionConfiguration(generation: generation)
         config.setBeforeSend { event in
             guard AnalyticsNetworkGate.shared.allows(generation), UUID(uuidString: event.distinctId) != nil,
                   let safe = AnalyticsPolicy.sanitize(event: event.event, properties: event.properties) else { return nil }
@@ -92,7 +103,12 @@ private actor AnalyticsBackend {
             if let id = record.distinctId, UUID(uuidString: id) == nil { record.distinctId = nil }
             return record
         }
-        sdk = PostHogSDK.with(config)
+        let sdk = PostHogSDK.with(config)
+        // Our explicit consent is authoritative. A prior stop may have left
+        // the SDK's own persisted opt-out bit set.
+        sdk.optIn()
+        self.sdk = sdk
+        return true
     }
 
     func stop(eraseStorage: Bool) {
@@ -145,6 +161,9 @@ private actor AnalyticsBackend {
         // Delete only this project's SDK subtree. Other app support files are unrelated.
         let directory = base.appendingPathComponent(bundle).appendingPathComponent(configuration.projectToken)
         try? FileManager.default.removeItem(at: directory)
+        if let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            try? AnalyticsCrashStorage.purge(cacheRoot: cache, bundleIdentifier: bundle)
+        }
     }
 }
 
@@ -162,7 +181,9 @@ final class Analytics: ObservableObject {
     private var started = false
     private var lastScreen: AnalyticsScreen?
     private var setupTask: Task<Void, Never>?
+    private var pendingUpdateOutcome: AnalyticsUpdateOutcome?
     private static let enabledKey = "TesseraAnonymousAnalyticsEnabled"
+    private static let crashConsentKey = "TesseraAnalyticsCrashConsentActive"
 
     static var isSuppressed: Bool {
         let env = ProcessInfo.processInfo.environment
@@ -199,13 +220,21 @@ final class Analytics: ObservableObject {
         surveyQuestionID = nil
         lastScreen = nil
         let configuration = isEnabled && !Self.isSuppressed ? AnalyticsConfiguration.load() : nil
+        if configuration == nil { defaults.set(false, forKey: Self.crashConsentKey) }
+        let purgePendingCrash = !defaults.bool(forKey: Self.crashConsentKey)
         AnalyticsNetworkGate.shared.configure(generation: revision, hosts: configuration?.allowedHosts ?? [])
         setupTask = Task {
             await backend.stop(eraseStorage: configuration == nil)
             guard !Task.isCancelled, let configuration else { return }
-            await backend.start(configuration, generation: revision)
+            let didStart = await backend.start(configuration, generation: revision, purgePendingCrash: purgePendingCrash)
             guard !Task.isCancelled, generation == revision else { return }
-            capture(.appOpened)
+            guard didStart else { return }
+            defaults.set(true, forKey: Self.crashConsentKey)
+            await backend.capture(AnalyticsEvent.appOpened.rawValue, values: [:])
+            if let outcome = pendingUpdateOutcome {
+                pendingUpdateOutcome = nil
+                await backend.capture(AnalyticsEvent.updateCompleted.rawValue, values: ["outcome": .text(outcome.rawValue)])
+            }
             let flags = await backend.flags()
             guard !Task.isCancelled, generation == revision else { return }
             compactLegend = flags.compactLegend
@@ -216,13 +245,31 @@ final class Analytics: ObservableObject {
 
     func capture(_ event: AnalyticsEvent, values: [String: AnalyticsValue] = [:]) {
         guard started, isEnabled, isConfigured, !Self.isSuppressed else { return }
-        Task { await backend.capture(event.rawValue, values: values) }
+        let revision = generation
+        let ready = setupTask
+        Task {
+            await ready?.value
+            guard generation == revision, AnalyticsNetworkGate.shared.allows(revision) else { return }
+            await backend.capture(event.rawValue, values: values)
+        }
     }
 
     func screen(_ screen: AnalyticsScreen) {
         guard lastScreen != screen, started, isEnabled, isConfigured, !Self.isSuppressed else { return }
         lastScreen = screen
-        Task { await backend.capture("$screen", values: ["$screen_name": .text(screen.rawValue)]) }
+        let revision = generation
+        let ready = setupTask
+        Task {
+            await ready?.value
+            guard generation == revision, AnalyticsNetworkGate.shared.allows(revision) else { return }
+            await backend.capture("$screen", values: ["$screen_name": .text(screen.rawValue)])
+        }
+    }
+
+    func recordUpdate(_ outcome: AnalyticsUpdateOutcome) {
+        guard !Self.isSuppressed else { return }
+        if !started { pendingUpdateOutcome = outcome; return }
+        capture(.updateCompleted, values: ["outcome": .text(outcome.rawValue)])
     }
 
     func submitRating(_ rating: Int) {

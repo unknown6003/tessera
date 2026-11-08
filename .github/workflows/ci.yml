@@ -23,10 +23,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate release policy
+      - name: Validate release and qualification tools
         run: |
           python3 tools/validate_release.py
-          python3 -m unittest discover -s tools -p 'test_release_policy.py'
+          python3 tools/run_bounded.py --timeout 30 --log "$RUNNER_TEMP/tool-tests.log" --
+            python3 -m unittest discover -s tools -p 'test_*.py'
 
       - name: Toolchain
         run: xcodebuild -version

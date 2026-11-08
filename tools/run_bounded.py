@@ -48,6 +48,10 @@ def main():
             stop_group()
             status = 124
         finally:
+            # A successful leader can leave descendants behind. This command's
+            # process group is owned, so stop any leftovers on every exit path.
+            stop_group()
+            process.wait(timeout=5)
             pid_file.unlink(missing_ok=True)
     print(f"exit={status}; log={args.log}")
     if status:

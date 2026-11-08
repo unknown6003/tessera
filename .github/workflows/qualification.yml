@@ -129,16 +129,25 @@ jobs:
           python3 - <<'PY'
           import json
           import os
+          import platform
+          import subprocess
           from pathlib import Path
           trials = [{"id": f"ci_mixed20k-{index:03}", "path": os.environ['BENCHMARK_FIXTURE'],
                      "expectedFiles": 20000, "expectedDirectories": 251} for index in range(100)]
           (Path(os.environ['RUNNER_TEMP']) / 'perf-cases.json').write_text(json.dumps(trials))
+          metadata = {"hardware": subprocess.check_output(['sysctl', '-n', 'hw.model'], timeout=5).decode().strip(),
+                      "os": platform.platform(),
+                      "memoryBytes": int(subprocess.check_output(['sysctl', '-n', 'hw.memsize'], timeout=5)),
+                      "cacheState": "warm filesystem cache; fixtures written and scanned earlier in this job",
+                      "workload": "100 full pipelines, each 20000 files in 251 directories on the runner temporary volume"}
+          (Path(os.environ['RUNNER_TEMP']) / 'perf-metadata.json').write_text(json.dumps(metadata))
           PY
           python3 tools/run_bounded.py --timeout 900 --log "$RUNNER_TEMP/perf-pipeline.log" -- \
             env SO_PERF_CASES="$RUNNER_TEMP/perf-cases.json" SO_PERF_OUTPUT="$RUNNER_TEMP/perf-results.json" \
             SO_AUTOQUIT=1 "$RUNNER_TEMP/DerivedData/Build/Products/Release/Tessera.app/Contents/MacOS/Tessera"
           python3 tools/analyze_scan_performance.py "$RUNNER_TEMP/perf-results.json" \
-            --revision "$GITHUB_SHA" --expected-per-cohort 100 --output "$RUNNER_TEMP/perf-report.json"
+            --revision "$GITHUB_SHA" --expected-per-cohort 100 --output "$RUNNER_TEMP/perf-report.json" \
+            --cases "$RUNNER_TEMP/perf-cases.json" --metadata "$RUNNER_TEMP/perf-metadata.json"
 
       - name: Save full-pipeline p99 evidence
         if: always()

@@ -37,6 +37,20 @@ final class AnalyticsNetworkGate: @unchecked Sendable {
 
 final class AnalyticsTransport: URLProtocol, URLSessionTaskDelegate, @unchecked Sendable {
     static let generationHeader = "X-Tessera-Analytics-Generation"
+
+    static func sdkSessionConfiguration(generation: UInt64) -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.ephemeral
+        // SDK requestHeaders cover ingestion only. Session headers also reach
+        // its asset-host remote configuration request.
+        config.httpAdditionalHeaders = [generationHeader: String(generation)]
+        config.protocolClasses = [AnalyticsTransport.self]
+        config.httpCookieStorage = nil
+        config.urlCredentialStorage = nil
+        config.urlCache = nil
+        config.timeoutIntervalForRequest = 10
+        config.timeoutIntervalForResource = 20
+        return config
+    }
     private let requestID = UUID()
     private let lock = NSLock()
     private var session: URLSession?

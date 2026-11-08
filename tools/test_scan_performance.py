@@ -10,6 +10,18 @@ def trials(count=100):
 
 
 class PerformanceReportTests(unittest.TestCase):
+    def test_missing_cohort_or_extra_trial_fails_inventory_check(self):
+        rows = trials()
+        expected = [row["id"] for row in rows] + ["deep-000"]
+        with self.assertRaises(ValueError):
+            summarize(rows, expected_ids=expected)
+        with self.assertRaises(ValueError):
+            summarize(rows, expected_ids=[row["id"] for row in rows[:-1]])
+
+    def test_cannot_lower_sample_floor(self):
+        with self.assertRaises(ValueError):
+            summarize(trials(3), expected_per_cohort=3)
+
     def test_does_not_claim_p99_from_a_small_sample(self):
         report = summarize(trials(3))["wide"]
         self.assertIsNone(report["empiricalP99MS"])

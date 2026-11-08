@@ -100,7 +100,18 @@ final class UpdaterController: ObservableObject {
     /// Whether a manual check can run right now. Drives the menu item.
     @Published var canCheckForUpdates = false
     /// What the updater is doing, for the menu item's title.
-    @Published var status: UpdateStatus = .idle
+    @Published var status: UpdateStatus = .idle {
+        didSet {
+            guard oldValue != status else { return }
+            switch status {
+            case .upToDate: Analytics.shared.recordUpdate(.upToDate)
+            case .failed: Analytics.shared.recordUpdate(.failed)
+            case .installing: Analytics.shared.recordUpdate(.installing)
+            case .readyToInstall: Analytics.shared.recordUpdate(.held)
+            default: break
+            }
+        }
+    }
     /// Set on the first launch after an update landed, so the app can tell the
     /// user what just changed. Updates install silently and relaunch on their
     /// own, which otherwise happens with no acknowledgement at all.
@@ -124,6 +135,7 @@ final class UpdaterController: ObservableObject {
         // when the version is unchanged.
         if let previous, previous != currentVersion {
             justUpdatedFrom = previous
+            Analytics.shared.recordUpdate(.installed)
         }
     }
 

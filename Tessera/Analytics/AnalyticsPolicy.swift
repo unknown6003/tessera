@@ -24,6 +24,10 @@ enum AnalyticsScreen: String, CaseIterable, Sendable {
     case explore, rescue, review, settings, search, duplicates, bigOld, byKind, uninstaller, hiddenSpace
 }
 
+enum AnalyticsUpdateOutcome: String, Sendable {
+    case installed, installing, held, upToDate = "up_to_date", failed
+}
+
 enum AnalyticsSource: String, Sendable {
     case localInternal = "local_internal"
     case localExternal = "local_external"
@@ -59,7 +63,7 @@ enum AnalyticsPolicy {
         "coverage": ["complete", "partial", "unknown"],
         "phase": ["enumeration", "diagnosis", "publication"],
         "method": ["trash", "permanent"],
-        "outcome": ["complete", "partial", "held", "failed", "cancelled", "superseded"],
+        "outcome": ["complete", "partial", "held", "failed", "cancelled", "superseded", "installed", "installing", "up_to_date"],
         "cache_state": ["fresh_metadata", "cached_display"],
         "tool": Set(AnalyticsScreen.allCases.map(\.rawValue)),
         "$screen_name": Set(AnalyticsScreen.allCases.map(\.rawValue)),

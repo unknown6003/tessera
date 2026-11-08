@@ -7,7 +7,9 @@ from collections import defaultdict
 from pathlib import Path
 
 
-def summarize(rows, expected_per_cohort=100):
+def summarize(rows, expected_per_cohort=100, expected_ids=None):
+    if expected_per_cohort < 100:
+        raise ValueError("A p99 cohort requires at least 100 trials")
     groups = defaultdict(list)
     ids = set()
     for row in rows:
@@ -21,6 +23,8 @@ def summarize(rows, expected_per_cohort=100):
         groups[case_id.rsplit("-", 1)[0]].append(row)
     if not groups:
         raise ValueError("No trials")
+    if expected_ids is not None and ids != set(expected_ids):
+        raise ValueError("Trial inventory differs from the requested campaign")
     report = {}
     for cohort, samples in sorted(groups.items()):
         durations = sorted(row["durationMS"] for row in samples)
@@ -43,12 +47,22 @@ if __name__ == "__main__":
     parser.add_argument("input", type=Path)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--expected-per-cohort", type=int, default=100)
+    parser.add_argument("--cases", type=Path, required=True)
+    parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    cohorts = summarize(json.loads(args.input.read_text()), args.expected_per_cohort)
+    cases = json.loads(args.cases.read_text())
+    expected_ids = [case["id"] for case in cases]
+    if len(expected_ids) != len(set(expected_ids)):
+        raise ValueError("Duplicate requested trials")
+    metadata = json.loads(args.metadata.read_text())
+    for field in ("hardware", "os", "memoryBytes", "cacheState", "workload"):
+        if not metadata.get(field):
+            raise ValueError(f"Missing campaign metadata: {field}")
+    cohorts = summarize(json.loads(args.input.read_text()), args.expected_per_cohort, expected_ids)
     report = {"revision": args.revision, "method": "nearest rank; full pipeline plus 100 ms UI settle; slow and failed trials retained",
               "scope": "Empirical p99 for these local fixture cohorts and this host. Population and other-device p99 are not established.",
-              "cohorts": cohorts}
+              "metadata": metadata, "cohorts": cohorts}
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
     raise SystemExit(0 if all(cohort["goalMetForThisCohort"] for cohort in cohorts.values()) else 1)
