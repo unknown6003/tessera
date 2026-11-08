@@ -77,32 +77,43 @@ enum Theme {
     /// opacity, so hover washes and hairline gaps stay clean and child rings
     /// read as a deeper step of the same branch.
     private static let depthMix: [Double] = [0, 0.12, 0.22, 0.30, 0.36]
+    /// Increase Contrast keeps every ring at 3:1 or more on `bg`. Measured:
+    /// the weakest default step (violet, depth 4) is 2.90:1; at 0.20 it is
+    /// above 3.5:1.
+    private static let depthMixHighContrast: [Double] = [0, 0.06, 0.12, 0.16, 0.20]
 
-    /// Precomputed [palette][depth] table. Drawing reads it per wedge; no colour
-    /// math runs per frame.
+    /// Precomputed [palette][depth] tables. Drawing reads them per wedge; no
+    /// colour math runs per frame.
     private static let wedgeShades: [[Color]] = sunburstHex.map { hex in
         depthMix.map { mix(hex, toward: 0x0A0B0D, amount: $0) }
+    }
+    private static let wedgeShadesHighContrast: [[Color]] = sunburstHex.map { hex in
+        depthMixHighContrast.map { mix(hex, toward: 0x0A0B0D, amount: $0) }
     }
 
     /// Solid wedge colour for a top-level branch `palette` at ring `depth`.
     /// `nil` palette marks a wedge too small to tell apart; it uses the
     /// aggregate neutral, like DaisyDisk's grey "small items".
-    static func wedgeColor(palette: Int?, depth: Int) -> Color {
-        guard let palette else { return aggregateColor }
-        let row = wedgeShades[((palette % wedgeShades.count) + wedgeShades.count) % wedgeShades.count]
+    static func wedgeColor(palette: Int?, depth: Int, highContrast: Bool = false) -> Color {
+        guard let palette else { return highContrast ? aggregateColorHighContrast : aggregateColor }
+        let table = highContrast ? wedgeShadesHighContrast : wedgeShades
+        let row = table[((palette % table.count) + table.count) % table.count]
         return row[min(max(0, depth), row.count - 1)]
     }
 
     /// Fixed colour for synthetic node kinds. `nil` for real files and folders.
-    static func syntheticColor(for kind: FileNode.Kind) -> Color? {
+    static func syntheticColor(for kind: FileNode.Kind, highContrast: Bool = false) -> Color? {
         switch kind {
-        case .hiddenSpace:      return hiddenSpaceColor
-        case .aggregate:        return aggregateColor
-        case .cloudOnlyStorage: return cloudColor
+        case .hiddenSpace:      return highContrast ? Color(hex: 0x6A707A) : hiddenSpaceColor
+        case .aggregate:        return highContrast ? aggregateColorHighContrast : aggregateColor
+        case .cloudOnlyStorage: return highContrast ? Color(hex: 0x3F7A8A) : cloudColor
         case .crossVolume:      return crossVolumeColor
         case .regular, .package: return nil
         }
     }
+
+    /// 3.11:1 on `bg` (default aggregate is 1.86:1).
+    static let aggregateColorHighContrast = Color(hex: 0x5A606A)
 
     private static func mix(_ hex: UInt32, toward other: UInt32, amount t: Double) -> Color {
         func channel(_ v: UInt32, _ shift: UInt32) -> Double { Double((v >> shift) & 0xFF) / 255.0 }

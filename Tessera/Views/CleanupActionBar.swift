@@ -4,6 +4,8 @@ import SwiftUI
 /// open in a roomy sheet instead of a cramped popover.
 struct CleanupActionBar: View {
     @ObservedObject var vm: ScanViewModel
+    /// The screen to record again when a tool sheet closes.
+    var returnScreen: AnalyticsScreen
     var onRescue: () -> Void
 
     private enum Tool: String, Identifiable, CaseIterable {
@@ -42,6 +44,17 @@ struct CleanupActionBar: View {
         }
 
         var sheetWidth: CGFloat { 720 }
+
+        /// Fixed analytics screen name. No search text or results.
+        var screen: AnalyticsScreen {
+            switch self {
+            case .apps: return .uninstaller
+            case .duplicates: return .duplicates
+            case .byKind: return .byKind
+            case .largeOld: return .bigOld
+            case .search: return .search
+            }
+        }
     }
 
     @State private var presentedTool: Tool?
@@ -60,6 +73,14 @@ struct CleanupActionBar: View {
         }
         .sheet(item: $presentedTool) { tool in
             toolSheet(tool)
+        }
+        .onChange(of: presentedTool) { _, tool in
+            if let tool {
+                Analytics.shared.screen(tool.screen)
+                Analytics.shared.capture(.toolOpened, values: ["tool": .text(tool.screen.rawValue)])
+            } else {
+                Analytics.shared.screen(returnScreen)
+            }
         }
     }
 

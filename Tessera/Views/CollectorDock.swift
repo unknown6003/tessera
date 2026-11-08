@@ -64,19 +64,44 @@ struct CollectorDock: View {
     @ObservedObject var vm: ScanViewModel
     @ObservedObject var drag: CollectorDragController
     var onReview: () -> Void
-    /// Set when a removal finishes in this window; cleared by Dismiss. The
-    /// counts come from `vm.rescueVerification`, which every removal writes.
+    /// Set when a removal finishes in this window; cleared by Dismiss.
     @State private var showResult = false
+
+    /// The latest removal's result. `rescueVerification` adds bytes, but only
+    /// when it describes the same removal as `lastRemovalSummary`. Otherwise
+    /// the summary counts show alone. There is no Undo: Tessera cannot restore
+    /// files itself.
+    private enum RemovalResult {
+        case verified(RescueVerification)
+        case counts(ScanViewModel.RemovalSummary)
+    }
+
+    private var removalResult: RemovalResult? {
+        let verification = vm.rescueVerification
+        guard let summary = vm.lastRemovalSummary else { return verification.map(RemovalResult.verified) }
+        if let verification,
+           (verification.movedPaths?.count ?? 0) == summary.moved,
+           verification.failedPaths.count == summary.failed,
+           (verification.removalMethod == .permanent) == summary.permanently {
+            return .verified(verification)
+        }
+        return .counts(summary)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             if let notice = vm.collectorNotice { noticeRow(notice) }
-            if showResult, !vm.isDeleting, let result = vm.rescueVerification { resultRow(result) }
+            if showResult, !vm.isDeleting, let result = removalResult {
+                switch result {
+                case .verified(let verification): resultRow(verification)
+                case .counts(let summary): summaryRow(summary)
+                }
+            }
             dockRow
         }
         .background(drag.isOverCollector ? Theme.selectionTint : Theme.surface)
         .onChange(of: vm.isDeleting) { wasDeleting, deleting in
-            if wasDeleting && !deleting { showResult = vm.rescueVerification != nil }
+            if wasDeleting && !deleting { showResult = removalResult != nil }
             if deleting { showResult = false }
         }
         .onChange(of: vm.scannedURL) { _, _ in showResult = false }
@@ -145,17 +170,25 @@ struct CollectorDock: View {
     }
 
     private func resultRow(_ result: RescueVerification) -> some View {
-        let permanent = result.removalMethod == .permanent
-        let moved = result.movedPaths?.count ?? 0
-        let held = result.heldPaths?.count ?? 0
-        let failed = result.failedPaths.count
+        resultBar(permanent: result.removalMethod == .permanent,
+                  moved: result.movedPaths?.count ?? 0, held: result.heldPaths?.count ?? 0,
+                  failed: result.failedPaths.count, bytes: result.movedBytes)
+    }
+
+    private func summaryRow(_ summary: ScanViewModel.RemovalSummary) -> some View {
+        resultBar(permanent: summary.permanently, moved: summary.moved,
+                  held: summary.held, failed: summary.failed, bytes: nil)
+    }
+
+    private func resultBar(permanent: Bool, moved: Int, held: Int, failed: Int, bytes: Int64?) -> some View {
         let verb = permanent ? "Deleted" : "Moved"
         let target = permanent ? "" : " to Trash"
+        let size = bytes.map { " (\(Theme.format($0)))" } ?? ""
         return HStack(spacing: 10) {
-            Image(systemName: failed > 0 ? "exclamationmark.triangle" : "checkmark.circle")
+            Image(systemName: failed > 0 || held > 0 ? "exclamationmark.triangle" : "checkmark.circle")
                 .foregroundStyle(failed > 0 ? Theme.danger : Theme.electricBlue)
                 .accessibilityHidden(true)
-            Text("\(verb) \(Theme.itemCount(moved)) (\(Theme.format(result.movedBytes)))\(target). \(held) held, \(failed) failed.")
+            Text("\(verb) \(Theme.itemCount(moved))\(size)\(target). \(held) held, \(failed) failed.")
                 .font(.callout.monospacedDigit())
                 .lineLimit(2)
             Spacer(minLength: 8)

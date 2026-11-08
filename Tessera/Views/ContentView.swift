@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import QuickLook
 
 struct ContentView: View {
     private enum AppMode: String, CaseIterable, Identifiable {
@@ -21,35 +22,25 @@ struct ContentView: View {
         var confirmOnOpen = false
     }
 
-    /// One Largest items row. `color` is the same solid fill the map uses for
-    /// that top-ring wedge, so each dot points at its wedge.
-    private struct LegendRow: Identifiable {
-        let node: FileNode
-        let color: Color
-        var id: ObjectIdentifier { node.id }
-    }
-
-    private struct SmallerItems {
-        let count: Int
-        let bytes: Int64
-    }
-
-    private static let legendLimit = 8
-    /// "Show all" stays bounded for folders with thousands of children.
-    private static let expandedLegendLimit = 200
+    /// Folders up to this many children build their map on the main actor.
+    /// Wider folders sort off the main actor through `vm.readTree`.
+    private static let syncMapChildLimit = 5_000
+    private static let browserRowHeight: CGFloat = 28
 
     @StateObject private var vm = ScanViewModel(defaults: DebugAutomation.defaults)
     @StateObject private var drag = CollectorDragController()
     @EnvironmentObject private var updater: UpdaterController
+    @ObservedObject private var analytics = Analytics.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var appMode: AppMode = .explore
     @State private var showSidebar = true
     @State private var showInspector = false
-    @State private var showCompactInspector = false
     @State private var windowWidth: CGFloat = 1240
-    @State private var largestRows: [LegendRow] = []
-    @State private var smallerItems: SmallerItems?
-    @State private var legendExpanded = false
+    /// The folder on screen, shared by the map, the child browser and Details.
+    @State private var map: MapSnapshot?
+    @State private var mapTask: Task<Void, Never>?
+    @State private var quickLookURL: URL?
     @State private var queuedReviewAction: RemovalSnapshot?
     @State private var queuedReviewIsPermanent = false
     @State private var reviewSnapshot: RemovalSnapshot?
@@ -83,7 +74,7 @@ struct ContentView: View {
                             centerArea
                             if showInspector && geometry.size.width >= 1100 {
                                 Divider()
-                                InspectorView(vm: vm)
+                                InspectorView(vm: vm, mapColor: mapColor)
                                     .frame(width: min(300, max(240, geometry.size.width * 0.22)))
                             }
                         }
@@ -105,7 +96,8 @@ struct ContentView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .background(Theme.bg.ignoresSafeArea())
         .background(TransparentWindowConfigurator())
-        .background(KeyboardShortcuts(vm: vm).disabled(removalBusy || vm.isScanning || vm.showFDAOnboarding))
+        .background(KeyboardShortcuts(vm: vm, onQuickLook: quickLook)
+            .disabled(removalBusy || vm.isScanning || vm.showFDAOnboarding))
         .tint(Theme.electricBlue)
         .preferredColorScheme(.dark)
         .coordinateSpace(.named(CollectorDragController.appSpace))
@@ -127,22 +119,18 @@ struct ContentView: View {
                 .disabled(vm.showFDAOnboarding)
             }
             ToolbarItem(placement: .primaryAction) {
-                CleanupActionBar(vm: vm, onRescue: { appMode = .rescue })
+                CleanupActionBar(vm: vm, returnScreen: modeScreen, onRescue: { appMode = .rescue })
                     .disabled(removalBusy || vm.isScanning || vm.rootNode == nil || vm.showFDAOnboarding)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    if windowWidth < 1100 { showCompactInspector.toggle() }
-                    else { showInspector.toggle() }
-                } label: {
+                // Wide windows show Details beside the map; narrow windows
+                // show it inline below the map. No popover.
+                Button { showInspector.toggle() } label: {
                     Label("Details", systemImage: "sidebar.right")
                 }
                 .keyboardShortcut("i", modifiers: [.command, .control])
                 .help("Show or hide selected item details (⌃⌘I)")
                 .disabled(appMode != .explore || vm.showFDAOnboarding)
-                .popover(isPresented: $showCompactInspector) {
-                    InspectorView(vm: vm).frame(width: 320, height: 500)
-                }
             }
         }
         .overlay {
@@ -156,12 +144,26 @@ struct ContentView: View {
         .transaction { if reduceMotion { $0.animation = nil } }
         .onChange(of: vm.isScanning, initial: true) { _, _ in syncUpdaterBusy() }
         .onChange(of: vm.isDeleting) { _, _ in syncUpdaterBusy() }
-        .onChange(of: vm.currentRoot?.id, initial: true) { _, _ in
-            legendExpanded = false
-            refreshLargestRows()
+        .onChange(of: vm.currentRoot?.id, initial: true) { _, _ in refreshMap() }
+        .onChange(of: vm.treeRevision) { _, _ in refreshMap() }
+        // A read refused during a removal runs again when the removal ends.
+        .onChange(of: vm.isDeleting) { _, deleting in if !deleting { refreshMap() } }
+        .quickLookPreview($quickLookURL)
+        // Analytics: fixed screen names and counts only. No names or paths.
+        .onChange(of: appMode, initial: true) { _, _ in
+            if reviewSnapshot == nil { analytics.screen(modeScreen) }
         }
-        .onChange(of: legendExpanded) { _, _ in refreshLargestRows() }
-        .onChange(of: vm.chartRevision) { _, _ in refreshLargestRows() }
+        .onChange(of: reviewSnapshot?.id) { _, id in
+            if let id, let snapshot = reviewSnapshot, snapshot.id == id {
+                analytics.screen(.review)
+                analytics.capture(.cleanupReviewOpened, values: ["items": .integer(snapshot.nodes.count)])
+            } else if id == nil {
+                analytics.screen(modeScreen)
+            }
+        }
+        .onChange(of: vm.showFDAOnboarding, initial: true) { _, shown in
+            if shown { analytics.capture(.permissionPrompted) }
+        }
         .onChange(of: removalRequested) { _, _ in syncUpdaterBusy() }
         .onChange(of: vm.collector.isEmpty) { _, _ in syncUpdaterBusy() }
         .sheet(item: $reviewSnapshot, onDismiss: finishReview) { snapshot in
@@ -305,158 +307,184 @@ struct ContentView: View {
                 if geometry.size.width >= 580 {
                     HStack(spacing: 16) {
                         chart
-                        largestItems.frame(width: min(260, geometry.size.width * 0.32))
+                        childBrowser.frame(width: min(300, geometry.size.width * 0.34))
                     }
                     .padding(.horizontal, 20)
                 } else {
                     VStack(spacing: 0) {
                         chart
-                        largestItems
-                            .frame(height: min(176, max(96, geometry.size.height * 0.28)))
+                        childBrowser
+                            .frame(height: stackedBrowserHeight)
                             .padding(.horizontal, 20)
                     }
                 }
             }
-            if !inspectorIsInline { selectedItemBar }
+            if showInspector && windowWidth < 1100 {
+                // Compact Details: inline, in the same focus order, never a popover.
+                Divider()
+                InspectorView(vm: vm, mapColor: mapColor)
+                    .frame(height: 230)
+            } else if !showInspector {
+                selectedItemBar
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// The inline inspector carries the selection actions, so the compact bar
-    /// shows only while it is hidden.
-    private var inspectorIsInline: Bool { showInspector && windowWidth >= 1100 }
+    /// Presentation-only flag: the stacked browser shows 4 or 8 rows before it
+    /// scrolls. It never changes scanning, order or cleanup protection.
+    private var stackedBrowserHeight: CGFloat {
+        CGFloat(analytics.compactLegend ? 4 : 8) * Self.browserRowHeight + 28
+    }
 
     private var chart: some View {
-        SunburstChart(root: vm.currentRoot, contentRevision: vm.chartRevision,
+        SunburstChart(map: map,
                       hoveredNode: vm.hoveredNode, selectedNode: vm.selectedNode,
                       onHover: { vm.hoveredNode = $0 }, onSelect: { vm.selectedNode = $0 },
                       onZoomIn: { vm.zoomIn(to: $0) }, onZoomOut: { vm.zoomOut() },
                       onAddToCollector: { if !removalBusy { vm.addToCollector($0) } },
                       onRevealInFinder: { NSWorkspace.shared.activateFileViewerSelecting([$0.url]) },
+                      onQuickLook: quickLook,
                       drag: drag, onDrop: { if !removalBusy { vm.addToCollector($0) } })
             .disabled(removalBusy)
     }
 
-    /// Bounded work: one pass over the current folder's direct children
-    /// (`largestChildren` keeps only the top rows), run when the folder or scan
-    /// revision changes, never per render.
-    private func refreshLargestRows() {
-        guard let root = vm.currentRoot else {
-            largestRows = []
-            smallerItems = nil
+    private var modeScreen: AnalyticsScreen { appMode == .rescue ? .rescue : .explore }
+
+    private var highContrast: Bool { contrast == .increased }
+
+    /// The map's colour for any node, including deep selections.
+    private func mapColor(_ node: FileNode) -> Color? {
+        map?.color(for: node, highContrast: highContrast)
+    }
+
+    private var mapIsStale: Bool {
+        guard let current = vm.currentRoot else { return false }
+        return map?.folder.id != current.id || map?.revision != vm.treeRevision
+    }
+
+    /// Build the map for the folder on screen once per folder and revision.
+    /// Wide folders sort off the main actor on a pinned tree; the result is
+    /// dropped if the source, folder or revision changed meanwhile.
+    private func refreshMap() {
+        guard let folder = vm.currentRoot else {
+            mapTask?.cancel()
+            mapTask = nil
+            map = nil
             return
         }
-        let total = max(1, Double(root.size))
-        let rows = root.largestChildren(limit: legendExpanded ? Self.expandedLegendLimit : Self.legendLimit)
-        largestRows = rows.enumerated().map { rank, node in
-            LegendRow(node: node, color: Self.legendColor(for: node, rank: rank, total: total))
+        let revision = vm.treeRevision
+        if let map, map.folder.id == folder.id, map.revision == revision { return }
+        mapTask?.cancel()
+        mapTask = nil
+        if folder.children.count <= Self.syncMapChildLimit {
+            map = MapSnapshot.build(folder: folder, revision: revision)
+            return
         }
-        let shownBytes = rows.reduce(Int64(0)) { $0 + $1.size }
-        let rest = root.children.count - rows.count
-        smallerItems = rest > 0 ? SmallerItems(count: rest, bytes: max(0, root.size - shownBytes)) : nil
+        mapTask = Task { @MainActor in
+            guard vm.currentRoot?.id == folder.id, vm.treeRevision == revision else { return }
+            let built = await vm.readTree { _, cancellation in
+                MapSnapshot.build(folder: folder, revision: revision, cancellation: cancellation)
+            }
+            guard !Task.isCancelled, let built = built ?? nil,
+                  vm.currentRoot?.id == folder.id, vm.treeRevision == revision else { return }
+            map = built
+        }
     }
 
-    /// Mirrors `SunburstChart.buildLayout` for the top ring: synthetic kinds use
-    /// their fixed neutral, children folded into "Other" or narrower than the
-    /// sliver limit use the aggregate neutral, and the rest use their rank.
-    private static func legendColor(for node: FileNode, rank: Int, total: Double) -> Color {
-        if let synthetic = Theme.syntheticColor(for: node.kind) { return synthetic }
-        let fraction = Double(node.size) / total
-        if fraction < SunburstChart.aggregateFraction
-            || fraction * 360 < SunburstChart.smallWedgeDegrees {
-            return Theme.aggregateColor
-        }
-        return Theme.wedgeColor(palette: rank, depth: 0)
+    private func quickLook(_ node: FileNode) {
+        guard !node.isSynthetic else { return }
+        quickLookURL = quickLookURL == nil ? node.url : nil
     }
 
-    private var largestItems: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Largest items").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                .accessibilityAddTraits(.isHeader)
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(largestRows) { row in legendRow(row) }
-                    if let smallerItems { smallerItemsRow(smallerItems) }
+    // MARK: - Child browser
+
+    private var browserSelection: Binding<ObjectIdentifier?> {
+        Binding(get: { vm.selectedNode?.id }, set: { id in
+            guard !removalBusy else { return }
+            if let id { if let node = map?.child(id) { vm.selectedNode = node } }
+            else { vm.selectedNode = nil }
+        })
+    }
+
+    /// Every child of the folder on screen, in map order, in a virtualised
+    /// list. Arrow keys move, Return or double-click opens a folder, Space
+    /// shows Quick Look, Escape clears the selection.
+    private var childBrowser: some View {
+        let children = map?.children ?? []
+        let total = Double(max(1, map?.folder.size ?? 1))
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text("In this folder").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 4)
+                if mapIsStale {
+                    ProgressView().controlSize(.mini).accessibilityHidden(true)
+                    Text("Sorting…").font(.caption).foregroundStyle(Theme.mutedForeground)
+                } else {
+                    Text(Theme.itemCount(children.count)).font(.caption.monospacedDigit())
+                        .foregroundStyle(Theme.mutedForeground)
                 }
             }
+            List(selection: browserSelection) {
+                ForEach(children) { node in browserRow(node, total: total) }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, Self.browserRowHeight)
+            .contextMenu(forSelectionType: ObjectIdentifier.self) { ids in
+                if let id = ids.first, let node = map?.child(id) { browserMenu(node) }
+            } primaryAction: { ids in
+                guard !removalBusy, let id = ids.first, let node = map?.child(id),
+                      node.isDirectory, !node.isSynthetic else { return }
+                vm.zoomIn(to: node)
+            }
+            .onKeyPress(.space) {
+                guard let node = vm.selectedNode, map?.child(node.id) != nil else { return .ignored }
+                quickLook(node)
+                return .handled
+            }
+            .onExitCommand { if !removalBusy { vm.selectedNode = nil } }
+            .accessibilityLabel("Items in \(map?.folder.name ?? "this folder")")
         }
         .disabled(removalBusy)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Largest items")
-        .onExitCommand { if !removalBusy { vm.selectedNode = nil } }
-        .onMoveCommand { direction in
-            guard !removalBusy else { return }
-            let nodes = largestRows.map(\.node)
-            guard !nodes.isEmpty else { return }
-            let index = nodes.firstIndex { $0.id == vm.selectedNode?.id }
-            if direction == .down { vm.selectedNode = nodes[min(nodes.count - 1, (index ?? -1) + 1)] }
-            if direction == .up { vm.selectedNode = nodes[max(0, (index ?? nodes.count) - 1)] }
-        }
     }
 
-    private func legendRow(_ row: LegendRow) -> some View {
-        let node = row.node
-        let isSelected = vm.selectedNode?.id == node.id
-        return HStack(spacing: 4) {
-            Button { vm.selectedNode = node } label: {
-                HStack(spacing: 8) {
-                    Circle().fill(row.color).frame(width: 8, height: 8)
-                    Text(node.name).lineLimit(1).truncationMode(.middle)
-                    Spacer(minLength: 4)
-                    Text(Theme.format(node.size)).monospacedDigit()
-                        .foregroundStyle(isSelected ? Theme.foreground : Theme.mutedForeground)
-                }
-                .font(.callout)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 8)
-                .background(isSelected ? Theme.selectionTint : .clear,
-                            in: RoundedRectangle(cornerRadius: 6))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.interactive)
-            .accessibilityLabel("\(node.name), \(Theme.format(node.size))")
-            .accessibilityHint("Selects this item on the map")
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
-            if node.isDirectory && !node.isSynthetic {
-                Button { vm.zoomIn(to: node) } label: {
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.icon(size: 22))
-                .help("Open \(node.name)")
-                .accessibilityLabel("Open \(node.name)")
-            } else {
-                Color.clear.frame(width: 22, height: 22).accessibilityHidden(true)
-            }
-        }
-    }
-
-    private func smallerItemsRow(_ smaller: SmallerItems) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                Circle().fill(Theme.aggregateColor).frame(width: 8, height: 8)
-                Text("Smaller items (\(smaller.count))").lineLimit(1)
-                Spacer(minLength: 4)
-                Text(Theme.format(smaller.bytes)).monospacedDigit()
-            }
-            .padding(.trailing, 26)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(Theme.itemCount(smaller.count)) smaller, \(Theme.format(smaller.bytes)) in total")
-            if !legendExpanded {
-                Button("Show all") { legendExpanded = true }
-                    .buttonStyle(.interactive)
-                    .foregroundStyle(Theme.electricBlue)
-                    .padding(.leading, 16)
-                    .accessibilityLabel("Show all items in this folder")
-            }
+    private func browserRow(_ node: FileNode, total: Double) -> some View {
+        let share = Double(node.size) / total * 100
+        let percent = share > 0 && share < 1 ? "<1%" : "\(Int(share.rounded()))%"
+        let color = map?.color(for: node, highContrast: highContrast)
+            ?? Theme.wedgeColor(palette: nil, depth: 0, highContrast: highContrast)
+        return HStack(spacing: 8) {
+            Circle().fill(color).frame(width: 8, height: 8)
+                .overlay(Circle().strokeBorder(highContrast ? Theme.foreground.opacity(0.6) : .clear, lineWidth: 1))
+            Text(node.name).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 4)
+            Text(percent).monospacedDigit().foregroundStyle(Theme.mutedForeground)
+            Text(Theme.format(node.size)).monospacedDigit()
+            Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                .foregroundStyle(Theme.mutedForeground)
+                .opacity(node.isDirectory && !node.isSynthetic ? 1 : 0)
         }
         .font(.callout)
-        .foregroundStyle(Theme.mutedForeground)
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(node.name), \(Theme.format(node.size)), \(percent) of this folder\(node.isDirectory && !node.isSynthetic ? ", folder" : "")")
+        .accessibilityHint(node.isDirectory && !node.isSynthetic ? "Return opens this folder" : "")
     }
 
-    /// Compact selection actions for when the inspector is hidden. Name and
-    /// size only; the full path stays in the inspector.
+    @ViewBuilder private func browserMenu(_ node: FileNode) -> some View {
+        if node.isSynthetic {
+            Text("This item describes space, not a removable file.").disabled(true)
+        } else {
+            if node.isDirectory { Button("Open Folder") { vm.zoomIn(to: node) } }
+            Button("Quick Look") { quickLook(node) }
+            Button("Add to Cleanup List") { vm.addToCollector(node) }
+            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+        }
+    }
+
+    /// Compact selection actions for when Details is hidden. Name and
+    /// size only; the full path stays in Details.
     private var selectedItemBar: some View {
         HStack(spacing: 10) {
             if let node = vm.selectedNode {
@@ -758,6 +786,7 @@ private struct ScanningView: View {
 
 private struct KeyboardShortcuts: View {
     @ObservedObject var vm: ScanViewModel
+    let onQuickLook: (FileNode) -> Void
     var body: some View {
         ZStack {
             // Finder-style keys. Escape is not bound here: the map and list
@@ -773,6 +802,10 @@ private struct KeyboardShortcuts: View {
                 if let node = vm.selectedNode, !node.isSynthetic { vm.addToCollector(node) }
             }
             .keyboardShortcut(.delete, modifiers: .command)
+            Button("Quick Look") {
+                if let node = vm.selectedNode, !node.isSynthetic { onQuickLook(node) }
+            }
+            .keyboardShortcut("y", modifiers: .command)
         }
         .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
     }
@@ -855,6 +888,7 @@ private struct FullDiskAccessOnboarding: View {
                 .controlSize(.large)
 
                 Button("Not Now") {
+                    Analytics.shared.capture(.permissionDismissed)
                     vm.dismissFDAOnboarding()
                 }
                 .keyboardShortcut(.cancelAction)

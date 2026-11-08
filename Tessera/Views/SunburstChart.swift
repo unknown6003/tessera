@@ -1,6 +1,66 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Map snapshot
+
+/// One folder on the map, built once per folder and tree revision. The map,
+/// the child browser and Details all read colour and order from it, so a
+/// dot, a wedge and a Details badge cannot disagree. Synthetic "Other" nodes
+/// are minted here once, so their identity survives redraws and resizes.
+struct MapSnapshot: Sendable {
+    let folder: FileNode
+    let revision: ScanTreeRevision
+    let wedges: [SunburstChart.Wedge]
+    /// Every direct child, in `FileNode.largestFirst` order (the map's order).
+    let children: [FileNode]
+    private let wedgeIndex: [ObjectIdentifier: Int]
+    private let childIndex: [ObjectIdentifier: Int]
+
+    /// Safe off the main actor while the tree is pinned by `readTree`.
+    nonisolated static func build(folder: FileNode, revision: ScanTreeRevision,
+                                  cancellation: TreeReadCancellation? = nil) -> MapSnapshot? {
+        let children = folder.sortedChildren
+        if cancellation?.isCancelled == true { return nil }
+        let wedges = SunburstChart.buildLayout(root: folder)
+        if cancellation?.isCancelled == true { return nil }
+        var wedgeIndex: [ObjectIdentifier: Int] = [:]
+        wedgeIndex.reserveCapacity(wedges.count)
+        for (index, wedge) in wedges.enumerated() { wedgeIndex[wedge.node.id] = index }
+        var childIndex: [ObjectIdentifier: Int] = [:]
+        childIndex.reserveCapacity(children.count)
+        for (index, child) in children.enumerated() { childIndex[child.id] = index }
+        return MapSnapshot(folder: folder, revision: revision, wedges: wedges, children: children,
+                           wedgeIndex: wedgeIndex, childIndex: childIndex)
+    }
+
+    func child(_ id: ObjectIdentifier) -> FileNode? {
+        childIndex[id].map { children[$0] }
+    }
+
+    func wedge(for node: FileNode) -> SunburstChart.Wedge? {
+        wedgeIndex[node.id].map { wedges[$0] }
+    }
+
+    /// The colour the map uses for `node`, at any depth. A node deeper than
+    /// the outer ring takes its drawn ancestor's colour. A node the map folds
+    /// into "Other" or a sliver takes the aggregate neutral. Nil for the
+    /// folder itself and for nodes outside it.
+    func color(for node: FileNode, highContrast: Bool) -> Color? {
+        if let synthetic = Theme.syntheticColor(for: node.kind, highContrast: highContrast) { return synthetic }
+        var cursor: FileNode? = node
+        while let current = cursor, current.id != folder.id {
+            if let wedge = wedge(for: current) {
+                if current.id == node.id || wedge.depth == SunburstChart.maxRings - 1 {
+                    return SunburstChart.color(for: wedge, highContrast: highContrast)
+                }
+                return Theme.wedgeColor(palette: nil, depth: 0, highContrast: highContrast)
+            }
+            cursor = current.parent
+        }
+        return nil
+    }
+}
+
 // MARK: - SunburstChart
 
 /// Pure-Canvas sunburst (ring chart) that renders up to five rings around a
@@ -10,9 +70,9 @@ import AppKit
 struct SunburstChart: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isEnabled) private var isEnabled
-    let root: FileNode?
-    /// Invalidates cached wedge angles when the same root object is mutated.
-    let contentRevision: UInt64
+    @Environment(\.colorSchemeContrast) private var contrast
+    /// The folder on screen and its precomputed wedges.
+    let map: MapSnapshot?
     let hoveredNode: FileNode?
     let selectedNode: FileNode?
     let onHover: (FileNode?) -> Void
@@ -21,21 +81,23 @@ struct SunburstChart: View {
     let onZoomOut: () -> Void
     let onAddToCollector: (FileNode) -> Void
     let onRevealInFinder: (FileNode) -> Void
+    /// Space: Quick Look the selection. The caller skips synthetic nodes.
+    let onQuickLook: (FileNode) -> Void
     /// Drives drag-and-drop of wedges into the bottom dock.
     @ObservedObject var drag: CollectorDragController
     /// Called when a wedge is dropped onto a dock zone (collector or trash).
     let onDrop: (FileNode) -> Void
 
     // Tuning constants
-    private static let maxRings = 5
+    nonisolated static let maxRings = 5
     private static let hubFraction: CGFloat = 0.17
-    private static let minWedgeDegrees: Double = 0.7
-    static let aggregateFraction: Double = 0.004   // 0.4 %
+    nonisolated private static let minWedgeDegrees: Double = 0.7
+    nonisolated static let aggregateFraction: Double = 0.004   // 0.4 %
     /// Wedges narrower than this keep their place but draw in the aggregate
     /// neutral, so slivers do not add noise to the branch colours.
-    static let smallWedgeDegrees: Double = 1.0
-    private static let gapDegrees: Double = 1.2
-    private static let maxWedgesPerRing = 60
+    nonisolated static let smallWedgeDegrees: Double = 1.0
+    nonisolated private static let gapDegrees: Double = 1.2
+    nonisolated private static let maxWedgesPerRing = 60
     private static let ringInset: CGFloat = 1.5            // hairline separation
     private static let minimumRenderableSide: CGFloat = 120
 
@@ -67,10 +129,11 @@ struct SunburstChart: View {
         )
     }
 
-    // Cached angular layout, recomputed only when the displayed tree changes.
-    @State private var layout: [Wedge] = []
-    @State private var layoutRootID: ObjectIdentifier?
-    @State private var layoutRevision: UInt64?
+    private var root: FileNode? { map?.folder }
+    private var layout: [Wedge] { map?.wedges ?? [] }
+    private var highContrast: Bool { contrast == .increased }
+    /// The folder the sweep-in last ran for. Unprimed views draw at full sweep.
+    @State private var sweptRootID: ObjectIdentifier?
     @State private var appearProgress: Double = 0          // 0…1 sweep-in
     @State private var cursor: CGPoint = .zero
     @State private var hovering = false
@@ -111,16 +174,9 @@ struct SunburstChart: View {
                                 onHover(nil)
                             }
                         }
-                        .onTapGesture(count: 2, coordinateSpace: .local) { location in
-                            guard isEnabled else { return }
-                            if let node = hitTest(at: location, center: geometry.center,
-                                                  chartRadius: geometry.chartRadius,
-                                                  hubRadius: geometry.hubRadius)?.node,
-                               node.isDirectory, !node.isSynthetic {
-                                onSelect(node)
-                                onZoomIn(node)
-                            }
-                        }
+                        // One tap handler. A count-2 gesture would make every
+                        // single click wait for the double-click interval.
+                        // AppKit's click count tells the second click apart.
                         .onTapGesture(coordinateSpace: .local) { location in
                             guard isEnabled else { return }
                             handleTap(at: location, center: geometry.center,
@@ -160,12 +216,11 @@ struct SunburstChart: View {
                         }
                 )
                 .onAppear {
-                    rebuild(size: geo.size)
+                    sweepIn()
                     installRightClickMonitor()
                 }
                 .onDisappear { removeRightClickMonitor() }
-                .onChange(of: root?.id) { _, _ in rebuild(size: geo.size) }
-                .onChange(of: contentRevision) { _, _ in rebuild(size: geo.size) }
+                .onChange(of: root?.id) { _, _ in sweepIn() }
             } else {
                 Color.clear
             }
@@ -175,7 +230,7 @@ struct SunburstChart: View {
         // Return opens a folder, Escape clears the selection.
         .focusable(isEnabled)
         .focused($mapFocused)
-        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .return]) { press in
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .return, .space]) { press in
             guard isEnabled, press.modifiers.isDisjoint(with: [.command, .option, .control]) else {
                 return .ignored
             }
@@ -185,7 +240,7 @@ struct SunburstChart: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityValue(accessibilityValue)
-        .accessibilityHint("Use the arrow keys to move between items. Return opens a folder. Command-Delete adds the selection to the Cleanup List.")
+        .accessibilityHint("Use the arrow keys to move between items. Return opens a folder. Space shows a Quick Look preview. Command-Delete adds the selection to the Cleanup List.")
         .accessibilityChildren { accessibleWedges }
     }
 
@@ -208,6 +263,8 @@ struct SunburstChart: View {
         }
         let wedge = wedges[index]
         switch key {
+        case .space:
+            if !current.isSynthetic { onQuickLook(current) }
         case .leftArrow, .rightArrow:
             let siblings = wedges.filter { $0.depth == wedge.depth && $0.node.parent?.id == wedge.node.parent?.id }
             guard let at = siblings.firstIndex(where: { $0.node.id == current.id }), siblings.count > 1 else { return true }
@@ -259,11 +316,9 @@ struct SunburstChart: View {
 
     private func canvas(center: CGPoint, chartRadius: CGFloat, hubRadius: CGFloat) -> some View {
         let ringSpan = (chartRadius - hubRadius) / CGFloat(Self.maxRings)
-        // Fall back to a fresh layout when the cache hasn't been primed yet
-        // (e.g. offscreen rendering where onAppear never fires).
-        let cachePrimed = layoutRootID == root?.id && !layout.isEmpty
-        let wedges = cachePrimed ? layout : root.map { Self.buildLayout(root: $0) } ?? []
-        let progress = cachePrimed ? appearProgress : 1.0
+        let wedges = layout
+        // Offscreen rendering never runs onAppear; draw it at full sweep.
+        let progress = sweptRootID == root?.id ? appearProgress : 1.0
         return Canvas { ctx, _ in
             // Drawn after every fill, so neighbours never cover the outline.
             var selectedPath: Path?
@@ -287,8 +342,7 @@ struct SunburstChart: View {
                                      start: start, end: end)
 
                 // Flat solid fill — one categorical color per wedge.
-                ctx.fill(path, with: wedgeShading(for: wedge, center: center,
-                                                  chartRadius: chartRadius, hubRadius: hubRadius))
+                ctx.fill(path, with: .color(Self.color(for: wedge, highContrast: highContrast)))
 
                 // Hairline gap in the background color separates adjacent wedges,
                 // exactly like the tiles in the app icon.
@@ -312,15 +366,14 @@ struct SunburstChart: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: hoveredNode?.id)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: selectedNode?.id)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: layoutRootID)
     }
 
-    /// Shading for a wedge. Every wedge keeps its top-level branch hue and steps
+    /// Fill for a wedge. Every wedge keeps its top-level branch hue and steps
     /// toward the background with depth. Synthetic kinds keep fixed neutrals.
-    private func wedgeShading(for wedge: Wedge, center: CGPoint,
-                              chartRadius: CGFloat, hubRadius: CGFloat) -> GraphicsContext.Shading {
-        .color(Theme.syntheticColor(for: wedge.node.kind)
-               ?? Theme.wedgeColor(palette: wedge.palette, depth: wedge.depth))
+    /// `MapSnapshot.color` uses this too, so the legend and Details match.
+    nonisolated static func color(for wedge: Wedge, highContrast: Bool) -> Color {
+        Theme.syntheticColor(for: wedge.node.kind, highContrast: highContrast)
+            ?? Theme.wedgeColor(palette: wedge.palette, depth: wedge.depth, highContrast: highContrast)
     }
 
     /// Build an annular sector path (rounded line caps via stroked arcs not used;
@@ -432,14 +485,23 @@ struct SunburstChart: View {
 
     // MARK: - Interaction
 
-    /// Select a wedge. Opening a folder is a separate, deliberate action.
+    /// The first click selects at once. The second click of a double click
+    /// opens a folder. A third click does nothing more.
     private func handleTap(at location: CGPoint, center: CGPoint,
                            chartRadius: CGFloat, hubRadius: CGFloat) {
         guard let wedge = hitTest(at: location, center: center,
                                   chartRadius: chartRadius, hubRadius: hubRadius) else {
             onSelect(nil); return
         }
-        onSelect(wedge.node)
+        let clicks = NSApp.currentEvent?.clickCount ?? 1
+        if clicks == 2 {
+            if wedge.node.isDirectory && !wedge.node.isSynthetic {
+                onSelect(wedge.node)
+                onZoomIn(wedge.node)
+            }
+            return
+        }
+        if clicks == 1 { onSelect(wedge.node) }
     }
 
     /// Drag a real wedge out of the chart and into the bottom dock. On first
@@ -600,23 +662,11 @@ struct SunburstChart: View {
 
     // MARK: - Layout
 
-    private func rebuild(size: CGSize) {
-        guard let root, Self.chartGeometry(for: size) != nil else {
-            layout = []; return
-        }
-        let rootChanged = layoutRootID != root.id
-        let contentChanged = layoutRevision != contentRevision
-
-        // Wedge angles depend only on the tree. Rebuilding hundreds of paths and
-        // synthetic "Other" nodes for every live-resize tick caused avoidable lag;
-        // Canvas applies the new center/radii to the same angular layout directly.
-        guard rootChanged || contentChanged || layout.isEmpty else {
-            appearProgress = 1
-            return
-        }
-        layout = Self.buildLayout(root: root)
-        layoutRootID = root.id
-        layoutRevision = contentRevision
+    /// Sweep the wedges in once per folder. Reduce Motion skips it.
+    private func sweepIn() {
+        guard let root else { return }
+        guard sweptRootID != root.id else { return }
+        sweptRootID = root.id
         if reduceMotion {
             appearProgress = 1
         } else {
@@ -627,7 +677,7 @@ struct SunburstChart: View {
 
     /// Walk the tree breadth-by-depth, allocating angular spans proportional to
     /// size, aggregating tiny siblings into a synthetic "Other" wedge.
-    static func buildLayout(root: FileNode) -> [Wedge] {
+    nonisolated static func buildLayout(root: FileNode) -> [Wedge] {
         var out: [Wedge] = []
 
         func recurse(parent: FileNode, depth: Int, start: Double, sweep: Double,
@@ -708,7 +758,7 @@ struct SunburstChart: View {
 
     // MARK: - Wedge model
 
-    struct Wedge: Identifiable {
+    struct Wedge: Identifiable, Sendable {
         let id = UUID()
         let node: FileNode
         let depth: Int
@@ -716,5 +766,23 @@ struct SunburstChart: View {
         let endAngle: Double
         /// Top-level branch index into `Theme.sunburstColors`; nil for slivers.
         let palette: Int?
+    }
+}
+
+extension SunburstChart {
+    /// Offscreen automation renders a bare tree (see `DebugAutomation`). It
+    /// builds its own snapshot; the app passes the shared one.
+    init(root: FileNode?, contentRevision: UInt64, hoveredNode: FileNode?, selectedNode: FileNode?,
+         onHover: @escaping (FileNode?) -> Void, onSelect: @escaping (FileNode?) -> Void,
+         onZoomIn: @escaping (FileNode) -> Void, onZoomOut: @escaping () -> Void,
+         onAddToCollector: @escaping (FileNode) -> Void, onRevealInFinder: @escaping (FileNode) -> Void,
+         drag: CollectorDragController, onDrop: @escaping (FileNode) -> Void) {
+        let map = root.flatMap {
+            MapSnapshot.build(folder: $0, revision: ScanTreeRevision(rootID: $0.id, revision: contentRevision))
+        }
+        self.init(map: map, hoveredNode: hoveredNode, selectedNode: selectedNode,
+                  onHover: onHover, onSelect: onSelect, onZoomIn: onZoomIn, onZoomOut: onZoomOut,
+                  onAddToCollector: onAddToCollector, onRevealInFinder: onRevealInFinder,
+                  onQuickLook: { _ in }, drag: drag, onDrop: onDrop)
     }
 }

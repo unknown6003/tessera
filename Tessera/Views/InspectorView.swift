@@ -2,6 +2,9 @@ import SwiftUI
 
 struct InspectorView: View {
     @ObservedObject var vm: ScanViewModel
+    /// The map's colour for a node, from the shared `MapSnapshot`.
+    var mapColor: (FileNode) -> Color? = { _ in nil }
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var largestRows: [FileNode] = []
 
     private var inspectedNode: FileNode? {
@@ -188,16 +191,11 @@ struct InspectorView: View {
             .foregroundStyle(.secondary)
     }
 
+    /// The same colour as the node's wedge, at any depth. A folder with no
+    /// wedge (the folder on screen) uses a stable neutral.
     private func iconCircleColor(_ node: FileNode) -> Color {
-        switch node.kind {
-        case .hiddenSpace: return Theme.hiddenSpaceColor
-        case .aggregate:   return Theme.aggregateColor
-        case .cloudOnlyStorage: return Theme.cloudColor
-        case .crossVolume: return Theme.crossVolumeColor
-        default:
-            // A stable neutral. A per-name colour cannot match the map, because
-            // map colours follow rank inside the folder on screen.
-            return Theme.elevated
-        }
+        mapColor(node)
+            ?? Theme.syntheticColor(for: node.kind, highContrast: contrast == .increased)
+            ?? Theme.elevated
     }
 }
