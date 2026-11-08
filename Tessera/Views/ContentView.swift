@@ -28,10 +28,16 @@ struct ContentView: View {
         var confirmOnOpen = false
     }
 
-    /// Folders up to this many children build their map on the main actor.
-    /// Wider folders sort off the main actor through `vm.readTree`.
-    private static let syncMapChildLimit = 5_000
+    /// A map builds on the main actor only when the layout can visit at most
+    /// this many children in total, across all five rings. Otherwise it
+    /// builds off the main actor through `vm.readTree`. The check itself
+    /// stops after this many children (`SunburstChart.layoutWork`).
+    private static let syncMapWorkLimit = 5_000
+    /// Fixed row pitch. Every row has exactly this height, so a row's offset
+    /// is `index × height` and no row needs to be measured or created to
+    /// scroll to it.
     private static let browserRowHeight: CGFloat = 28
+    private static let browserTwoLineRowHeight: CGFloat = 58
     /// Content width needed to show Details as its own column beside the map
     /// and the browser without shrinking the map.
     private static let detailsColumnMinimumContent: CGFloat = 980
@@ -453,7 +459,7 @@ struct ContentView: View {
         if let map, map.folder.id == folder.id, map.revision == revision { return }
         mapTask?.cancel()
         mapTask = nil
-        if folder.children.count <= Self.syncMapChildLimit {
+        if !SunburstChart.layoutWork(of: folder, exceeds: Self.syncMapWorkLimit) {
             map = MapSnapshot.build(folder: folder, revision: revision)
             return
         }
@@ -499,15 +505,19 @@ struct ContentView: View {
 
     // MARK: - Child browser
 
-    /// Every child of the folder on screen, in map order. A lazy SwiftUI
-    /// stack, not an AppKit table: it takes keyboard focus on click, draws
-    /// its own focus ring, and stays below sheets. ↑↓ move, Home and End jump,
+    /// Every child of the folder on screen, in map order. Windowed: a spacer
+    /// keeps the full height (`count × pitch`), and only the rows inside the
+    /// visible rect exist as views. No AppKit table, so it takes keyboard
+    /// focus on click and stays below sheets. ↑↓ move, Home and End jump,
     /// Page Up and Down move 10 rows, Return or double-click opens a folder,
-    /// Space shows Quick Look, Escape clears the selection.
+    /// Space shows Quick Look, Escape clears the selection. Every child is
+    /// reachable by scrolling and by the keys; none is hidden or paged out.
     private func childBrowser(twoLine: Bool) -> some View {
         let children = map?.children ?? []
         let total = Double(max(1, map?.folder.size ?? 1))
         let selectedID = vm.selectedNode?.id
+        let pitch = twoLine ? Self.browserTwoLineRowHeight : Self.browserRowHeight
+        let selectedIndex = selectedID.flatMap { map?.childIndexOf($0) }
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text("In this folder").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -521,26 +531,13 @@ struct ContentView: View {
                         .foregroundStyle(Theme.mutedForeground)
                 }
             }
-            ScrollViewReader { proxy in
-                ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(children) { node in
-                            browserRow(node, total: total, twoLine: twoLine,
-                                       selected: node.id == selectedID)
-                                .id(node.id)
-                                .contentShape(Rectangle())
-                                .onTapGesture { browserClick(node) }
-                                .contextMenu { browserMenu(node) }
-                        }
-                    }
-                    .padding(4)
-                }
-                // Keep the selection visible, whether it came from the map,
-                // the keyboard or Details.
-                .onChange(of: vm.selectedNode?.id) { _, id in
-                    guard let id, map?.child(id) != nil else { return }
-                    proxy.scrollTo(id)
-                }
+            WindowedRows(children: children, pitch: pitch, folderID: map?.folder.id,
+                         selectedIndex: selectedIndex) { node in
+                browserRow(node, total: total, twoLine: twoLine,
+                           selected: node.id == selectedID, height: pitch)
+                    .contentShape(Rectangle())
+                    .onTapGesture { browserClick(node) }
+                    .contextMenu { browserMenu(node) }
             }
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
@@ -561,6 +558,7 @@ struct ContentView: View {
             .onExitCommand { if !removalBusy { vm.selectedNode = nil } }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Items in \(map?.folder.name ?? "this folder")")
+            .accessibilityHint("\(Theme.itemCount(children.count)). Use the arrow keys, Home and End to move through all of them.")
         }
         .disabled(removalBusy)
     }
@@ -602,7 +600,8 @@ struct ContentView: View {
         return true
     }
 
-    private func browserRow(_ node: FileNode, total: Double, twoLine: Bool, selected: Bool) -> some View {
+    private func browserRow(_ node: FileNode, total: Double, twoLine: Bool, selected: Bool,
+                            height: CGFloat) -> some View {
         let share = Double(node.size) / total * 100
         let percent = share > 0 && share < 1 ? "<1%" : "\(Int(share.rounded()))%"
         let opens = node.isDirectory && !node.isSynthetic
@@ -640,7 +639,9 @@ struct ContentView: View {
         .font(.callout)
         .padding(.horizontal, 8)
         .padding(.vertical, twoLine ? 5 : 0)
-        .frame(minHeight: Self.browserRowHeight)
+        // Exact height: the window and the scroll offsets depend on it. Two
+        // lines of callout plus one caption line fit in the two-line pitch.
+        .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .leading)
         .background(selected ? Theme.selectionTint : .clear, in: RoundedRectangle(cornerRadius: 6))
         .help(node.name)
         .accessibilityElement(children: .ignore)
@@ -918,6 +919,123 @@ struct ContentView: View {
             cursor = c.parent
         }
         return chain
+    }
+}
+
+// MARK: - Windowed browser rows
+
+/// A vertical list with a fixed row pitch that creates views only for the
+/// rows in the visible rect. A spacer above and below keeps the full content
+/// height (`count × pitch`), so the scroll bar and every offset are exact.
+/// Scroll state lives here, so scrolling re-renders only this view.
+///
+/// Bounds: drawing is O(visible rows + 2 × overscan). Showing a selected row
+/// is O(1): its offset is `index × pitch`. Nothing searches rows by id or
+/// creates rows that are not on screen. Uses `ScrollPosition`,
+/// `scrollPosition(_:anchor:)` and `onScrollGeometryChange(for:of:action:)`,
+/// all public SwiftUI API on macOS 15.0 and later.
+private struct WindowedRows<Row: View>: View {
+    private struct Item: Identifiable {
+        let index: Int
+        let node: FileNode
+        var id: ObjectIdentifier { node.id }
+    }
+
+    let children: [FileNode]
+    let pitch: CGFloat
+    let folderID: ObjectIdentifier?
+    let selectedIndex: Int?
+    @ViewBuilder let row: (FileNode) -> Row
+
+    private static var overscan: Int { 8 }
+    private static var padding: CGFloat { 4 }
+
+    @State private var position = ScrollPosition(idType: Int.self)
+    /// First and last row with any part visible; -1 before the first
+    /// geometry callback. Changes only when the view crosses a row boundary,
+    /// so a pixel of scrolling does not re-render the rows.
+    @State private var window = Window()
+    /// The exact visible rect. A reference box: writing it never re-renders.
+    @State private var edges = Edges()
+
+    private struct Window: Equatable {
+        var first = -1
+        var last = -1
+    }
+
+    private final class Edges {
+        var rect: CGRect = .zero
+    }
+
+    var body: some View {
+        let range = drawnRange
+        VStack(alignment: .leading, spacing: 0) {
+            Color.clear.frame(height: CGFloat(range.lowerBound) * pitch)
+                .accessibilityHidden(true)
+            ForEach(range.map { Item(index: $0, node: children[$0]) }) { item in
+                row(item.node)
+            }
+            Color.clear.frame(height: CGFloat(children.count - range.upperBound) * pitch)
+                .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(Self.padding)
+        .scrollContainer(position: $position) { rect in
+            edges.rect = rect
+            updateWindow()
+        }
+        .onChange(of: selectedIndex) { _, index in
+            if let index { show(index) }
+        }
+        // Resizing can switch between one- and two-line rows.
+        .onChange(of: pitch) { _, _ in updateWindow() }
+        .onChange(of: folderID) { _, _ in position.scrollTo(y: 0) }
+    }
+
+    private func updateWindow() {
+        let rect = edges.rect
+        guard rect.height > 0 else { return }
+        let first = max(0, Int(((rect.minY - Self.padding) / pitch).rounded(.down)))
+        let last = max(first, Int(((rect.maxY - Self.padding) / pitch).rounded(.up)) - 1)
+        let next = Window(first: first, last: last)
+        if next != window { window = next }
+    }
+
+    private var drawnRange: Range<Int> {
+        let count = children.count
+        guard count > 0 else { return 0..<0 }
+        guard window.first >= 0 else { return 0..<min(count, 40) }
+        let lower = min(max(0, window.first - Self.overscan), count)
+        let upper = min(count, window.last + 1 + Self.overscan)
+        if lower < upper { return lower..<upper }
+        // The window is past the end (the list shrank): draw the tail.
+        return max(0, count - 2 * Self.overscan)..<count
+    }
+
+    /// Scroll the least distance that shows row `index` in full.
+    private func show(_ index: Int) {
+        let rect = edges.rect
+        guard rect.height > 0 else { return }
+        let top = Self.padding + CGFloat(index) * pitch
+        let bottom = top + pitch
+        if top < rect.minY {
+            position.scrollTo(y: max(0, top - Self.padding))
+        } else if bottom > rect.maxY {
+            position.scrollTo(y: max(0, bottom + Self.padding - rect.height))
+        }
+    }
+}
+
+private extension View {
+    /// Wraps the content in a vertical scroll view driven by `position`, and
+    /// reports its visible rect in content coordinates.
+    func scrollContainer(position: Binding<ScrollPosition>,
+                         onVisibleRect: @escaping (CGRect) -> Void) -> some View {
+        ScrollView(.vertical) { self }
+            .scrollPosition(position)
+            .onScrollGeometryChange(for: CGRect.self, of: { $0.visibleRect }) { _, rect in
+                onVisibleRect(rect)
+            }
     }
 }
 

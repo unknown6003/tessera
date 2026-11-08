@@ -682,14 +682,62 @@ struct SunburstChart: View {
 
     /// Walk the tree breadth-by-depth, allocating angular spans proportional to
     /// size, aggregating tiny siblings into a synthetic "Other" wedge.
+    /// Bounded top-K selection for one ring. O(k) for k children: each child
+    /// is compared once with the threshold; only children at or above it can
+    /// be inserted, and the kept list never exceeds `maxWedgesPerRing`, so an
+    /// insertion costs at most `maxWedgesPerRing` comparisons. When sizes add
+    /// up to the parent (as `recomputeDirectorySizes` makes them), at most
+    /// `1 / aggregateFraction` = 250 children pass the threshold.
+    nonisolated static func visibleChildren(of parent: FileNode, parentSize: Double)
+        -> (visible: [FileNode], aggregateSize: Int64) {
+        var visible: [FileNode] = []
+        visible.reserveCapacity(min(parent.children.count, maxWedgesPerRing + 1))
+        var aggregateSize: Int64 = 0
+        for child in parent.children {
+            guard Double(child.size) / parentSize >= aggregateFraction else {
+                aggregateSize += child.size
+                continue
+            }
+            if visible.count == maxWedgesPerRing, let last = visible.last,
+               !FileNode.largestFirst(child, last) {
+                aggregateSize += child.size
+                continue
+            }
+            let index = visible.firstIndex { FileNode.largestFirst(child, $0) } ?? visible.endIndex
+            visible.insert(child, at: index)
+            if visible.count > maxWedgesPerRing { aggregateSize += visible.removeLast().size }
+        }
+        return (visible, aggregateSize)
+    }
+
+    /// True when the layout for `root` could visit more than `limit` children
+    /// in total. Walks the same directories `buildLayout` may enter (five
+    /// rings, real folders only) and stops as soon as the count passes
+    /// `limit`, so the check itself costs O(limit).
+    nonisolated static func layoutWork(of root: FileNode, exceeds limit: Int) -> Bool {
+        var visited = 0
+        var queue: [(node: FileNode, depth: Int)] = [(root, 0)]
+        var head = 0
+        while head < queue.count {
+            let (node, depth) = queue[head]
+            head += 1
+            visited += node.children.count
+            if visited > limit { return true }
+            guard depth + 1 < maxRings else { continue }
+            for child in node.children where child.isDirectory && !child.isSynthetic {
+                queue.append((child, depth + 1))
+            }
+        }
+        return false
+    }
+
     nonisolated static func buildLayout(root: FileNode) -> [Wedge] {
         var out: [Wedge] = []
 
         func recurse(parent: FileNode, depth: Int, start: Double, sweep: Double,
                      palette: Int?) {
             guard depth < maxRings else { return }
-            let kids = parent.sortedChildren
-            guard !kids.isEmpty else { return }
+            guard !parent.children.isEmpty else { return }
             let parentSize = max(1, Double(parent.size))
 
             // Fold tiny children into a single synthetic "Other" wedge — at EVERY
@@ -698,21 +746,13 @@ struct SunburstChart: View {
             // ring is unchanged). Without this, a directory with hundreds of small
             // children (e.g. an iCloud .Trash) spends its whole sweep on
             // inter-wedge gaps and renders nothing (usable <= 0).
-            var visible: [FileNode] = []
-            var aggregateSize: Int64 = 0
-            for k in kids {
-                if Double(k.size) / parentSize < aggregateFraction {
-                    aggregateSize += k.size
-                } else {
-                    visible.append(k)
-                }
-            }
-            // Hard cap on real wedges per ring; fold the remainder into "Other".
-            // Bounds the gap budget and per-frame work regardless of fan-out.
-            if visible.count > maxWedgesPerRing {
-                for extra in visible[maxWedgesPerRing...] { aggregateSize += extra.size }
-                visible = Array(visible.prefix(maxWedgesPerRing))
-            }
+            //
+            // One pass, no full sort: the visible wedges are the first
+            // `maxWedgesPerRing` children in `FileNode.largestFirst` order whose
+            // share reaches `aggregateFraction`. Everything else, below the
+            // threshold or past the cap, sums into "Other". This is the same
+            // set, order and sum the old sort-then-filter produced.
+            let (visible, aggregateSize) = visibleChildren(of: parent, parentSize: parentSize)
             var entries: [(node: FileNode, size: Int64)] = visible.map { ($0, $0.size) }
             if aggregateSize > 0 {
                 let other = FileNode(url: parent.url, name: "Other",

@@ -255,3 +255,80 @@ Native checks added to the round 4 list:
     source list refreshes.
 12. The Swift 6 build shows no isolation warning or error at the Quick Look
     monitor. ⌘Y opens and closes the preview as in check 8.
+
+## Round 5: wide-folder causes from the native profile
+
+Base: `8dc82f2`. Scope: `ContentView.swift`, `SunburstChart.swift` and this
+note. Status: source changed, not compiled, not run. No score.
+
+The native profile of `c590e06` measured two causes. The full report is
+remote (`/tmp/tessera-c590-qual/perf/REPORT.md`). These fixes follow its
+summary.
+
+| Profile cause (c590) | Fix | Bound |
+|---|---|---|
+| 1. `refreshMap` checked only the folder's direct children. The fixture root has few children, so its map built on the main actor. `SunburstChart.buildLayout` then called `sortedChildren` in every folder it entered, including the 100,000-child folder one ring down (`SunburstChart.swift:691` at c590). Debug heartbeat 834 to 1342 ms, Release 196 ms. | `buildLayout` no longer sorts. `visibleChildren(of:parentSize:)` makes one pass over each folder's children: a child under the 0.4 % share goes to "Other"; a child at or above it is inserted into a list kept in `FileNode.largestFirst` order and capped at 60; whatever falls off the cap goes to "Other". `refreshMap` now asks `SunburstChart.layoutWork(of:exceeds:)`, which walks the same five rings of real folders and stops once it has counted 5,000 children. Above that, the map builds off the main actor through `vm.readTree`, with the same folder and revision gates as before. | Per folder: O(k) for k children, plus at most 60 comparisons for each child that passes the threshold. When sizes add up to the parent, at most 250 children pass. The check before a build costs O(5,000) at most. A main-actor build visits at most 5,000 children and sorts at most 5,000 direct children. |
+| 2. The browser's `proxy.scrollTo(id)` made SwiftUI look up the row's offset by id in a 100,000-row `ForEach` (`ContentView.swift:430` and `:479` at c590). It created a subgraph per row up to the target. End blocked for over 38 s in Debug and 31 s in Release; memory grew from 160 MB to 1.5 to 2.3 GB. | The browser is now `WindowedRows`: every row has a fixed height (28 pt, or 58 pt for two-line rows). A spacer above and below holds the full height (count × pitch). Only rows in the visible rect plus 8 above and 8 below exist as views. Selection maps to an index through `MapSnapshot.childIndexOf` (a dictionary). Showing a row scrolls to `index × pitch` with `ScrollPosition.scrollTo(y:)`. `onScrollGeometryChange` reports the visible rect; the row window changes state only when it crosses a row boundary. | Views: O(visible rows + 16). Scroll to any row: O(1). No lookup by row id, no row created off screen, no paging. |
+
+Correctness of cause 1: the old code sorted all children, kept those at or
+above the threshold, and capped the list at 60. Because the threshold is on
+size and `largestFirst` orders by size first, the kept children are a
+prefix of the sorted order. The new pass keeps the first 60 of that prefix
+in the same order. Every other child adds to "Other", so its sum is the same.
+`largestFirst` is a strict order (size, then name bytes), so equal sizes
+break the same way, and the palette rank, colours and "Other" identity per
+snapshot do not change. A Python model of both algorithms matched in 3,000
+random cases with many equal sizes and 0 to 2,000 children, including cases
+where the parent size is less than the sum. That model is not the Swift
+code. `LayoutTests` must still pass natively.
+
+APIs, from Apple's documentation: `ScrollPosition`, `scrollTo(y:)`,
+`scrollPosition(_:anchor:)`, `onScrollGeometryChange(for:of:action:)` and
+`ScrollGeometry.visibleRect` are public and need macOS 15.0. The build
+target is macOS 26.0. Apple notes that a point-based `ScrollPosition` does
+not follow user scrolling, so the visible rect comes from
+`onScrollGeometryChange`, not from the position binding.
+
+Kept: two-line wrapped names in narrow columns (now at a fixed 58 pt, two
+name lines plus the size line), click focus, all keys, double-click open,
+the context menu, Quick Look, drag from the map, the selection, source,
+revision, identity, owner, protected and confirmation gates. Every child
+stays in the list; only rows off screen are not built.
+
+Known limits:
+
+- VoiceOver sees only the rows that exist (visible plus 16). The arrow,
+  Home and End keys and VoiceOver scrolling reach every child. A
+  VoiceOver run is still needed.
+- Opening the 100,000-child folder itself still sorts its direct children
+  once for the browser order. That runs off the main actor.
+- `InspectorView` still runs `largestChildren(limit: 5)` on the main actor
+  when the selection changes. It is one O(k) pass with no sort, outside this
+  patch's files.
+- A two-line row with a name that needs a third line shows two lines and a
+  middle ellipsis; the full name is in the tooltip and in Details.
+
+## Round 5 native checks (same workload, 3 Debug and 3 Release)
+
+Before each run, check the driver: the build is from this commit, the
+fixture is the same `fx-wide` tree with `Wide100k`, the cache state
+matches the c590 profile, and `SO_` automation keeps analytics off.
+
+1. Launch on the `fx-wide` root. Record the main-thread heartbeat and the
+   time to `plan_ready`. No `sortedChildren` frames under `buildLayout` in
+   the samples.
+2. Open `Wide100k`. The header shows "Sorting…", then the full count. Record
+   the heartbeat.
+3. In the browser: click a row, press End. The last row is selected and
+   visible. Record the time and resident memory before and after. Then Home,
+   Page Down 20 times, ↑ and ↓.
+4. Drag the scroll bar from top to bottom and back. No blank rows stay
+   blank after the scroll stops. Record memory.
+5. Resize from 1240 to 820 wide with the selection near row 50,000. Rows
+   switch to two lines and the selection stays visible after one more key
+   press.
+6. The map: wedge order, colours and "Other" size match a c590 capture of
+   the same folder.
+7. Accessibility Inspector: the browser lists the visible rows, and AX
+   calls stay under 200 ms while idle.
+8. `LayoutTests` and the full test suite pass.
