@@ -10,6 +10,92 @@ struct ScanRegressionTests {
         return url
     }
 
+    @Test("Literal path matching preserves Foundation behavior for ASCII, Unicode and NUL")
+    func literalPathMatching() {
+        let roots = ["", "/", "/users/sample/library/application support/google/chrome/default/cache",
+                     "/volumes/archive/backups", "/users/sample/projects/" + String(repeating: "deep/", count: 300),
+                     "/users/caf\u{e9}/library/caches", "/users/cafe\u{301}/library/caches",
+                     "/users/sample/adobe\u{301}/cache", "/users/界/library/cloudstorage/provider",
+                     "/users/sample\0/after-null"]
+        let ruleParts = [
+            "/library/application support/mobilesync/backup",
+            "/time machine/",
+            "/.docker/",
+            "/.parallels/",
+            "/library/cloudstorage/",
+            "/library/mobile documents/",
+            "/library/application support/google/chrome",
+            "/library/application support/microsoft edge",
+            "/library/application support/brave-browser",
+            "/library/application support/firefox",
+            "/library/application support/com.microsoft.vscode",
+            "/library/messages",
+            "/library/application support/discord",
+            "/library/application support/telegram",
+            "/library/application support/whatsapp",
+            "/library/application support/signal",
+            "/adobe",
+            "/adobe/cameraraw",
+            "lightroom",
+            "/caches/",
+            "/.gradle",
+            "cocoapods",
+            "/.cache/yarn",
+            "/.cargo/registry",
+            "/google/chrome",
+            "/firefox/",
+            "/com.apple.safari",
+            "/microsoft edge",
+            "/brave-browser",
+            "/library/caches",
+            "/developer/",
+            "/documents/",
+            "/projects/",
+            "/code/",
+            "/src/",
+            "/library/logs",
+            "/users/"
+        ]
+        let parts = ruleParts + ["", "/", "cache", "/library/caches", "chrome", "/volumes/", "deep/",
+                     "adobe", "adob\u{e9}", "cafe\u{301}", "界", "after-null", "\0/after", "missing"]
+        for root in roots + parts.map({ "/users/sample" + $0 + "/nested" }) {
+            let input = CleanupPath(root)
+            for part in parts {
+                #expect(input.contains(part) == root.contains(part), "Substring mismatch for \(root.debugDescription) and \(part.debugDescription)")
+                #expect(input.hasPrefix(part) == root.hasPrefix(part))
+                #expect(input.hasSuffix(part) == root.hasSuffix(part))
+            }
+        }
+    }
+
+    @Test("Known descendant names retain every protected owner boundary")
+    func protectedDescendantPaths() {
+        let protected = ["item.vmdk", ".Trash/file", "VM.backupbundle/file",
+                         "Library/CloudStorage/provider/file", "Library/Messages/Attachments/file",
+                         "Library/Application Support/Google/Chrome/Default/Cache/file"]
+        for (home, relative) in ["sample", "界"].flatMap({ home in
+            (protected + ["cache.bin"]).map { (home, $0) }
+        }) {
+            let root = FileNode(url: URL(fileURLWithPath: "/Users/\(home)/Library/Developer/Xcode"),
+                                name: "Xcode", isDirectory: true, size: 0)
+            let derived = FileNode(name: "DerivedData", isDirectory: true, size: 0,
+                                   identity: ScanIdentity(device: 1, inode: 2, resourceType: .directory))
+            root.setChildren([derived])
+            let components = relative.split(separator: "/").map(String.init)
+            var parent = derived
+            for (index, name) in components.enumerated() {
+                let child = FileNode(name: name, isDirectory: index < components.count - 1, size: 1)
+                parent.setChildren([child])
+                parent = child
+            }
+            root.recomputeDirectorySizes()
+            let report = CleanupClassifier.classify(root: root)
+            let recommendation = report.recommendations.first { $0.node === derived }
+            #expect(recommendation?.risk == (relative == "cache.bin" ? .safe : .review))
+            #expect(CleanupClassifier.hasProtectedDescendant(derived) == protected.contains(relative))
+        }
+    }
+
     @Test("Bulk enumeration keeps every entry across output and kernel batches", arguments: [8191, 8192, 8193, 20000])
     func wideDirectory(count: Int) throws {
         let url = try fixture()

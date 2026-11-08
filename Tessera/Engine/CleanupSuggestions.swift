@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Darwin
 
 // MARK: - Rescue state
 
@@ -188,7 +189,31 @@ struct CleanupCategory: Identifiable, Hashable, Sendable {
 /// A single classification rule. Predicates only inspect the already-built tree.
 struct CleanupRule: Sendable {
     let category: CleanupCategory
-    let matches: @Sendable (_ lowerName: String, _ lowerPath: String) -> Bool
+    let matches: @Sendable (_ lowerName: String, _ lowerPath: CleanupPath) -> Bool
+}
+
+/// ASCII filesystem paths do not need Foundation's Unicode substring search.
+/// Keep its original behavior for Unicode and embedded NUL in hand-built input.
+struct CleanupPath: Sendable {
+    private let value: String
+    private let isCStringASCII: Bool
+
+    init(_ value: String) {
+        self.value = value
+        self.isCStringASCII = value.utf8.allSatisfy { $0 > 0 && $0 < 128 }
+    }
+
+    func contains(_ part: String) -> Bool {
+        guard !part.isEmpty, isCStringASCII, part.utf8.allSatisfy({ $0 > 0 && $0 < 128 }) else {
+            return value.contains(part)
+        }
+        return value.withCString { path in
+            part.withCString { strstr(path, $0) != nil }
+        }
+    }
+
+    func hasPrefix(_ part: String) -> Bool { value.hasPrefix(part) }
+    func hasSuffix(_ part: String) -> Bool { value.hasSuffix(part) }
 }
 
 /// One explainable plan item. The node is kept so the existing collector can
@@ -481,6 +506,8 @@ enum CleanupClassifier {
         },
     ]
 
+    private static let protectedRules = rules.filter { $0.category.confidence == .protected }
+
     /// Return the protected owner category for a path or any of its ancestors.
     /// Action paths can be minted outside the scanned tree by the app uninstaller,
     /// so the plan's protected recommendations are not enough as a safety gate.
@@ -493,9 +520,10 @@ enum CleanupClassifier {
         }
     }
 
-    static func protectedCategory(atNormalizedPath path: String) -> CleanupCategory? {
-        let name = path.split(separator: "/").last.map(String.init) ?? "/"
-        return rules.first { $0.category.confidence == .protected && $0.matches(name, path) }?.category
+    static func protectedCategory(atNormalizedPath path: String, name: String? = nil) -> CleanupCategory? {
+        let name = name ?? path.split(separator: "/").last.map(String.init) ?? "/"
+        let input = CleanupPath(path)
+        return protectedRules.first { $0.matches(name, input) }?.category
     }
 
     /// Check only when a directory is about to be proposed as one unit. Walking
@@ -508,7 +536,7 @@ enum CleanupClassifier {
         }
         while let (child, path) = stack.popLast() {
             guard !child.isSynthetic else { continue }
-            if protectedCategory(atNormalizedPath: path.lowercased()) != nil { return true }
+            if protectedCategory(atNormalizedPath: path.lowercased(), name: child.name.lowercased()) != nil { return true }
             if child.isDirectory {
                 stack.append(contentsOf: child.children.map { nested in
                     (nested, path == "/" ? "/\(nested.name)" : path + "/" + nested.name)
@@ -571,8 +599,9 @@ enum CleanupClassifier {
         while let (node, lowerPath) = stack.popLast() {
             if shouldStop() { break }
             let lowerName = node.name.lowercased()
+            let path = CleanupPath(lowerPath)
             if let category = rules.first(where: {
-                $0.matches(lowerName, lowerPath)
+                $0.matches(lowerName, path)
             })?.category {
                 append(category, node)
                 continue
