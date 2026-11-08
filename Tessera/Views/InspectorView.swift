@@ -21,6 +21,8 @@ struct InspectorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg)
         .disabled(vm.isDeleting || vm.isScanning)
+        .onChange(of: inspectedNode?.id, initial: true) { _, _ in refreshLargestRows() }
+        .onChange(of: vm.chartRevision) { _, _ in refreshLargestRows() }
     }
 
     private func refreshLargestRows() {
