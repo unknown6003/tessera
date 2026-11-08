@@ -4,9 +4,38 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import run_bounded
 
 
 class BoundedCommandTests(unittest.TestCase):
+    def test_transient_permission_denial_confirms_group_disappeared(self):
+        with mock.patch.object(run_bounded.os, "killpg", side_effect=[PermissionError(), ProcessLookupError()]) as killpg, \
+             mock.patch.object(run_bounded.time, "monotonic", return_value=0), \
+             mock.patch.object(run_bounded.time, "sleep"):
+            self.assertFalse(run_bounded.signal_owned_group(123, run_bounded.signal.SIGKILL))
+        self.assertEqual(killpg.call_count, 2)
+
+    def test_lasting_permission_denial_is_not_success(self):
+        with mock.patch.object(run_bounded.os, "killpg", side_effect=PermissionError()), \
+             mock.patch.object(run_bounded.time, "monotonic", side_effect=[0, 1]):
+            with self.assertRaises(PermissionError):
+                run_bounded.signal_owned_group(123, run_bounded.signal.SIGTERM)
+
+    def test_pid_file_is_removed_even_when_stopping_fails(self):
+        with tempfile.TemporaryDirectory(prefix="tessera-bounded-denied-") as directory:
+            log = Path(directory) / "command.log"
+            process = mock.Mock(pid=123)
+            process.wait.return_value = 0
+            with mock.patch.object(sys, "argv", ["run_bounded.py", "--timeout", "1", "--log", str(log), "--", "owned"]), \
+                 mock.patch.object(run_bounded.subprocess, "Popen", return_value=process), \
+                 mock.patch.object(run_bounded.signal, "signal"), \
+                 mock.patch.object(run_bounded, "signal_owned_group", side_effect=PermissionError()):
+                with self.assertRaises(PermissionError):
+                    run_bounded.main()
+            self.assertFalse(log.with_suffix(".log.pid").exists())
+
     def run_owned_command(self, source, deadline):
         temporary = tempfile.TemporaryDirectory(prefix="tessera-bounded-")
         self.addCleanup(temporary.cleanup)

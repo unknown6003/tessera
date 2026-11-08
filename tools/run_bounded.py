@@ -4,7 +4,24 @@ import argparse
 import os
 import signal
 import subprocess
+import time
 from pathlib import Path
+
+
+def signal_owned_group(pgid, signum):
+    # Darwin can return EPERM while launchd reaps the last orphaned zombie.
+    # Confirm that the group is gone or signal it; a lasting denial is a failure.
+    deadline = time.monotonic() + 1
+    while True:
+        try:
+            os.killpg(pgid, signum)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
 
 
 def main():
@@ -23,18 +40,13 @@ def main():
         pid_file.write_text(str(process.pid) + "\n")
 
         def stop_group(*_):
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
+            if not signal_owned_group(process.pid, signal.SIGTERM):
                 return
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 pass
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            signal_owned_group(process.pid, signal.SIGKILL)
 
         def interrupted(signum, _frame):
             stop_group()
@@ -50,9 +62,11 @@ def main():
         finally:
             # A successful leader can leave descendants behind. This command's
             # process group is owned, so stop any leftovers on every exit path.
-            stop_group()
-            process.wait(timeout=5)
-            pid_file.unlink(missing_ok=True)
+            try:
+                stop_group()
+                process.wait(timeout=5)
+            finally:
+                pid_file.unlink(missing_ok=True)
     print(f"exit={status}; log={args.log}")
     if status:
         print(args.log.read_text(errors="replace")[-12000:])
