@@ -99,6 +99,10 @@ struct SunburstChart: View {
     /// Wedges narrower than this keep their place but draw in the aggregate
     /// neutral, so slivers do not add noise to the branch colours.
     nonisolated static let smallWedgeDegrees: Double = 1.0
+    /// A top-level branch needs at least this share of the folder to get its
+    /// own hue. Smaller branches, and ranks past `Theme.branchPaletteCount`,
+    /// draw in the neutral grey, so no hue repeats on the map.
+    nonisolated static let branchHueMinimumShare: Double = 0.03
     nonisolated private static let gapDegrees: Double = 1.2
     nonisolated private static let maxWedgesPerRing = 60
     private static let ringInset: CGFloat = 1.5            // hairline separation
@@ -780,10 +784,17 @@ struct SunburstChart: View {
                 let frac = Double(entry.size) / parentSize
                 let span = usable * frac
                 if span >= minWedgeDegrees {
-                    // Top ring: the rank picks the branch colour (it matches the
-                    // Largest items legend). Deeper rings inherit it unchanged.
-                    // Slivers turn neutral; their children stay neutral too.
-                    let branch = depth == 0 ? i : palette
+                    // Top ring: the rank picks the branch colour, but only for
+                    // the first `branchPaletteCount` ranks with at least a 3 %
+                    // share; every other top-level branch is grey. Ranks are
+                    // in `largestFirst` order, so the hued branches are always
+                    // the largest. Deeper rings inherit the branch colour or
+                    // grey unchanged. Slivers turn neutral; their children
+                    // stay neutral too. `MapSnapshot.color` reads this same
+                    // palette, so the list and Details match.
+                    let branch = depth == 0
+                        ? (i < Theme.branchPaletteCount && frac >= branchHueMinimumShare ? i : nil)
+                        : palette
                     let childPalette = sweep * frac < smallWedgeDegrees ? nil : branch
                     let wedge = Wedge(node: entry.node, depth: depth,
                                       startAngle: cursor, endAngle: cursor + span,

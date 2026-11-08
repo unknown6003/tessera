@@ -6,8 +6,8 @@ to Engine, Model, ViewModel, Analytics, tests or config.
 Input: an independent Opus visual review of private `c590e06` captures (11
 faults). The full report is on the Mac and stays private; its captures show
 real source names and are not published. This patch covers P1–P6, P8, P9,
-P10 and P11. P7 (the palette repeats cyan and teal after six rows) is left
-for a separate change, so map colours and identity do not move here.
+P10 and P11. P7 follows in its own commit (see "P7: no repeated branch
+hues" below).
 
 Status: source changed, not compiled, not run. No rubric score. The fixed
 rubric is unchanged.
@@ -95,3 +95,53 @@ Use the same private fixture and window sizes as the review: 820x600,
     phase, counts show grouping (100,000).
 12. VoiceOver: breadcrumb buttons, the current folder header, the dock
     result and the update row read correctly.
+
+## P7: no repeated branch hues
+
+Base: `803f064`. Scope: `Theme.swift`, `SunburstChart.swift` and this note.
+Status: source changed, not compiled, not run. No score.
+
+Finding: the reviewer saw cyan and teal used twice in one folder (for
+example Media, Many and Projects).
+
+Source cause: `buildLayout` gave each top-ring wedge its rank as `palette`,
+and `Theme.wedgeColor` read `palette % 7`. Rank 7 drew cyan again, rank 8
+teal, and so on (`SunburstChart.swift` and `Theme.swift` at `803f064`).
+
+Fix:
+
+- Top ring: a branch gets its own hue only if its rank is below
+  `Theme.branchPaletteCount` (7) and its share of the folder is at least
+  `SunburstChart.branchHueMinimumShare` (3 %). Every other top-level branch
+  gets `palette = nil`, the neutral grey.
+- `Theme.wedgeColor` no longer wraps. An index outside the palette also
+  returns grey, so no path can repeat a hue.
+- Deeper rings inherit the branch's hue or grey unchanged, as before.
+  Slivers under 1 degree stay grey.
+- The browser dots and the Details badge already read the wedge palette
+  through `MapSnapshot.color`, so they change with the map and need no
+  edit.
+
+Unchanged: wedge nodes, angles and geometry, the "Other" node and its
+identity per snapshot, the top-60 selection and its "Other" sum, child order,
+the full child list, synthetic-node colours, and the depth and Increase
+Contrast colour tables.
+
+Source check: a Python model of the rule (ranks in descending size, 0 to 80
+children, 5,000 random cases) found no repeated hue, no hue past index 6,
+and the hued branches were always the largest ranks. It models the rule,
+not the Swift code.
+
+Native colour checks:
+
+1. Open a folder with more than 7 top-level items and one with items under
+   3 %. Pixel-sample every top-ring wedge: each hue appears at most once;
+   rank 8 and later, and branches under 3 %, are the grey `#3A3F47`
+   (`#5A606A` with Increase Contrast on).
+2. For one hued branch and one grey branch, sample a ring 2 and a ring 4
+   wedge: each keeps its branch's hue family or grey.
+3. In the browser and in Details, sample the dot and badge for a hued
+   child, a grey child and an "Other" wedge: each matches its wedge.
+4. Map order, angles and the "Other" size match a capture of the same
+   folder from `803f064`. Only colours change.
+5. `LayoutTests` and the full test suite pass.

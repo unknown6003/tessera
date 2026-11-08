@@ -72,6 +72,9 @@ enum Theme {
         0x1BE6FF, 0x37E0C8, 0x5B8CFF, 0x9E6BFF, 0x5BE36B, 0xFF5CC8, 0xFFB13C,
     ]
     static let sunburstColors: [Color] = sunburstHex.map { Color(hex: $0) }
+    /// Number of distinct branch hues. Top-level ranks at or past this count
+    /// draw in the neutral grey; the palette never repeats.
+    static let branchPaletteCount = sunburstHex.count
 
     /// Fixed share of `bg` mixed into each ring, by depth. Opaque sRGB mixes, not
     /// opacity, so hover washes and hairline gaps stay clean and child rings
@@ -93,11 +96,14 @@ enum Theme {
 
     /// Solid wedge colour for a top-level branch `palette` at ring `depth`.
     /// `nil` palette marks a wedge too small to tell apart; it uses the
-    /// aggregate neutral, like DaisyDisk's grey "small items".
+    /// aggregate neutral, like DaisyDisk's grey "small items". An index
+    /// outside the palette is also neutral: hues never wrap and repeat.
     static func wedgeColor(palette: Int?, depth: Int, highContrast: Bool = false) -> Color {
-        guard let palette else { return highContrast ? aggregateColorHighContrast : aggregateColor }
         let table = highContrast ? wedgeShadesHighContrast : wedgeShades
-        let row = table[((palette % table.count) + table.count) % table.count]
+        guard let palette, table.indices.contains(palette) else {
+            return highContrast ? aggregateColorHighContrast : aggregateColor
+        }
+        let row = table[palette]
         return row[min(max(0, depth), row.count - 1)]
     }
 
