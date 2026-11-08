@@ -764,7 +764,7 @@ struct EngineTests {
         #expect(verification.verifiedReclaimedBytes == 30)
         #expect(verification.hasMeasurementMismatch)
         #expect(!verification.targetReached)
-        #expect(verification.status == "Moved, but reclaimed space is not proven")
+        #expect(verification.status == "Removed, but reclaimed space is not proven")
 
         let unrelatedCapacityGain = RescueMeasurement(volumePath: "/", totalBytes: 1_000,
                                                        availableBytes: 250, freeBytes: 250,

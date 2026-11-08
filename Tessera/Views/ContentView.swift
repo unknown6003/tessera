@@ -187,6 +187,7 @@ struct ContentView: View {
             showTrashConfirm = false
             showDeleteAllConfirm = false
             showInspector = state == "details"
+            if state == "details" { vm.selectedNode = vm.rootNode?.largestChildren(limit: 1).first }
             appMode = state == "rescue" ? .rescue : .explore
             if state == "review" || state == "confirm" {
                 for node in vm.rootNode?.largestChildren(limit: 3) ?? [] { vm.addToCollector(node) }

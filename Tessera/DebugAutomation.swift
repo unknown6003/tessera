@@ -8,10 +8,13 @@ import AppKit
 /// Inert in normal launches.
 @MainActor
 enum DebugAutomation {
-    private static let preferenceDomain: String? = {
+    static var isAutomated: Bool {
         let env = ProcessInfo.processInfo.environment
         return env["SO_AUTOSCAN"] != nil || env["SO_BENCH"] != nil || env["SO_BENCH_RESCAN"] != nil
-            ? "TesseraAutomation." + UUID().uuidString : nil
+    }
+
+    private static let preferenceDomain: String? = {
+        isAutomated ? "TesseraAutomation." + UUID().uuidString : nil
     }()
 
     static var defaults: UserDefaults {
