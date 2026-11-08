@@ -87,6 +87,31 @@ struct LayoutTests {
         #expect(!SunburstChart.layoutWork(of: root, exceeds: 265))
     }
 
+    @Test("Top-level hues stay unique while small and extra branches stay visible")
+    func branchHuesDoNotRepeat() {
+        let base = URL(fileURLWithPath: "/tmp/layout-branch-hues")
+        let root = FileNode(url: base, name: "root", isDirectory: true, size: 0)
+        let branches = (0..<8).map { index in
+            let name = "branch-\(index)"
+            return FileNode(url: base.appendingPathComponent(name), name: name,
+                            isDirectory: false, size: 100)
+        }
+        let small = FileNode(url: base.appendingPathComponent("small"), name: "small",
+                             isDirectory: false, size: 10)
+        root.setChildren(Array(branches.reversed()) + [small])
+        root.recomputeDirectorySizes()
+
+        let ring = SunburstChart.buildLayout(root: root).filter { $0.depth == 0 }
+        let hues = ring.compactMap(\.palette)
+        #expect(ring.count == 9)
+        #expect(Set(ring.map(\.node.id)) == Set((branches + [small]).map(\.id)))
+        #expect(hues.count == Theme.branchPaletteCount)
+        #expect(Set(hues).count == hues.count)
+        #expect(ring.first { $0.node.id == branches[7].id }?.palette == nil)
+        #expect(ring.first { $0.node.id == small.id }?.palette == nil)
+        #expect(ring.reduce(Int64(0)) { $0 + $1.node.size } == root.size)
+    }
+
     /// All wedge angles must be finite and ordered; no NaN/inf can reach Canvas.
     @Test("Every wedge has finite, ordered angles")
     func wedgeAnglesAreFinite() {
