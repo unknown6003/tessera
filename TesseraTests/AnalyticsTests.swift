@@ -4,6 +4,25 @@ import Testing
 
 @Suite("Analytics privacy and consent")
 struct AnalyticsTests {
+    @Test("Late progress cannot replace final scan telemetry")
+    func finalTelemetryWins() {
+        let telemetry = ScanTelemetry()
+        telemetry.observe(ScanProgress(filesScanned: 8, dirsScanned: 3, providerReadAttempts: 2, isComplete: true))
+        telemetry.observe(ScanProgress(filesScanned: 7, dirsScanned: 3))
+        #expect(telemetry.progressSnapshot.isComplete)
+        #expect(telemetry.progressSnapshot.filesScanned == 8)
+        #expect(telemetry.progressSnapshot.providerReadAttempts == 2)
+    }
+
+    @Test("Source telemetry uses cached mounts and distinguishes cloud paths")
+    func cachedSourceMetadata() {
+        let local = AnalyticsSource.inspect(FileManager.default.temporaryDirectory)
+        #expect(local.source == .localUnknown)
+        #expect(local.scope == "folder")
+        let cloud = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/CloudStorage/OfflineProvider")
+        #expect(AnalyticsSource.inspect(cloud).source == .cloud)
+    }
+
     @Test("A new consent period removes only Tessera's pending native crash")
     func discardOptedOutCrash() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("tessera-crash-consent-\(UUID())")

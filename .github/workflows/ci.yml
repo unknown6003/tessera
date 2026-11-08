@@ -26,7 +26,7 @@ jobs:
       - name: Validate release and qualification tools
         run: |
           python3 tools/validate_release.py
-          python3 tools/run_bounded.py --timeout 30 --log "$RUNNER_TEMP/tool-tests.log" --
+          python3 tools/run_bounded.py --timeout 30 --log "$RUNNER_TEMP/tool-tests.log" -- \
             python3 -m unittest discover -s tools -p 'test_*.py'
 
       - name: Toolchain
@@ -42,12 +42,14 @@ jobs:
         # XcodeGen is the source of truth. Keep generated metadata reviewable as
         # an artifact when adding SDKs or source groups.
         run: >-
+          python3 tools/run_bounded.py --timeout 300 --log "$RUNNER_TEMP/package-resolution.log" --
           xcodebuild -resolvePackageDependencies
           -project Tessera.xcodeproj
           -scheme Tessera
 
       - name: Test
         run: >-
+          python3 tools/run_bounded.py --timeout 900 --log "$RUNNER_TEMP/native-tests.log" --
           xcodebuild test
           -project Tessera.xcodeproj
           -scheme Tessera
@@ -58,6 +60,7 @@ jobs:
 
       - name: Compile release build
         run: >-
+          python3 tools/run_bounded.py --timeout 600 --log "$RUNNER_TEMP/release-build.log" --
           xcodebuild build
           -project Tessera.xcodeproj
           -scheme Tessera
@@ -75,6 +78,19 @@ jobs:
             Tessera.xcodeproj/project.pbxproj
             Tessera.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Save native command logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-command-logs
+          path: |
+            ${{ runner.temp }}/native-tests.log
+            ${{ runner.temp }}/package-resolution.log
+            ${{ runner.temp }}/release-build.log
+            ${{ runner.temp }}/tool-tests.log
+          if-no-files-found: warn
           retention-days: 14
 
   web:

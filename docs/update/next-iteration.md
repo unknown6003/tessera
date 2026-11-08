@@ -41,3 +41,27 @@ The published 1.0.0 release is now a withdrawn draft. The public latest route
 returns 0.1.9. Its tag and assets remain preserved. The next source version is
 0.2.0, build 12, above withdrawn build 11. Release scripts and CI reject non-0.x
 versions without an environment-variable escape hatch.
+
+## Open qualification
+
+The first Opus implementation compiled and passed 78 native tests at `5ae7865`.
+Its design changes have not had a fresh native score review. The initial
+Opus scorecards and reference images are preserved in `opus-reviews/`.
+No Tessera area is qualified at 9/10 yet.
+
+The second Opus implementation failed twice before edits with the Claude rate
+limit. Native Opus work failed with `503 auth_unavailable`, then the rate limit.
+The first implementation and its locked child workspace remain preserved.
+
+The next CI campaign requests 400 full pipelines, 100 each for mixed 20,000
+files, a 100,000-file folder, a 420-level tree and 2,000 long Unicode names.
+Its report requires the exact case inventory and hardware, workload, cache
+and coverage data. It qualifies only those warm-cache runner cohorts. Broader
+local-drive and device p99 remains unproved.
+
+The official PostHog SDK and anonymous boundary compile, but the Tessera
+project token is still empty. The private control-key card timed out without
+a reply. Another app's ingest key was not reused. Live ingestion, dashboards,
+flag and survey setup, and dSYM upload remain blocked on dedicated access.
+The SDK cannot provide macOS replay or built-in macOS survey UI. The fixed
+native rating flow is the supported survey route.

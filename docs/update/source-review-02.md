@@ -39,3 +39,20 @@ Three retained findings:
 All findings were checked against the pinned SDK source or reproduced locally.
 Ten Python checks pass. New native regressions still require CI. This review
 does not qualify the UI, live analytics, local-drive population p99 or a release.
+
+A follow-up source pass at `703e023` found a missing shell continuation in
+the CI tool-test step. It is fixed. The exact CI step now runs successfully
+under Bash, including all ten Python tests. The pass retained no other failure
+in that pinned scope.
+
+The next source revision also removes the analytics-only filesystem probe
+before scanning. Source telemetry now reads the cached kernel mount table with
+`MNT_NOWAIT`. It reports verified local drives as `local_unknown`, since cached
+mount flags do not prove whether the hardware is internal. It does not add a
+network metadata request or a detached worker to the scan path. The scanner
+still performs its own required filesystem reads.
+
+New consent also requires successful deletion of this project's SDK storage
+before setup, so a failed opt-out erase cannot reuse the old queue or ID.
+Normal enabled launches retain the same consent period. All these native paths
+still need the new CI and live SDK checks.

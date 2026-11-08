@@ -1,0 +1,38 @@
+[
+  {
+    "file": "daisydisk-shots-ss.webp",
+    "source": "https://daisydiskapp.com/img/shots/shots-ss.jpg",
+    "captured": "2026-11-08",
+    "width": 800,
+    "height": 600,
+    "sha256": "631c5e6ef255ab77eace34b3f13a82198db793bee9d76df91dc486b93ed909c0",
+    "context": "Official marketing image used for source-only baseline judgement; not an installed-app flow test."
+  },
+  {
+    "file": "raycast-file-search.webp",
+    "source": "https://www.raycast.com/",
+    "captured": "2026-11-08",
+    "width": 1257,
+    "height": 1256,
+    "sha256": "4ac715cd6862d90ebb8da9b2da59f9699aea6147edb46e52570bce1e2b95297e",
+    "context": "Official marketing image used for source-only baseline judgement; not an installed-app flow test."
+  },
+  {
+    "file": "things-2-today-mac.webp",
+    "source": "https://static.culturedcode.com/things/videos/2017-05-18-website-videos/2-today-mac.png",
+    "captured": "2026-11-08",
+    "width": 1000,
+    "height": 1500,
+    "sha256": "03b4b98351b064f1dbba94d1e7e5d5b8a5be2fcff6b011855008e0673b79dbb3",
+    "context": "Official marketing image used for source-only baseline judgement; not an installed-app flow test."
+  },
+  {
+    "file": "things-7-quickfind-mac.webp",
+    "source": "https://static.culturedcode.com/things/videos/2017-05-18-website-videos/7-quickfind-mac.png",
+    "captured": "2026-11-08",
+    "width": 1000,
+    "height": 742,
+    "sha256": "9c167971159043df35f752dced00021edadee55a9b339cb94e2c2edd163aa461",
+    "context": "Official marketing image used for source-only baseline judgement; not an installed-app flow test."
+  }
+]

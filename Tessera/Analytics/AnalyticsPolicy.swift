@@ -1,5 +1,6 @@
 import Foundation
 import CoreFoundation
+import Darwin
 
 enum AnalyticsEvent: String, CaseIterable, Sendable {
     case appOpened = "tessera app opened"
@@ -35,15 +36,34 @@ enum AnalyticsSource: String, Sendable {
     case cloud, remote, unknown
 
     static func classify(_ url: URL) -> Self {
+        inspect(url).source
+    }
+
+    /// Read the cached kernel mount table. Analytics must not add a blocking
+    /// metadata preflight before a scan, especially on disconnected shares.
+    static func inspect(_ url: URL) -> (source: Self, scope: String) {
         let path = url.standardizedFileURL.path
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let providerRoots = [home + "/Library/CloudStorage", home + "/Library/Mobile Documents"]
-        if providerRoots.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return .cloud }
-        guard let values = try? url.resourceValues(forKeys: [.volumeIsLocalKey, .volumeIsInternalKey]),
-              let local = values.volumeIsLocal else { return .unknown }
-        if !local { return .remote }
-        guard let internalDisk = values.volumeIsInternal else { return .localUnknown }
-        return internalDisk ? .localInternal : .localExternal
+        if providerRoots.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return (.cloud, "folder") }
+        let count = getfsstat(nil, 0, MNT_NOWAIT)
+        guard count > 0, count <= 4096 else { return (.unknown, "unknown") }
+        var mounts = [statfs](repeating: statfs(), count: Int(count))
+        let capacityBytes = Int32(mounts.count * MemoryLayout<statfs>.stride)
+        let filled = mounts.withUnsafeMutableBufferPointer { getfsstat($0.baseAddress, capacityBytes, MNT_NOWAIT) }
+        guard filled > 0 else { return (.unknown, "unknown") }
+        var match: (path: String, local: Bool)?
+        for var mount in mounts.prefix(min(Int(filled), mounts.count)) {
+            let mountPath = withUnsafeBytes(of: &mount.f_mntonname) { raw in
+                String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+            }
+            guard mountPath == "/" || path == mountPath || path.hasPrefix(mountPath + "/"),
+                  mountPath.count > (match?.path.count ?? 0) else { continue }
+            match = (mountPath, mount.f_flags & UInt32(MNT_LOCAL) != 0)
+        }
+        guard let match else { return (.unknown, "unknown") }
+        // A cached mount table proves locality, not whether a disk is internal.
+        return (match.local ? .localUnknown : .remote, path == match.path ? "volume" : "folder")
     }
 }
 

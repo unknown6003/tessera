@@ -47,7 +47,7 @@ enum AnalyticsCrashStorage {
         let report = cacheRoot.appendingPathComponent("com.plausiblelabs.crashreporter.data")
             .appendingPathComponent(bundleIdentifier).appendingPathComponent("live_report.plcrash")
         do { try FileManager.default.removeItem(at: report) }
-        catch let error as CocoaError where error.code == .fileNoSuchFile { return }
+        catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile { return }
     }
 }
 
@@ -55,13 +55,11 @@ private actor AnalyticsBackend {
     private var sdk: PostHogSDK?
     private var configuration: AnalyticsConfiguration?
 
-    func start(_ configuration: AnalyticsConfiguration, generation: UInt64, purgePendingCrash: Bool) -> Bool {
+    func start(_ configuration: AnalyticsConfiguration, generation: UInt64, newConsentPeriod: Bool) -> Bool {
         guard AnalyticsNetworkGate.shared.allows(generation) else { return false }
         if sdk != nil { stop(eraseStorage: false) }
-        if purgePendingCrash {
-            guard let root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first,
-                  let bundle = Bundle.main.bundleIdentifier else { return false }
-            do { try AnalyticsCrashStorage.purge(cacheRoot: root, bundleIdentifier: bundle) }
+        if newConsentPeriod {
+            do { try purgeStorage(configuration) }
             catch { return false } // Do not upload a report with unknown consent.
         }
         self.configuration = configuration
@@ -115,7 +113,7 @@ private actor AnalyticsBackend {
         sdk?.optOut()
         sdk?.close()
         sdk = nil
-        if eraseStorage, let configuration = configuration ?? AnalyticsConfiguration.load() { purgeStorage(configuration) }
+        if eraseStorage, let configuration = configuration ?? AnalyticsConfiguration.load() { try? purgeStorage(configuration) }
         configuration = nil
     }
 
@@ -155,15 +153,15 @@ private actor AnalyticsBackend {
 
     func flush() { sdk?.flush() }
 
-    private func purgeStorage(_ configuration: AnalyticsConfiguration) {
+    private func purgeStorage(_ configuration: AnalyticsConfiguration) throws {
         guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
-              let bundle = Bundle.main.bundleIdentifier, bundle == "com.abdwy.Tessera" else { return }
+              let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first,
+              let bundle = Bundle.main.bundleIdentifier, bundle == "com.abdwy.Tessera" else { throw CocoaError(.fileWriteNoPermission) }
         // Delete only this project's SDK subtree. Other app support files are unrelated.
         let directory = base.appendingPathComponent(bundle).appendingPathComponent(configuration.projectToken)
-        try? FileManager.default.removeItem(at: directory)
-        if let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
-            try? AnalyticsCrashStorage.purge(cacheRoot: cache, bundleIdentifier: bundle)
-        }
+        do { try FileManager.default.removeItem(at: directory) }
+        catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile { }
+        try AnalyticsCrashStorage.purge(cacheRoot: cache, bundleIdentifier: bundle)
     }
 }
 
@@ -183,7 +181,7 @@ final class Analytics: ObservableObject {
     private var setupTask: Task<Void, Never>?
     private var pendingUpdateOutcome: AnalyticsUpdateOutcome?
     private static let enabledKey = "TesseraAnonymousAnalyticsEnabled"
-    private static let crashConsentKey = "TesseraAnalyticsCrashConsentActive"
+    private static let consentPeriodKey = "TesseraAnalyticsConsentPeriodActive"
 
     static var isSuppressed: Bool {
         let env = ProcessInfo.processInfo.environment
@@ -220,16 +218,16 @@ final class Analytics: ObservableObject {
         surveyQuestionID = nil
         lastScreen = nil
         let configuration = isEnabled && !Self.isSuppressed ? AnalyticsConfiguration.load() : nil
-        if configuration == nil { defaults.set(false, forKey: Self.crashConsentKey) }
-        let purgePendingCrash = !defaults.bool(forKey: Self.crashConsentKey)
+        if configuration == nil { defaults.set(false, forKey: Self.consentPeriodKey) }
+        let newConsentPeriod = !defaults.bool(forKey: Self.consentPeriodKey)
         AnalyticsNetworkGate.shared.configure(generation: revision, hosts: configuration?.allowedHosts ?? [])
         setupTask = Task {
             await backend.stop(eraseStorage: configuration == nil)
             guard !Task.isCancelled, let configuration else { return }
-            let didStart = await backend.start(configuration, generation: revision, purgePendingCrash: purgePendingCrash)
+            let didStart = await backend.start(configuration, generation: revision, newConsentPeriod: newConsentPeriod)
             guard !Task.isCancelled, generation == revision else { return }
             guard didStart else { return }
-            defaults.set(true, forKey: Self.crashConsentKey)
+            defaults.set(true, forKey: Self.consentPeriodKey)
             await backend.capture(AnalyticsEvent.appOpened.rawValue, values: [:])
             if let outcome = pendingUpdateOutcome {
                 pendingUpdateOutcome = nil

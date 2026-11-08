@@ -200,14 +200,10 @@ final class ScanViewModel: ObservableObject {
         scanTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let metadata = try await Self.offMain {
-                    (AnalyticsSource.classify(volumeURL),
-                     (try? volumeURL.resourceValues(forKeys: [.isVolumeKey]))?.isVolume)
-                }
-                guard self.scanGeneration == generation else { return }
+                let metadata = AnalyticsSource.inspect(volumeURL)
                 try Task.checkCancellation()
-                telemetry.source = metadata.0
-                telemetry.scope = metadata.1.map { $0 ? "volume" : "folder" } ?? "unknown"
+                telemetry.source = metadata.source
+                telemetry.scope = metadata.scope
                 Analytics.shared.capture(.scanStarted, values: telemetry.properties(outcome: "complete"))
                 let node = try await FileScanner.scan(url: volumeURL) { [weak self] prog in
                     telemetry.observe(prog)
@@ -261,6 +257,9 @@ final class ScanViewModel: ObservableObject {
                 try Task.checkCancellation()
                 DebugAutomation.recordScanPhase("diagnosis finished", startedAt: self.scanStartedAt)
                 telemetry.finishDiagnosis()
+                var diagnosisProperties = telemetry.properties(outcome: "complete")
+                diagnosisProperties["phase"] = .text("diagnosis")
+                Analytics.shared.capture(.scanPhaseFinished, values: diagnosisProperties)
                 if treeIsEmpty && (isVolumeRoot || isUnreadable) {
                     self.needsFullDiskAccess = true
                 }

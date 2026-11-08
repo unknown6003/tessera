@@ -37,7 +37,10 @@ enum PerformanceQualification {
                     let source = URL(fileURLWithPath: trial.path).standardizedFileURL
                     let env = ProcessInfo.processInfo.environment
                     let ciFixture = env["GITHUB_ACTIONS"] == "true"
-                        && env["RUNNER_TEMP"].map { source.path == $0 + "/tessera-benchmark" } == true
+                        && env["RUNNER_TEMP"].map {
+                            source.path == $0 + "/tessera-benchmark"
+                                || source.path.hasPrefix($0 + "/tessera-perf-fixtures/")
+                        } == true
                     guard source.path.hasPrefix("/tmp/tessera-") || source.path.hasPrefix("/private/tmp/tessera-") || ciFixture,
                           !trial.id.isEmpty, trial.id.count <= 80,
                           trial.id.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789_-").contains($0) }) else {

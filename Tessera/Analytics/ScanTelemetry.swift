@@ -12,7 +12,10 @@ final class ScanTelemetry: @unchecked Sendable {
 
     func observe(_ progress: ScanProgress) {
         lock.withLock {
-            if progress.dirsScanned >= latest.dirsScanned { latest = progress }
+            guard !latest.isComplete else { return }
+            if progress.isComplete || (progress.dirsScanned >= latest.dirsScanned && progress.filesScanned >= latest.filesScanned) {
+                latest = progress
+            }
         }
     }
 

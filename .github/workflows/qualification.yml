@@ -31,6 +31,7 @@ jobs:
 
       - name: Resolve Swift packages
         run: >-
+          python3 tools/run_bounded.py --timeout 300 --log "$RUNNER_TEMP/package-resolution.log" --
           xcodebuild -resolvePackageDependencies
           -project Tessera.xcodeproj
           -scheme Tessera
@@ -38,6 +39,7 @@ jobs:
 
       - name: Repeat the full native test suite
         run: >-
+          python3 tools/run_bounded.py --timeout 1200 --log "$RUNNER_TEMP/repeated-tests.log" --
           xcodebuild test
           -project Tessera.xcodeproj
           -scheme Tessera
@@ -78,18 +80,7 @@ jobs:
           run_with_watchdog() {
             local log_file="$1"
             shift
-            "$@" >"$log_file" 2>&1 &
-            local app_pid=$!
-            (sleep 300; kill -TERM "$app_pid" 2>/dev/null || true) &
-            local watchdog_pid=$!
-            local status=0
-            wait "$app_pid" || status=$?
-            kill "$watchdog_pid" 2>/dev/null || true
-            wait "$watchdog_pid" 2>/dev/null || true
-            if [[ "$status" -ne 0 ]]; then
-              cat "$log_file"
-              return "$status"
-            fi
+            python3 tools/run_bounded.py --timeout 300 --log "$log_file" -- "$@"
           }
 
           run_with_watchdog "$BENCHMARK_LOGS/scan.log" \
@@ -122,27 +113,47 @@ jobs:
           -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/DerivedData"
           CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
 
-      - name: Run 100 complete local fixture pipelines
+      - name: Run 400 complete local fixture pipelines across four cohorts
         env:
           BENCHMARK_FIXTURE: ${{ runner.temp }}/tessera-benchmark
         run: |
-          python3 - <<'PY'
+          python3 tools/run_bounded.py --timeout 240 --log "$RUNNER_TEMP/perf-fixtures.log" -- python3 - <<'PY'
           import json
           import os
           import platform
           import subprocess
           from pathlib import Path
-          trials = [{"id": f"ci_mixed20k-{index:03}", "path": os.environ['BENCHMARK_FIXTURE'],
-                     "expectedFiles": 20000, "expectedDirectories": 251} for index in range(100)]
+          fixtures = Path(os.environ['RUNNER_TEMP']) / 'tessera-perf-fixtures'
+          wide = fixtures / 'wide100k'
+          deep = fixtures / 'deep420'
+          unicode = fixtures / 'unicode2k'
+          for root in (wide, deep, unicode):
+              root.mkdir(parents=True)
+          for index in range(100000):
+              (wide / f'file-{index:06}.dat').write_bytes(b'tessera-wide')
+          cursor = deep
+          for index in range(420):
+              cursor = cursor / 'd'
+              cursor.mkdir()
+              (cursor / 'file.dat').write_bytes(b'tessera-deep')
+          for index in range(2000):
+              (unicode / (str(index) + '-' + '\u754c' * 150)).write_bytes(b'tessera-unicode')
+          cohorts = [('ci_mixed20k', Path(os.environ['BENCHMARK_FIXTURE']), 20000, 251),
+                     ('ci_wide100k', wide, 100000, 1), ('ci_deep420', deep, 420, 421),
+                     ('ci_unicode2k', unicode, 2000, 1)]
+          trials = [{"id": f"{name}-{index:03}", "path": str(path),
+                     "expectedFiles": files, "expectedDirectories": directories}
+                    for name, path, files, directories in cohorts for index in range(100)]
           (Path(os.environ['RUNNER_TEMP']) / 'perf-cases.json').write_text(json.dumps(trials))
           metadata = {"hardware": subprocess.check_output(['sysctl', '-n', 'hw.model'], timeout=5).decode().strip(),
                       "os": platform.platform(),
                       "memoryBytes": int(subprocess.check_output(['sysctl', '-n', 'hw.memsize'], timeout=5)),
-                      "cacheState": "warm filesystem cache; fixtures written and scanned earlier in this job",
-                      "workload": "100 full pipelines, each 20000 files in 251 directories on the runner temporary volume"}
+                      "cacheState": "warm filesystem cache; fixtures written immediately before trials; mixed20k also scanned earlier",
+                      "workload": [{"cohort": name, "files": files, "directories": directories, "trials": 100}
+                                   for name, _, files, directories in cohorts]}
           (Path(os.environ['RUNNER_TEMP']) / 'perf-metadata.json').write_text(json.dumps(metadata))
           PY
-          python3 tools/run_bounded.py --timeout 900 --log "$RUNNER_TEMP/perf-pipeline.log" -- \
+          python3 tools/run_bounded.py --timeout 1200 --log "$RUNNER_TEMP/perf-pipeline.log" -- \
             env SO_PERF_CASES="$RUNNER_TEMP/perf-cases.json" SO_PERF_OUTPUT="$RUNNER_TEMP/perf-results.json" \
             SO_AUTOQUIT=1 "$RUNNER_TEMP/DerivedData/Build/Products/Release/Tessera.app/Contents/MacOS/Tessera"
           python3 tools/analyze_scan_performance.py "$RUNNER_TEMP/perf-results.json" \
