@@ -200,7 +200,7 @@ struct CleanupPath: Sendable {
 
     init(_ value: String) {
         self.value = value
-        self.isCStringASCII = value.utf8.allSatisfy { $0 > 0 && $0 < 128 }
+        self.isCStringASCII = !value.isEmpty && value.utf8.allSatisfy { $0 > 0 && $0 < 128 }
     }
 
     func contains(_ part: String) -> Bool {

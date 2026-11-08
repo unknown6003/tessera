@@ -205,6 +205,7 @@ final class ScanViewModel: ObservableObject {
                 // that cleanup is guarded by the same generation comparison.
                 guard self.scanGeneration == generation else { return }
                 try Task.checkCancellation()
+                DebugAutomation.recordScanPhase("enumeration finished", startedAt: self.scanStartedAt)
                 let treeIsEmpty = node.children.isEmpty
                 let volumePath = volumeURL.path
                 let isVolumeRoot = volumePath == "/"
@@ -235,6 +236,7 @@ final class ScanViewModel: ObservableObject {
                 guard self.scanGeneration == generation else { return }
                 self.diagnosisTask = nil
                 try Task.checkCancellation()
+                DebugAutomation.recordScanPhase("diagnosis finished", startedAt: self.scanStartedAt)
                 if treeIsEmpty && (isVolumeRoot || isUnreadable) {
                     self.needsFullDiskAccess = true
                 }
@@ -256,6 +258,7 @@ final class ScanViewModel: ObservableObject {
                     self.stageSafeCleanup()
                 }
                 self.restoreSavedRescueCaseIfNeeded(plan: plan)
+                DebugAutomation.recordScanPhase("results published", startedAt: self.scanStartedAt)
                 // Safe candidates are staged for review on a fresh scan. A saved case
                 // never stages its old selection; the user must ask for that again.
             } catch is CancellationError {

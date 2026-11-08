@@ -25,6 +25,17 @@ enum DebugAutomation {
         if let preferenceDomain { defaults.removePersistentDomain(forName: preferenceDomain) }
     }
 
+    static func recordScanPhase(_ phase: String, startedAt: Date?) {
+        guard ProcessInfo.processInfo.environment["SO_AUTOSCAN"] != nil, let startedAt else { return }
+        log(String(format: "scan phase: %@ elapsed=%.3fs", phase, Date().timeIntervalSince(startedAt)))
+    }
+
+    nonisolated static func recordSourceDiscovery(startedAt: Date, count: Int) {
+        guard ProcessInfo.processInfo.environment["SO_AUTOSCAN"] != nil else { return }
+        log(String(format: "source discovery: main=%@ elapsed=%.3fs sources=%d",
+                   Thread.isMainThread ? "true" : "false", Date().timeIntervalSince(startedAt), count))
+    }
+
     static func runIfRequested(vm: ScanViewModel) {
         let env = ProcessInfo.processInfo.environment
 
@@ -74,6 +85,10 @@ enum DebugAutomation {
                     let milliseconds = Double(duration.components.seconds) * 1000
                         + Double(duration.components.attoseconds) / 1e15
                     longest = max(longest, milliseconds)
+                    if milliseconds > 500 {
+                        log(String(format: "UI heartbeat delayed: %.1f ms phase=%@ elapsed=%.3fs",
+                                   milliseconds, vm.rescuePhase.rawValue, Date().timeIntervalSince(scanStart)))
+                    }
                 }
                 log(String(format: "UI heartbeat longest interval: %.1f ms", longest))
             }
@@ -96,7 +111,7 @@ enum DebugAutomation {
             let elapsed = Date().timeIntervalSince(scanStart)
             let rate = elapsed > 0 ? Int(Double(p.dirsScanned) / elapsed) : 0
             log("scan finished: root=\(vm.rootNode?.size ?? -1) error=\(vm.errorMessage ?? "none") " +
-                "cancelled=\(vm.scanTaskWasCancelled) dirs \(p.dirsScanned)/\(p.dirsDiscovered) " +
+                "cancelled=\(vm.scanTaskWasCancelled) files=\(p.filesScanned) dirs \(p.dirsScanned)/\(p.dirsDiscovered) " +
                 "elapsed=\(String(format: "%.2f", elapsed))s rate=\(rate) dirs/s " +
                 "coverage=\(vm.rescuePlan?.coverage.state.rawValue ?? "unknown") gaps=\(vm.rootNode?.scanCoverageGaps.count ?? 0)")
             // Cleanup classification is published async after the tree is built;

@@ -100,8 +100,11 @@ enum StorageSourceDiscovery {
     static func discover(checkingFolders folders: [URL]) async -> Snapshot {
         await withCheckedContinuation { continuation in
             discoveryQueue.async {
+                let startedAt = Date()
                 let existing = Set(folders.filter { FileManager.default.fileExists(atPath: $0.path) })
-                continuation.resume(returning: Snapshot(sources: discoverSynchronously(), existingFolders: existing))
+                let sources = discoverSynchronously()
+                DebugAutomation.recordSourceDiscovery(startedAt: startedAt, count: sources.count)
+                continuation.resume(returning: Snapshot(sources: sources, existingFolders: existing))
             }
         }
     }
