@@ -15,8 +15,7 @@ import time
 from .common import build_environment, policy_hash, run, write_json
 
 
-def fixtures(output):
-    root = Path(tempfile.mkdtemp(prefix="tessera-ci-", dir="/tmp"))
+def fixtures(output, root):
     mixed, wide, deep, unicode = [root / name for name in ("mixed20k", "wide100k", "deep420", "unicode2k")]
     for directory in (mixed, wide, deep, unicode):
         directory.mkdir()
@@ -40,7 +39,7 @@ def fixtures(output):
               "expectedDirectories": directories}
              for name, path, files, directories in cohorts for index in range(100)]
     write_json(output / "cases.json", cases)
-    return root, mixed, cohorts
+    return mixed, cohorts
 
 
 def regression(current, baseline):
@@ -115,7 +114,9 @@ def execute(source, output, lane, revision, cache, baseline=None):
                                             "CODE_SIGNING_REQUIRED=NO"], 900)
             binary = derived / "Build/Products/Release/Tessera.app/Contents/MacOS/Tessera"
             report["binarySHA256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
-            fixture_root, mixed, cohorts = fixtures(output)
+            # Own the root before setup so a partial fixture is also removed.
+            fixture_root = Path(tempfile.mkdtemp(prefix="tessera-ci-", dir="/tmp"))
+            mixed, cohorts = fixtures(output, fixture_root)
             for name, extra in (("scanner", {"SO_BENCH": str(mixed), "SO_BENCH_REPEATS": "3", "SO_BENCH_PARALLEL": "1"}),
                                 ("rescan", {"SO_BENCH_RESCAN": str(mixed)})):
                 text = step(name, [str(binary)], 300, extra=extra | {"SO_AUTOQUIT": "1"})
@@ -152,14 +153,18 @@ def execute(source, output, lane, revision, cache, baseline=None):
         print(str(error), file=sys.stderr)
     finally:
         report["finishedAt"] = time.time()
-        write_json(output / "report.json", report)
-        # Only rebuildable outputs in this owned job directory are reaped.
-        for name in ("fixtures", "DerivedData"):
-            path = output / name
-            if path.is_dir() and not path.is_symlink():
-                shutil.rmtree(path)
-        if fixture_root is not None:
-            shutil.rmtree(fixture_root)
+        try:
+            write_json(output / "report.json", report)
+        finally:
+            # A full disk must not prevent removal of rebuildable test data.
+            try:
+                for name in ("fixtures", "DerivedData"):
+                    path = output / name
+                    if path.is_dir() and not path.is_symlink():
+                        shutil.rmtree(path)
+            finally:
+                if fixture_root is not None:
+                    shutil.rmtree(fixture_root)
     return report
 
 

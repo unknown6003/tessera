@@ -120,7 +120,6 @@ struct ContentView: View {
 
                 VStack(spacing: 0) {
                     sourceHeader
-                    Divider()
                     if vm.isScanning {
                         ScanningView(vm: vm)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)

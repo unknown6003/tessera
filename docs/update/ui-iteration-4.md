@@ -10,8 +10,41 @@ but not others… weird separation between topbar and rest", plus three small
 pending items (duplicate Scan CTA, Rescue label repeat and gap, the
 `tessera-compact-legend` draft flag that could not reach a real window).
 
-Status: source changed, not compiled, not run (Linux has no Swift or
-Xcode). No rubric score. The parent must run the native checks below.
+Status: integrated through `04b3cf0`. All 90 native tests and unsigned
+Release pass on Xcode 27.2. Native captures confirm the flat toolbar. No new
+rubric score. See the proof and remaining limits below.
+
+## Native proof at 04b3cf0
+
+Private Mac report: `/tmp/tessera-04b3-ui/REPORT.md`. The Codex check ran
+from 23:25 to 23:35 UTC on 8 November 2026. Input stopped at 23:32 UTC.
+The Release binary SHA-256 is
+`f38499bcf2762427c74c272ca3e2e7cfbde4ea72c0aeb4ef5fad2397ddeb827f`.
+
+At 820, 1100 and 1240 pt, the toolbar, source header and body all sample as
+`#0A0B0D` after conversion to sRGB. Both broad glass toolbar capsules are
+gone. The native toolbar drag moves the window. Map dragging leaves the
+window in place. Keyboard list navigation, folder opening, returning up,
+Details, Review and confirmation Cancel passed. Cancel kept Review open.
+
+One explicit one-point divider remained below the source header. The
+follow-up removes that `Divider()` to finish the requested continuous
+window. This one-line change still needs a fresh native build and capture.
+
+The empty state exposes one Scan button. Starting an owned fixture from
+that state with Command-R remains unproved because the test helper could
+not enter its path in the native folder picker. No user drive was scanned.
+Sources hide/show geometry, the compact flag, all sheet appearances and
+the full accessibility checklist also remain open.
+
+The separate `SO_CI=1` benchmark produced output, exited 0 in about 0.4 s
+and never activated in the public NSWorkspace watcher. This proves the
+background lifecycle path, not performance qualification. Production
+preferences, 44 fixture files and the original checkout stayed unchanged.
+All owned processes stopped. Captures stay private because of sidebar labels.
+
+GitHub Actions CI was removed at the user's request. The new external Mac
+lane uses installed Xcode 27.2. No new Xcode 26.6 result is claimed.
 
 ## 1. One flat top plane (primary)
 
@@ -124,16 +157,15 @@ already did).
 
 - Sheets keep the macOS 26 sheet presentation; they already carry
   `.background(Theme.bg)`. No change was needed there.
-- No compile, test or pixel evidence exists on Linux. Nothing here is
-  proved against a real window or a Sparkle-signed build until the parent
-  runs the native checks.
+- Linux source checks do not prove a native window. The proof above uses
+  an unsigned qualification build, not the final signed release.
 - If the compile splits over the added modifiers, the log line will name
   the spot; the stages already exist to absorb one more modifier.
 
 ## Native acceptance checklist
 
-1. Swift 6 Debug build with all 90 tests, then unsigned Release, on Xcode
-   27.2 and the 26.6 CI gate. No new warnings in owned files.
+1. Swift 6 Debug build with all 90 tests, then unsigned Release, on the
+   external Mac lane's Xcode 27.2. No new warnings in owned files.
 2. Capture the real window including the title bar (macOS 27 box): the
    toolbar region samples `#0A0B0D` end to end with no frosted edge, no
    glass pill behind any item, and no seam against the source header or the

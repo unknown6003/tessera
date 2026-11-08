@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from ci.common import RECIPE_FILES, REQUIRED_STEPS, build_environment, policy_hash, run, seal, verify
-from ci.pipeline import regression
+from ci.pipeline import execute, regression
 from ci.runner import trusted_pull
 
 
@@ -108,6 +108,46 @@ class ExternalCITests(unittest.TestCase):
         regression(after, before)
         after["metadata"]["hardware"] = "different"
         with self.assertRaises(ValueError): regression(after, before)
+
+    def test_partial_fixture_setup_is_removed_after_io_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, output, fixture = root / "source", root / "output", root / "partial-fixture"
+            source.mkdir()
+            fixture.mkdir()
+
+            def command(command, **kwargs):
+                if "xcresulttool" in command:
+                    return '{"passedTests":90,"failedTests":0,"skippedTests":0}'
+                if "Release" in command:
+                    binary = output / "DerivedData/Build/Products/Release/Tessera.app/Contents/MacOS/Tessera"
+                    binary.parent.mkdir(parents=True)
+                    binary.write_bytes(b"test binary")
+                return ""
+
+            def broken_setup(output, owned):
+                (owned / "created-before-disk-error").write_bytes(b"test")
+                raise OSError("synthetic disk error")
+
+            with patch("ci.pipeline.platform.system", return_value="Darwin"), \
+                 patch("ci.pipeline.run", side_effect=command), \
+                 patch("ci.pipeline.tempfile.mkdtemp", return_value=str(fixture)), \
+                 patch("ci.pipeline.fixtures", side_effect=broken_setup):
+                report = execute(source, output, "native", "a" * 40, root / "cache")
+            self.assertEqual(report["result"], "failure")
+            self.assertFalse(fixture.exists())
+            self.assertFalse((output / "DerivedData").exists())
+
+    def test_report_write_failure_does_not_skip_build_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            (output / "DerivedData").mkdir(parents=True)
+            with patch("ci.pipeline.run", side_effect=RuntimeError("synthetic build error")), \
+                 patch("ci.pipeline.write_json", side_effect=OSError("synthetic full disk")), \
+                 self.assertRaises(OSError):
+                execute(root, output, "web", "a" * 40, root / "cache")
+            self.assertFalse((output / "DerivedData").exists())
 
 
 if __name__ == "__main__":
