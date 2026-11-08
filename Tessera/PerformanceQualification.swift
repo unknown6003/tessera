@@ -28,13 +28,17 @@ enum PerformanceQualification {
 
     static func run(vm: ScanViewModel, inputPath: String, outputPath: String) {
         Task { @MainActor in
+            vm.dismissFDAOnboarding()
             var results: [Result] = []
             do {
                 let trials = try JSONDecoder().decode([Trial].self, from: Data(contentsOf: URL(fileURLWithPath: inputPath)))
                 guard !trials.isEmpty, trials.count <= 500 else { throw CocoaError(.fileReadCorruptFile) }
                 for trial in trials {
                     let source = URL(fileURLWithPath: trial.path).standardizedFileURL
-                    guard source.path.hasPrefix("/tmp/tessera-") || source.path.hasPrefix("/private/tmp/tessera-"),
+                    let env = ProcessInfo.processInfo.environment
+                    let ciFixture = env["GITHUB_ACTIONS"] == "true"
+                        && env["RUNNER_TEMP"].map { source.path == $0 + "/tessera-benchmark" } == true
+                    guard source.path.hasPrefix("/tmp/tessera-") || source.path.hasPrefix("/private/tmp/tessera-") || ciFixture,
                           !trial.id.isEmpty, trial.id.count <= 80,
                           trial.id.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789_-").contains($0) }) else {
                         throw CocoaError(.fileReadNoPermission)

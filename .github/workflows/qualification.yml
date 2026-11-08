@@ -115,6 +115,42 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Build Release for full-pipeline p99 trials
+        run: >-
+          python3 tools/run_bounded.py --timeout 600 --log "$RUNNER_TEMP/perf-release-build.log" --
+          xcodebuild build -project Tessera.xcodeproj -scheme Tessera -configuration Release
+          -destination 'platform=macOS' -derivedDataPath "$RUNNER_TEMP/DerivedData"
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+
+      - name: Run 100 complete local fixture pipelines
+        env:
+          BENCHMARK_FIXTURE: ${{ runner.temp }}/tessera-benchmark
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          trials = [{"id": f"ci_mixed20k-{index:03}", "path": os.environ['BENCHMARK_FIXTURE'],
+                     "expectedFiles": 20000, "expectedDirectories": 251} for index in range(100)]
+          (Path(os.environ['RUNNER_TEMP']) / 'perf-cases.json').write_text(json.dumps(trials))
+          PY
+          python3 tools/run_bounded.py --timeout 900 --log "$RUNNER_TEMP/perf-pipeline.log" -- \
+            env SO_PERF_CASES="$RUNNER_TEMP/perf-cases.json" SO_PERF_OUTPUT="$RUNNER_TEMP/perf-results.json" \
+            SO_AUTOQUIT=1 "$RUNNER_TEMP/DerivedData/Build/Products/Release/Tessera.app/Contents/MacOS/Tessera"
+          python3 tools/analyze_scan_performance.py "$RUNNER_TEMP/perf-results.json" \
+            --revision "$GITHUB_SHA" --expected-per-cohort 100 --output "$RUNNER_TEMP/perf-report.json"
+
+      - name: Save full-pipeline p99 evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: local-fixture-p99
+          path: |
+            ${{ runner.temp }}/perf-*.json
+            ${{ runner.temp }}/perf-*.log
+          if-no-files-found: warn
+          retention-days: 14
+
   web-performance:
     name: Web correctness and browser performance
     runs-on: ubuntu-latest
