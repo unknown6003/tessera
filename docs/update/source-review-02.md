@@ -122,3 +122,17 @@ files. The fixture now uses an owned `.docker` directory with a payload and
 requires its protected recommendation before removal. The result assertions
 remain. This is a test-only correction; native runtime checks keep their
 original app-source pin.
+
+## Darwin process-group cleanup, 37e7e6e
+
+The next CI run exposed the runner's exception. On Darwin, SIGKILL can return
+EPERM briefly after SIGTERM, while launchd reaps an orphaned zombie. An Opus
+native diagnosis reproduced this in five instrumented runs. The child was
+already stopped, but the uncaught exception skipped PID-file removal.
+
+The runner now retries that denial for at most one second. It confirms group
+disappearance or sends the signal; a lasting denial still raises. PID cleanup
+has its own finally block. Three independent Codex Standards, Spec and Risk
+reads retained no finding in `0c615a8..37e7e6e`. All 20 Python tests pass on
+Linux, including the transient denial, lasting denial and cleanup-error cases.
+Fresh macOS proof remains required. No app source changed in this delta.
