@@ -28,7 +28,7 @@ struct AppUninstallerView: View {
             FeatureSectionLabel("App Uninstaller")
 
             Text("Remove an app together with the caches, preferences, containers, and logs it leaves behind. Everything is staged for your review before it goes to the Trash.")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let app = selectedApp {
@@ -90,7 +90,7 @@ struct AppUninstallerView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 6)
                 Button { Task { await load() } } label: {
-                    Image(systemName: "arrow.clockwise").font(.system(size: 11))
+                    Image(systemName: "arrow.clockwise").font(.caption)
                 }
                 .buttonStyle(.interactive).foregroundStyle(.tint)
                 .help("Rescan installed apps")
@@ -122,19 +122,19 @@ struct AppUninstallerView: View {
                 Button {
                     for group in orphans { vm.stageOrphanGroup(group) }
                 } label: {
-                    Text("Add all").font(.system(size: 10, weight: .medium))
+                    Text("Add all").font(.caption.weight(.medium))
                 }
                 .buttonStyle(.flat)
                 .controlSize(.small)
                 .disabled(orphans.allSatisfy { vm.isOrphanGroupStaged($0) })
             }
 
-            Text("Support files whose app is no longer installed. Each is a confident bundle-id match — review in the collector before trashing.")
-                .font(.system(size: 9)).foregroundStyle(.tertiary)
+            Text("Support files whose app is no longer installed. Each has a matching bundle ID. Review in the Cleanup List before moving to Trash.")
+                .font(.caption).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text("\(orphans.count) group\(orphans.count == 1 ? "" : "s") · \(Theme.format(orphanTotalBytes))")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary)
 
             ForEach(orphans) { group in
                 orphanRow(group)
@@ -148,23 +148,23 @@ struct AppUninstallerView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Image(systemName: "shippingbox")
-                    .font(.system(size: 11)).foregroundStyle(Theme.electricBlue)
+                    .font(.caption).foregroundStyle(Theme.electricBlue)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(group.displayName)
                         .font(.caption.weight(.medium))
                         .lineLimit(1).truncationMode(.middle)
                     Text("\(group.bundleID) · \(group.itemCount) item\(group.itemCount == 1 ? "" : "s")")
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(.caption.monospaced())
                         .foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
                 }
                 Spacer(minLength: 4)
                 Text(Theme.format(group.totalBytes))
-                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting(group.items.map(\.url))
                 } label: {
-                    Image(systemName: "magnifyingglass").font(.system(size: 10))
+                    Image(systemName: "magnifyingglass").font(.caption)
                 }
                 .buttonStyle(.interactive).foregroundStyle(.tint)
                 .help("Reveal in Finder")
@@ -177,7 +177,7 @@ struct AppUninstallerView: View {
                 }
                 .buttonStyle(.interactive)
                 .disabled(staged)
-                .help(staged ? "Staged in collector" : "Add to collector")
+                .help(staged ? "Added to Cleanup List" : "Add to Cleanup List")
             }
         }
         .padding(.vertical, 1)
@@ -195,11 +195,11 @@ struct AppUninstallerView: View {
                         .lineLimit(1).truncationMode(.middle)
                     HStack(spacing: 6) {
                         Text(Theme.format(app.appBytes) + " app")
-                            .font(.system(size: 9))
+                            .font(.caption)
                             .foregroundStyle(.tertiary)
                         if app.leftoverCount > 0 {
                             Text("+ \(app.leftoverCount) leftover\(app.leftoverCount == 1 ? "" : "s") · \(Theme.format(app.leftoverBytes))")
-                                .font(.system(size: 9))
+                                .font(.caption)
                                 .foregroundStyle(Theme.electricBlue)
                         }
                     }
@@ -210,10 +210,10 @@ struct AppUninstallerView: View {
                         .font(.caption).foregroundStyle(Theme.electricBlue)
                 }
                 Text(Theme.format(app.totalBytes))
-                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
+                    .font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }
             .contentShape(Rectangle())
         }
@@ -240,7 +240,7 @@ struct AppUninstallerView: View {
                     Text(app.name).font(.callout.weight(.semibold)).lineLimit(1)
                     if !app.bundleID.isEmpty {
                         Text(app.bundleID)
-                            .font(.system(size: 9, design: .monospaced))
+                            .font(.caption.monospaced())
                             .foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
                     }
                 }
@@ -262,8 +262,8 @@ struct AppUninstallerView: View {
             .controlSize(.large)
             .disabled(staged)
 
-            Text("Review staged items in the collector, then move them to the Trash.")
-                .font(.system(size: 9)).foregroundStyle(.tertiary)
+            Text("Review staged items in the Cleanup List, then move them to Trash.")
+                .font(.caption).foregroundStyle(.tertiary)
 
             Divider()
 
@@ -274,10 +274,10 @@ struct AppUninstallerView: View {
             // Each leftover.
             if app.leftovers.isEmpty {
                 Label("No leftover files found.", systemImage: "checkmark.circle")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("Leftovers")
-                    .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     .padding(.top, 2)
                 ForEach(app.leftovers) { leftover in
                     targetRow(url: leftover.url, name: leftover.url.lastPathComponent,
@@ -295,7 +295,7 @@ struct AppUninstallerView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 Text(badge)
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(tint)
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(Capsule().fill(tint.opacity(0.12)))
@@ -304,24 +304,24 @@ struct AppUninstallerView: View {
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 4)
                 Text(Theme.format(bytes))
-                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                 } label: {
-                    Image(systemName: "magnifyingglass").font(.system(size: 10))
+                    Image(systemName: "magnifyingglass").font(.caption)
                 }
                 .buttonStyle(.interactive).foregroundStyle(.tint)
                 .help("Reveal in Finder")
             }
             HStack(spacing: 4) {
                 Text(displayPath(url))
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(.tertiary)
                     .lineLimit(1).truncationMode(.middle)
                 if let reason {
                     Text("· \(reason)")
-                        .font(.system(size: 9)).foregroundStyle(.quaternary)
+                        .font(.caption).foregroundStyle(.quaternary)
                 }
             }
         }

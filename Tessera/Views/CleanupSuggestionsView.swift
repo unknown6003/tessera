@@ -25,6 +25,7 @@ struct CleanupSuggestionsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .disabled(vm.isDeleting || vm.isScanning)
         .onAppear {
             if vm.rescuePlan != nil { vm.beginRescueReview() }
         }
@@ -114,9 +115,6 @@ struct CleanupSuggestionsView: View {
         Label(vm.rescuePhase.title, systemImage: vm.rescuePhase.symbol)
             .font(.caption.weight(.semibold))
             .foregroundStyle(phaseColor)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(phaseColor.opacity(0.12), in: Capsule())
     }
 
     private var phaseColor: Color {
@@ -136,7 +134,7 @@ struct CleanupSuggestionsView: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(primary.map(Theme.format) ?? "Unknown")
-                            .font(.system(.largeTitle, design: .rounded).weight(.semibold).monospacedDigit())
+                            .font(.largeTitle.weight(.semibold).monospacedDigit())
                         Text("available now")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -159,7 +157,7 @@ struct CleanupSuggestionsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(primary.map(Theme.format) ?? "Unknown")
-                            .font(.system(.largeTitle, design: .rounded).weight(.semibold).monospacedDigit())
+                            .font(.largeTitle.weight(.semibold).monospacedDigit())
                         Text("available now")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -210,11 +208,9 @@ struct CleanupSuggestionsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(18)
+        .padding(.vertical, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(Theme.borderStrong, lineWidth: 1))
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var capacityGoalControl: some View {
@@ -247,8 +243,7 @@ struct CleanupSuggestionsView: View {
                 .accessibilityValue("\(capacityGoalPercent) percent")
             }
         }
-        .padding(12)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.vertical, 12)
     }
 
     private func coverageCard(_ coverage: RescueCoverage) -> some View {
@@ -282,9 +277,7 @@ struct CleanupSuggestionsView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(color.opacity(0.35), lineWidth: 1))
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private func candidatesHeader(_ report: CleanupReport) -> some View {
@@ -297,7 +290,7 @@ struct CleanupSuggestionsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Text("Add only what you want to the review queue. Tessera never removes a file from this screen.")
+            Text("Add only what you want to the Cleanup List. Tessera never removes a file from this screen.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -405,10 +398,8 @@ struct CleanupSuggestionsView: View {
             .contentShape(Rectangle())
         }
         .tint(.secondary)
-        .padding(.horizontal, 12)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Theme.border, lineWidth: 1))
+        .padding(.vertical, 4)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private func recommendationRow(_ recommendation: CleanupRecommendation) -> some View {
@@ -428,10 +419,11 @@ struct CleanupSuggestionsView: View {
                                          ? Theme.electricBlue : Theme.mutedForeground)
                 }
                 .buttonStyle(.interactive)
+                .disabled(recommendation.risk == .protected || vm.isDeleting || vm.isScanning)
                 .help(vm.isCollected(recommendation.node)
-                      ? "Remove from the review queue" : "Add to the review queue")
+                      ? "Remove from the Cleanup List" : "Add to the Cleanup List")
                 .accessibilityLabel(vm.isCollected(recommendation.node)
-                                    ? "Remove from review queue" : "Add to review queue")
+                                    ? "Remove from Cleanup List" : "Add to Cleanup List")
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(recommendation.node.name)
@@ -543,9 +535,7 @@ struct CleanupSuggestionsView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(color.opacity(0.35), lineWidth: 1))
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     @ViewBuilder
@@ -566,8 +556,8 @@ struct CleanupSuggestionsView: View {
                     Text(path)
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
             }
             .font(.caption)
@@ -581,7 +571,7 @@ struct CleanupSuggestionsView: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(alignment: .bottom) { Divider() }
     }
 
     private func savedCaseRow(_ saved: SavedRescueCase) -> some View {
@@ -634,9 +624,7 @@ struct CleanupSuggestionsView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(Theme.electricBlue.opacity(0.35), lineWidth: 1))
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var emptyPlan: some View {
@@ -675,7 +663,7 @@ struct CleanupSuggestionsView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private func reviewFooter(_ moveToTrash: @escaping () -> Void) -> some View {
@@ -688,12 +676,12 @@ struct CleanupSuggestionsView: View {
                     .background(Theme.selectionTint, in: Circle())
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Review queue ready")
+                    Text("Cleanup List ready")
                         .font(.subheadline.weight(.semibold))
                     Text("\(vm.collector.count) item\(vm.collector.count == 1 ? "" : "s") · \(Theme.format(vm.collectorTotalSize))")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
-                    Text("A confirmation comes next. Finder Trash is recoverable.")
+                    Text("Review the exact paths before you confirm.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -703,7 +691,7 @@ struct CleanupSuggestionsView: View {
             Button {
                 moveToTrash()
             } label: {
-                Label("Move to Trash", systemImage: "trash.fill")
+                Label("Review Cleanup List…", systemImage: "checklist")
             }
             .buttonStyle(.flatProminent)
             .controlSize(.regular)
@@ -711,9 +699,7 @@ struct CleanupSuggestionsView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(Theme.electricBlue.opacity(0.35), lineWidth: 1))
+        .overlay(alignment: .top) { Divider() }
     }
 
     private func metric(_ label: String, _ value: String) -> some View {
@@ -728,11 +714,8 @@ struct CleanupSuggestionsView: View {
 
     private func riskTag(_ risk: CleanupRisk) -> some View {
         Text(risk.title)
-            .font(.caption2.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(color(for: risk))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(color(for: risk).opacity(0.12), in: Capsule())
     }
 
     private func color(for risk: CleanupRisk) -> Color {

@@ -28,7 +28,7 @@ struct DuplicateFinderView: View {
                     }
                     if vm.duplicateGroups.count > maxGroupsShown {
                         Text("+ \(vm.duplicateGroups.count - maxGroupsShown) more groups")
-                            .font(.caption2).foregroundStyle(.tertiary)
+                            .font(.caption).foregroundStyle(.tertiary)
                     }
                 }
             }
@@ -39,7 +39,7 @@ struct DuplicateFinderView: View {
     private var idleRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Find files with identical content across the scan and reclaim the redundant copies.")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
                 vm.findDuplicates()
@@ -115,36 +115,36 @@ struct DuplicateFinderView: View {
             // Keeper + reason.
             HStack(spacing: 5) {
                 Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 9)).foregroundStyle(.green)
+                    .font(.caption).foregroundStyle(.green)
                 Text("Keep")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                    .font(.caption).foregroundStyle(.tertiary)
                 Text(group.files[group.keepIndex].name)
-                    .font(.caption2.weight(.medium)).lineLimit(1)
+                    .font(.caption.weight(.medium)).lineLimit(1)
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([group.files[group.keepIndex].url])
                 } label: {
-                    Image(systemName: "magnifyingglass").font(.system(size: 9))
+                    Image(systemName: "magnifyingglass").font(.caption)
                 }
                 .buttonStyle(.interactive).foregroundStyle(.green)
                 .help("Reveal the kept copy in Finder")
                 Spacer(minLength: 0)
             }
             Text(group.keepReason)
-                .font(.caption2).foregroundStyle(.tertiary)
+                .font(.caption).foregroundStyle(.tertiary)
                 .lineLimit(2).fixedSize(horizontal: false, vertical: true)
 
             // The redundant copies that would be removed — each revealable in Finder.
             ForEach(Array(group.removableFiles.prefix(4).enumerated()), id: \.offset) { _, file in
                 HStack(spacing: 4) {
                     Text(sourcePath(file))
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 2)
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([file.url])
                     } label: {
-                        Image(systemName: "magnifyingglass").font(.system(size: 9))
+                        Image(systemName: "magnifyingglass").font(.caption)
                     }
                     .buttonStyle(.interactive)
                     .foregroundStyle(.tint)
@@ -153,7 +153,7 @@ struct DuplicateFinderView: View {
             }
             if group.removableFiles.count > 4 {
                 Text("+ \(group.removableFiles.count - 4) more")
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+                    .font(.caption).foregroundStyle(.tertiary)
             }
         }
         .padding(.vertical, 4)

@@ -71,7 +71,7 @@ struct LargeOldFilesView: View {
                 FeatureSectionLabel("Large & Old Files")
 
                 Text("Find big, stale files the rule-based cleanup can't name. Filter by size, age, and type, then review before staging.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 filters
@@ -167,12 +167,12 @@ struct LargeOldFilesView: View {
                     .lineLimit(1).truncationMode(.middle)
                 HStack(spacing: 6) {
                     Text(displayPath(file))
-                        .font(.system(size: 9, design: .monospaced))
+                        .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle)
                     if let age = relativeAge(file) {
                         Text(age)
-                            .font(.system(size: 9))
+                            .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -181,13 +181,13 @@ struct LargeOldFilesView: View {
             Spacer(minLength: 4)
 
             Text(Theme.format(file.size))
-                .font(.caption2.monospacedDigit().weight(.semibold))
+                .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.secondary)
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([file.url])
             } label: {
-                Image(systemName: "magnifyingglass").font(.system(size: 10))
+                Image(systemName: "magnifyingglass").font(.caption)
             }
             .buttonStyle(.interactive).foregroundStyle(.tint)
             .help("Reveal in Finder")

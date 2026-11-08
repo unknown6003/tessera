@@ -58,225 +58,193 @@ final class CollectorDragController: ObservableObject {
     }
 }
 
-// MARK: - Collector dock
+// MARK: - Cleanup List
 
-/// Full-width bottom dock that replaces the old right-side collector. Staged
-/// items live here as wrapping chips (each showing where it came from), with
-/// "Clear" and "Delete Permanently" buttons. The whole dock is the collector
-/// drop target for wedges dragged out of the chart.
 struct CollectorDock: View {
     @ObservedObject var vm: ScanViewModel
     @ObservedObject var drag: CollectorDragController
-    /// Primary, recoverable action: move the entire collector to the Trash.
-    var onTrashAll: () -> Void
-    /// Secondary, destructive action: confirm, then permanently delete the
-    /// entire collector.
-    var onDeleteAll: () -> Void
-
-    private let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
-
-    /// Natural height of the wrapped chips, measured so the scroll area grows with
-    /// content up to `maxChipsHeight`, then scrolls vertically instead of off-screen.
-    @State private var chipsHeight: CGFloat = 0
-    private let maxChipsHeight: CGFloat = 120
+    var onReview: () -> Void
 
     var body: some View {
-        collectorColumn
-            .padding(12)
-            .frame(maxWidth: .infinity)
-            .background(Theme.card, in: shape)
-            .overlay {
-                // Electric-blue ring when a slice is hovering the collector area.
-                shape.strokeBorder(
-                    Theme.electricBlue.opacity(drag.isOverCollector ? 0.9 : 0.0),
-                    lineWidth: 2
-                )
-                .animation(.easeOut(duration: 0.12), value: drag.isOverCollector)
-            }
-            .liquidGlassDepth(shape, shadowRadius: 16, shadowY: 8)
-            // Register the whole dock as the collector drop zone.
-            .onGeometryChange(for: CGRect.self) {
-                $0.frame(in: .named(CollectorDragController.appSpace))
-            } action: { drag.setCollectorFrame($0) }
-    }
-
-    // MARK: Collector column
-
-    private var collectorColumn: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            header
-            if vm.collector.isEmpty {
-                emptyHint
-            } else {
-                chips
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var header: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text("Review queue")
-                        .font(.headline.weight(.semibold))
-                    if !vm.collector.isEmpty {
-                        Text("· \(vm.collector.count) · \(Theme.format(vm.collectorTotalSize))")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.tint)
-                    }
-                }
-                // Always explain the model — not just when the list is empty.
-                Text("Nothing moves until you confirm.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if !vm.collector.isEmpty {
-                // Says exactly what it does — it empties this list, it does NOT
-                // touch your files. ("Clear" next to "Delete" was a trap.)
-                Button("Empty list") { vm.clearCollector() }
-                    .buttonStyle(.flat)
-                    .controlSize(.small)
-                    .font(.caption.weight(.medium))
-                    .help("Removes these items from the list. Your files are not deleted.")
-
-                // Primary, recommended action: recoverable from the Finder Trash.
-                Button(action: onTrashAll) {
-                    Label("Move to Trash", systemImage: "trash.fill")
-                        .font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.flatProminent)
-                .controlSize(.small)
-                .help("Move to Trash — you can restore them from Finder if you change your mind")
-
-                // The irreversible action is demoted out of the button row and
-                // into an overflow menu, so it can't be hit by accident.
-                Menu {
-                    Button(role: .destructive, action: onDeleteAll) {
-                        Label("Delete Permanently…", systemImage: "trash.slash.fill")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.caption.weight(.semibold))
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("More removal options")
-            }
-        }
-    }
-
-    private var emptyHint: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "hand.draw")
-                .font(.title3)
-                .foregroundStyle(.tint)
-                .frame(width: 32, height: 32)
-                .background(Theme.selectionTint, in: Circle())
+        HStack(spacing: 12) {
+            Image(systemName: drag.isOverCollector ? "plus.circle.fill" : "checklist")
+                .font(.title3).foregroundStyle(Theme.electricBlue)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Drop files here to review")
-                    .font(.subheadline.weight(.medium))
-                Text("Drag a chart slice, or use Rescue above.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text("Cleanup List").font(.subheadline.weight(.semibold))
+                Text(vm.collector.isEmpty ? "Drop a map item here to review it." :
+                     "\(vm.collector.count) items · \(Theme.format(vm.collectorTotalSize)) allocated")
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-    }
-
-    private var chips: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            FlowLayout(spacing: 10, lineSpacing: 10) {
-                ForEach(vm.collector) { node in
-                    CollectorChip(node: node) { vm.removeFromCollector(node) }
-                }
+            Spacer(minLength: 8)
+            if vm.isDeleting {
+                ProgressView(value: Double(vm.deletionProgress), total: Double(max(1, vm.deletionTotal)))
+                    .frame(width: 120)
+                    .accessibilityLabel("Removing items")
+                    .accessibilityValue("\(vm.deletionProgress) of \(vm.deletionTotal)")
+            } else {
+                Button("Review list…", action: onReview)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.collector.isEmpty || vm.isScanning)
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
             }
-            .padding(.vertical, 2)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { chipsHeight = $0 }
         }
-        .frame(height: min(chipsHeight, maxChipsHeight))
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(drag.isOverCollector ? Theme.selectionTint : Theme.surface)
+        .overlay(alignment: .top) {
+            if drag.isOverCollector { Rectangle().fill(Theme.electricBlue).frame(height: 2) }
+        }
+        .onGeometryChange(for: CGRect.self) {
+            $0.frame(in: .named(CollectorDragController.appSpace))
+        } action: { drag.setCollectorFrame($0) }
+        .onDisappear { drag.setCollectorFrame(.zero) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Cleanup List drop target")
     }
-
 }
 
-// MARK: - Collector chip
-
-/// A single staged item, showing its name, source folder ("where it's coming
-/// from") and size, with a remove button.
-private struct CollectorChip: View {
-    let node: FileNode
-    var onRemove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: Theme.icon(for: node))
-                .font(.subheadline)
-                .foregroundStyle(.tint)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(node.name)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-                Text(sourcePath)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(Theme.format(node.size))
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.tint)
-            }
-
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([node.url])
-            } label: {
-                Image(systemName: "magnifyingglass.circle.fill")
-                    .foregroundStyle(.tint)
-                    .font(.subheadline)
-            }
-            .buttonStyle(.interactive)
-            .help("Reveal in Finder to check before deleting")
-
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.tertiary)
-                    .font(.subheadline)
-            }
-            .buttonStyle(.interactive)
-            .help("Remove from collector")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxWidth: 240)
-        .background {
-            let s = RoundedRectangle(cornerRadius: 10, style: .continuous)
-            s.fill(Theme.surface)
-                .overlay(s.strokeBorder(Theme.border, lineWidth: 1))
-        }
+/// The review uses one source and one scan. A rescan cannot silently replace
+/// paths in the open sheet. Removals update both the review and staged list.
+struct CleanupReviewSheet: View {
+    private struct Item: Identifiable {
+        let node: FileNode
+        let path: String
+        let bytes: Int64
+        var id: ObjectIdentifier { node.id }
     }
 
-    /// The parent folder, with the home directory abbreviated to `~`.
-    private var sourcePath: String {
-        let dir = node.url.deletingLastPathComponent().path
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if dir == home { return "~" }
-        if dir.hasPrefix(home + "/") { return "~" + dir.dropFirst(home.count) }
-        return dir
+    @ObservedObject var vm: ScanViewModel
+    let sourcePath: String
+    let rootID: ObjectIdentifier?
+    let revision: UInt64
+    var onTrash: ([FileNode]) -> Void
+    var onDelete: ([FileNode]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var items: [Item]
+    @State private var reviewedCollectorIDs: Set<ObjectIdentifier>
+
+    init(vm: ScanViewModel, nodes: [FileNode], sourcePath: String,
+         rootID: ObjectIdentifier?, revision: UInt64, onTrash: @escaping ([FileNode]) -> Void,
+         onDelete: @escaping ([FileNode]) -> Void) {
+        self.vm = vm
+        self.sourcePath = sourcePath
+        self.rootID = rootID
+        self.revision = revision
+        self.onTrash = onTrash
+        self.onDelete = onDelete
+        _items = State(initialValue: nodes.map { Item(node: $0, path: $0.url.path, bytes: $0.physicalSize) })
+        _reviewedCollectorIDs = State(initialValue: Set(nodes.map(\.id)))
+    }
+
+    private var isCurrent: Bool {
+        !vm.isScanning && !vm.isDeleting
+            && vm.scannedURL?.standardizedFileURL.path == sourcePath
+            && vm.rootNode?.id == rootID
+            && vm.chartRevision == revision
+            && Set(vm.collector.map(\.id)) == reviewedCollectorIDs
+    }
+
+    private var total: Int64 { items.reduce(0) { $0 + $1.bytes } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Review Cleanup List").font(.title2.weight(.semibold))
+                    Spacer()
+                    Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                }
+                Text(sourcePath).font(.caption.monospaced()).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Text("Check every path. Removing an item from this list keeps its file in place.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            .padding(24)
+            Divider()
+            if !isCurrent {
+                Label("The scan or list changed. Close this sheet and review the current list.",
+                      systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange).font(.subheadline).padding(20)
+            }
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(items) { item in
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: Theme.icon(for: item.node)).foregroundStyle(.secondary)
+                                .frame(width: 20)
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(item.node.name).font(.body.weight(.medium))
+                                Text(item.path).font(.caption.monospaced()).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                                if let recommendation = vm.rescuePlan?.recommendations.first(where: { $0.node.id == item.id }) {
+                                    Text("\(recommendation.risk.title) · \(recommendation.reason)")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            Text(Theme.format(item.bytes)).font(.subheadline.monospacedDigit())
+                                .fixedSize()
+                            Button {
+                                vm.removeFromCollector(item.node)
+                                items.removeAll { $0.id == item.id }
+                                reviewedCollectorIDs.remove(item.id)
+                            } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Remove \(item.node.name) from Cleanup List")
+                            .disabled(!isCurrent)
+                        }
+                        .padding(.vertical, 16)
+                        .contextMenu {
+                            Button("Reveal in Finder") {
+                                NSWorkspace.shared.activateFileViewerSelecting([item.node.url])
+                            }
+                        }
+                        Divider()
+                    }
+                    if items.isEmpty {
+                        Text("The Cleanup List is empty.").foregroundStyle(.secondary).padding(32)
+                    }
+                }
+                .padding(.horizontal, 24)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("\(items.count) items").foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Theme.format(total)) allocated").font(.headline.monospacedDigit())
+                }
+                Text("Finder Trash is recoverable. Moving files to Trash does not free disk space until Trash is emptied.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Menu("More") {
+                        Button("Empty list") {
+                            vm.clearCollector()
+                            items = []
+                            reviewedCollectorIDs = []
+                        }
+                        Divider()
+                        Button("Delete Permanently…", role: .destructive) { onDelete(items.map(\.node)) }
+                    }
+                    .fixedSize()
+                    Spacer()
+                    Button("Move to Trash…") { onTrash(items.map(\.node)) }
+                        .buttonStyle(.borderedProminent)
+                }
+                .disabled(!isCurrent || items.isEmpty)
+            }
+            .padding(24)
+        }
+        .frame(width: 700, height: 620)
+        .background(Theme.bg)
     }
 }
 
 // MARK: - Flow layout
 
-/// Lays children left-to-right, wrapping to a new row when the next child would
-/// overflow the available width. The collector uses this so chips fill out into
-/// rows and scroll vertically, instead of running off the right edge in a single
-/// endless horizontal strip.
+/// Shared wrapping layout for compact tool controls.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 10
     var lineSpacing: CGFloat = 10
