@@ -189,7 +189,7 @@ final class Analytics: ObservableObject {
     private static let storagePolicyKey = "TesseraAnalyticsAnonymousStoragePolicyV1"
 
     static var isSuppressed: Bool {
-        !AnalyticsRunPolicy.collects(environment: ProcessInfo.processInfo.environment)
+        !AppRunPolicy.allowsExternalServices(environment: ProcessInfo.processInfo.environment)
     }
 
     init(defaults: UserDefaults = .standard) {

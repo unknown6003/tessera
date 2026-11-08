@@ -1,6 +1,13 @@
 import SwiftUI
 import AppKit
 
+enum AppRunPolicy {
+    /// Test hosts and benchmark drivers must not start telemetry or the updater.
+    static func allowsExternalServices(environment: [String: String]) -> Bool {
+        !environment.keys.contains { $0.hasPrefix("SO_") || $0.hasPrefix("XCTest") }
+    }
+}
+
 /// Headless E2E driver, active only when launched with environment variables:
 ///   SO_AUTOSCAN=<path>       start scanning <path> on launch
 ///   SO_SNAPSHOT_DIR=<dir>    write window snapshots (scanning.png, complete.png) to <dir>

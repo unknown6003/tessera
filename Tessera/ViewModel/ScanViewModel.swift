@@ -15,8 +15,10 @@ final class TreeReadCancellation: @unchecked Sendable {
 
 @MainActor
 final class ScanViewModel: ObservableObject {
-    struct RemovalSummary: Equatable {
+    struct RemovalSummary: Identifiable, Equatable, Sendable {
+        let id = UUID()
         let moved: Int
+        let movedBytes: Int64
         let held: Int
         let failed: Int
         let permanently: Bool
@@ -1011,6 +1013,10 @@ final class ScanViewModel: ObservableObject {
             if let failure { failures.append(failure) }
             deletionProgress = index + 1
         }
+        let failedURLs = Set(failures.map { $0.url.standardizedFileURL })
+        let movedBytes = attemptedTargets
+            .filter { !failedURLs.contains($0.url.standardizedFileURL) }
+            .reduce(Int64(0)) { $0 + $1.physicalSize }
         // The background pass is done. It cannot read the arrays as they are pruned.
         try? prune(attemptedTargets, failures: failures)
         let after = try await Self.offMain { () -> RescueMeasurement? in
@@ -1021,7 +1027,7 @@ final class ScanViewModel: ObservableObject {
                            measurementMismatchPaths: [], heldNodes: heldTargets,
                            errorMessage: heldError)
         let moved = max(0, attemptedTargets.count - failures.count)
-        lastRemovalSummary = RemovalSummary(moved: moved, held: heldTargets.count,
+        lastRemovalSummary = RemovalSummary(moved: moved, movedBytes: movedBytes, held: heldTargets.count,
                                              failed: failures.count, permanently: permanently)
         Analytics.shared.capture(.cleanupCompleted, values: [
             "items": .integer(targets.count), "moved": .integer(moved),

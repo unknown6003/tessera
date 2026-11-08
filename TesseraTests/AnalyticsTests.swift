@@ -7,11 +7,24 @@ import Testing
 struct AnalyticsTests {
     @Test("Normal builds collect without a user preference or environment opt-out")
     func normalCollectionPolicy() {
-        #expect(AnalyticsRunPolicy.collects(environment: [:]))
-        #expect(AnalyticsRunPolicy.collects(environment: ["TESSERA_DISABLE_ANALYTICS": "1"]))
-        #expect(!AnalyticsRunPolicy.collects(environment: ["SO_BENCH": "/owned/fixture"]))
-        #expect(!AnalyticsRunPolicy.collects(environment: ["SO_AUTOSCAN": "/owned/fixture"]))
-        #expect(!AnalyticsRunPolicy.collects(environment: ["XCTestConfigurationFilePath": "/test/config"]))
+        #expect(AppRunPolicy.allowsExternalServices(environment: [:]))
+        #expect(AppRunPolicy.allowsExternalServices(environment: ["TESSERA_DISABLE_ANALYTICS": "1"]))
+        #expect(!AppRunPolicy.allowsExternalServices(environment: ["SO_BENCH": "/owned/fixture"]))
+        #expect(!AppRunPolicy.allowsExternalServices(environment: ["SO_AUTOSCAN": "/owned/fixture"]))
+        #expect(!AppRunPolicy.allowsExternalServices(environment: ["XCTestConfigurationFilePath": "/test/config"]))
+    }
+
+    @Test("XCTest never starts Sparkle or writes update preferences")
+    @MainActor
+    func updaterStaysInactiveInTests() {
+        let defaults = UserDefaults.standard
+        let version = defaults.string(forKey: "TesseraLastRunVersion")
+        let lastCheck = defaults.object(forKey: "SULastCheckTime") as? Date
+        let updater = UpdaterController()
+        #expect(!updater.canCheckForUpdates)
+        #expect(updater.justUpdatedFrom == nil && updater.lastCheckedAt == nil)
+        #expect(defaults.string(forKey: "TesseraLastRunVersion") == version)
+        #expect(defaults.object(forKey: "SULastCheckTime") as? Date == lastCheck)
     }
 
     @Test("The app build has its own valid public ingest configuration")

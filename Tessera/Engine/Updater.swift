@@ -25,8 +25,8 @@ import Sparkle
 //    out from under work in progress or silently discard a staged list. Once the
 //    app goes idle, the queued install proceeds.
 //
-// Update requests carry no file data. Optional anonymous diagnostics have their
-// own consent and payload boundary in Analytics/.
+// Update requests carry no file data. Anonymous diagnostics use the payload
+// filters in Analytics/.
 
 /// What the updater is currently doing — surfaced in the app menu.
 enum UpdateStatus: Equatable {
@@ -164,7 +164,7 @@ final class UpdaterController: ObservableObject {
     private let driver: SilentUserDriver?
 
     init() {
-        guard !DebugAutomation.isAutomated else {
+        guard AppRunPolicy.allowsExternalServices(environment: ProcessInfo.processInfo.environment) else {
             updater = nil
             driver = nil
             return
