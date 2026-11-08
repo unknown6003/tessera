@@ -570,8 +570,9 @@ enum CleanupClassifier {
         consider(root.children, parentLowerPath: root.url.path.lowercased())
         while let (node, lowerPath) = stack.popLast() {
             if shouldStop() { break }
+            let lowerName = node.name.lowercased()
             if let category = rules.first(where: {
-                $0.matches(node.name.lowercased(), lowerPath)
+                $0.matches(lowerName, lowerPath)
             })?.category {
                 append(category, node)
                 continue

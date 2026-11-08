@@ -154,7 +154,7 @@ enum DebugAutomation {
         }
         let variants: [(Int, String)] = [(820, "explore"), (1100, "explore"),
             (1440, "explore"), (1920, "explore"), (1100, "details"),
-            (1100, "rescue"), (1100, "review"), (1100, "confirm")]
+            (1100, "rescue"), (1100, "review")]
         for (width, state) in variants {
             window.setContentSize(NSSize(width: CGFloat(width), height: 780))
             NotificationCenter.default.post(name: .init("Tessera.captureState"), object: nil,
