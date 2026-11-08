@@ -69,7 +69,7 @@ struct ScanIdentity: Codable, Equatable, Sendable {
             .fileResourceIdentifierKey,
             .volumeIdentifierKey,
             .fileSizeKey,
-            .fileAllocatedSizeKey,
+            .totalFileAllocatedSizeKey,
             .contentModificationDateKey,
         ])
         let modificationTime = values?.contentModificationDate.map {
@@ -85,7 +85,8 @@ struct ScanIdentity: Codable, Equatable, Sendable {
             inode: fileID,
             resourceType: resourceType,
             logicalSize: isDirectory ? nil : values?.fileSize.map(Int64.init),
-            allocatedSize: values?.fileAllocatedSize.map(Int64.init),
+            // Bulk ALLOCSIZE and lstat blocks include the resource fork too.
+            allocatedSize: values?.totalFileAllocatedSize.map(Int64.init),
             modificationTime: modificationTime
         )
     }
