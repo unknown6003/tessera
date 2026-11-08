@@ -22,7 +22,11 @@ final class ScanViewModel: ObservableObject {
     @Published private(set) var deletionProgress = 0
     @Published private(set) var deletionTotal = 0
     @Published private(set) var scanStartedAt: Date?
-    var scanStatus: String { rescuePhase == .diagnosing ? "Preparing results" : "Reading files" }
+    var scanStatus: String {
+        if isScanning { return rescuePhase == .diagnosing ? "Preparing results" : "Reading files" }
+        if rootNode != nil { return rescuePlan?.coverage.state == .partial ? "Partial scan" : "Scan complete" }
+        return scanTaskWasCancelled ? "Scan stopped" : ""
+    }
     @Published var progress = ScanProgress()
     /// Changes when an already-published tree is mutated in place (for example,
     /// after cleanup). The chart uses this to invalidate angular layout without
