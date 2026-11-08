@@ -92,3 +92,12 @@ The Opus process-local accessibility proposal `c927cd2` was not integrated. It
 used guessed underscored SwiftUI keys. The writer reverted it in `959606c`;
 that tree equals parent `c590e06`. Native qualification must test public system
 accessibility behavior and restore any temporary changes.
+
+## Local release and metric delta, 76ef824
+
+Three independent Codex passes reviewed `c590e06..76ef824` on Standards, Spec
+and Risk. They retained no finding after source checks. This covers the local
+release upload gate, vault-to-CLI aliases, the matching negative tests, always-on
+project rule, site claim corrections, and both seven-day experiment metrics.
+The app Swift source is unchanged from `c590e06`. All 17 tool tests pass.
+Native SDK, symbol ingestion and UI results remain separate runtime gates.
