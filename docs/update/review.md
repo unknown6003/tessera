@@ -60,6 +60,27 @@ child for the details capture. The primary agent reviewed those small changes.
 
 ## Qualification
 
+The final tool and review delta, `5836a68..a0626c4`, received separate Standards,
+Spec and Risk reads. Standards retained no finding. Risk retained no finding
+after checking actual callers. A proposed empty-cache case required keeping a
+tool sheet mounted while another sheet removed files; normal navigation destroys
+the tool first, so that candidate was dismissed.
+
+Spec found one reachable loading-state defect. Finder can replace a scan while
+the search tool remains selected. The cancelled search left its loading flag
+set. Commit `163c245` clears loading and invalidates results on a tree revision
+change or disappearance. The primary agent checked the fix against the Finder
+service, the retained tool sheet and the old task's token guard.
+
+The new read lease prevents cleanup from mutating a tree while a worker reads
+it. Cancellation requests stop the worker; the lease lasts until it returns.
+A native regression holds a worker behind a bounded semaphore, requests removal
+and cancellation, then checks that no file changed and the lease ended.
+
+The review sheet now uses its snapshot as the presentation item. This replaces
+the separate Boolean and optional payload after a real first-open action showed
+an empty sheet. Native first-open and repeat-open checks remain required.
+
 Native build, test, performance and screenshot evidence is recorded separately.
 No release may be labelled qualified until the final source revision passes the
 combined app checks. Keyboard and drag behavior need actual input proof; staged
