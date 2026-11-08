@@ -72,7 +72,7 @@ struct CollectorDock: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Cleanup List").font(.subheadline.weight(.semibold))
                 Text(vm.collector.isEmpty ? "Drop a map item here to review it." :
-                     "\(vm.collector.count) items · \(Theme.format(vm.collectorTotalSize)) allocated")
+                     "\(Theme.itemCount(vm.collector.count)) · \(Theme.format(vm.collectorTotalSize)) allocated")
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
@@ -212,7 +212,7 @@ struct CleanupReviewSheet: View {
             Divider()
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("\(items.count) items").foregroundStyle(.secondary)
+                    Text(Theme.itemCount(items.count)).foregroundStyle(.secondary)
                     Spacer()
                     Text("\(Theme.format(total)) allocated").font(.headline.monospacedDigit())
                 }

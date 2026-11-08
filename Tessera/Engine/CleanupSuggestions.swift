@@ -25,7 +25,7 @@ enum RescuePhase: String, Codable, Hashable, Sendable {
         case .reviewing: return "Review candidates"
         case .staged: return "Ready to move"
         case .confirmingTrash: return "Confirm Move to Trash"
-        case .moving: return "Moving to Trash"
+        case .moving: return "Removing items"
         case .verifying: return "Verifying space"
         case .result: return "Rescue result"
         case .remembering: return "Saved on this Mac"

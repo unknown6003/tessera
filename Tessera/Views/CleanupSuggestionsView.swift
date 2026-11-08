@@ -286,7 +286,7 @@ struct CleanupSuggestionsView: View {
                 Text("Suggested cleanup")
                     .font(.title3.weight(.semibold))
                 Spacer()
-                Text("\(report.recommendations.count) items")
+                Text(Theme.itemCount(report.recommendations.count))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

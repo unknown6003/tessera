@@ -17,6 +17,9 @@ extension Color {
 }
 
 enum Theme {
+    static func itemCount(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "item" : "items")"
+    }
 
     // MARK: - Flat design tokens
     //

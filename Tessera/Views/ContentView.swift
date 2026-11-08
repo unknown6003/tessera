@@ -146,7 +146,7 @@ struct ContentView: View {
                                    })
             }
         }
-        .confirmationDialog("Move \(pendingTrash?.nodes.count ?? 0) items to Trash?",
+        .confirmationDialog("Move \(Theme.itemCount(pendingTrash?.nodes.count ?? 0)) to Trash?",
                             isPresented: $showTrashConfirm, titleVisibility: .visible) {
             Button("Move to Trash") {
                 if let snapshot = pendingTrash { performTrash(snapshot) }
@@ -155,7 +155,7 @@ struct ContentView: View {
         } message: {
             Text("Move \(Theme.format(pendingTrash?.nodes.reduce(0) { $0 + $1.physicalSize } ?? 0)) to Finder Trash. \(pendingTrashRiskSummary) \(pendingTrashTargetSummary) You can restore these items. Trash uses disk space until you empty it.")
         }
-        .confirmationDialog("Permanently delete \(pendingDelete?.nodes.count ?? 0) items?",
+        .confirmationDialog("Permanently delete \(Theme.itemCount(pendingDelete?.nodes.count ?? 0))?",
                             isPresented: $showDeleteAllConfirm, titleVisibility: .visible) {
             Button("Move to Trash Instead") {
                 if let snapshot = pendingDelete { requestTrash(snapshot) }
