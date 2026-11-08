@@ -31,7 +31,15 @@ jobs:
       - name: Toolchain
         run: xcodebuild -version
 
+      - name: Generate the Xcode project
+        run: >-
+          python3 tools/run_bounded.py --timeout 180
+          --log "$RUNNER_TEMP/xcodegen.log" -- bash -c
+          'command -v xcodegen >/dev/null || HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen; xcodegen generate'
+
       - name: Resolve Swift packages
+        # XcodeGen is the source of truth. Keep generated metadata reviewable as
+        # an artifact when adding SDKs or source groups.
         run: >-
           xcodebuild -resolvePackageDependencies
           -project Tessera.xcodeproj
@@ -56,6 +64,17 @@ jobs:
           -destination 'platform=macOS'
           CODE_SIGNING_ALLOWED=NO
           CODE_SIGNING_REQUIRED=NO
+
+      - name: Save generated project metadata
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-xcode-project
+          path: |
+            Tessera.xcodeproj/project.pbxproj
+            Tessera.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          if-no-files-found: error
+          retention-days: 14
 
   web:
     name: Web

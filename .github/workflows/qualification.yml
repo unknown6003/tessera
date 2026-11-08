@@ -23,6 +23,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Generate the Xcode project
+        run: >-
+          python3 tools/run_bounded.py --timeout 180
+          --log "$RUNNER_TEMP/xcodegen.log" -- bash -c
+          'command -v xcodegen >/dev/null || HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen; xcodegen generate'
+
       - name: Resolve Swift packages
         run: >-
           xcodebuild -resolvePackageDependencies
