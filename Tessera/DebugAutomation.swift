@@ -55,6 +55,10 @@ enum DebugAutomation {
 
         log("automation armed: scan=\(scanPath)")
         Task { @MainActor in
+            if let snapshotDir {
+                do { try FileManager.default.createDirectory(atPath: snapshotDir, withIntermediateDirectories: true) }
+                catch { log("snapshot directory failed: \(error.localizedDescription)") }
+            }
             try? await Task.sleep(for: .milliseconds(800))
             log("starting scan; windows=\(NSApp.windows.map { "\($0.title):num=\($0.windowNumber):visible=\($0.isVisible):opaque=\($0.isOpaque):bgAlpha=\(String(format: "%.2f", $0.backgroundColor.alphaComponent)):fullSizeContent=\($0.styleMask.contains(.fullSizeContentView))" })")
             vm.dismissFDAOnboarding()
@@ -93,7 +97,8 @@ enum DebugAutomation {
             let rate = elapsed > 0 ? Int(Double(p.dirsScanned) / elapsed) : 0
             log("scan finished: root=\(vm.rootNode?.size ?? -1) error=\(vm.errorMessage ?? "none") " +
                 "cancelled=\(vm.scanTaskWasCancelled) dirs \(p.dirsScanned)/\(p.dirsDiscovered) " +
-                "elapsed=\(String(format: "%.2f", elapsed))s rate=\(rate) dirs/s")
+                "elapsed=\(String(format: "%.2f", elapsed))s rate=\(rate) dirs/s " +
+                "coverage=\(vm.rescuePlan?.coverage.state.rawValue ?? "unknown") gaps=\(vm.rootNode?.scanCoverageGaps.count ?? 0)")
             // Cleanup classification is published async after the tree is built;
             // poll up to ~6s for it to land.
             var waited = 0
@@ -165,6 +170,11 @@ enum DebugAutomation {
         }
         NotificationCenter.default.post(name: .init("Tessera.captureState"), object: nil,
                                           userInfo: ["state": "explore"])
+        // Let SwiftUI dismiss Review before asking AppKit to terminate.
+        try? await Task.sleep(for: .milliseconds(500))
+        if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .cancel) }
+        try? await Task.sleep(for: .milliseconds(300))
+        log("UI proof teardown: attachedSheet=\(window.attachedSheet != nil)")
     }
 
     /// Single-threaded scan benchmark. Warms the metadata cache once, then times
