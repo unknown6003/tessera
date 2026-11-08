@@ -18,13 +18,13 @@ struct HiddenSpaceView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("WHAT'S IN HERE")
-                .font(.caption2.weight(.semibold)).foregroundStyle(.secondary).kerning(0.8)
+            Text("Hidden space")
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary).kerning(0.8)
                 .padding(.top, 2)
 
             if let report {
                 Text("Space the volume uses that the scan can't list directly. Here's what it's made of and what's safe to reclaim.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 purgeableRow(report)
@@ -39,7 +39,7 @@ struct HiddenSpaceView: View {
             }
 
             if let status {
-                Text(status).font(.caption2).foregroundStyle(.secondary)
+                Text(status).font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -101,17 +101,17 @@ struct HiddenSpaceView: View {
                     .disabled(busyID != nil)
             }
             Text("Time Machine keeps recent backups on this disk itself. Deleting them frees space, but you lose the ability to roll back to those points in time — keeping the most recent one is usually wise.")
-                .font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+                .font(.caption).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
             ForEach(r.snapshots) { snap in
                 HStack(spacing: 8) {
-                    Image(systemName: "camera.aperture").font(.caption2).foregroundStyle(.secondary).frame(width: 14)
+                    Image(systemName: "camera.aperture").font(.caption).foregroundStyle(.secondary).frame(width: 14)
                     Text(snapLabel(snap)).font(.caption).lineLimit(1)
                     Spacer()
                     if busyID == snap.id {
                         ProgressView().controlSize(.small).scaleEffect(0.7)
                     } else {
                         Button { snapToDelete = snap } label: {
-                            Image(systemName: "trash").font(.caption2)
+                            Image(systemName: "trash").font(.caption)
                         }
                         .buttonStyle(.interactive).foregroundStyle(Theme.danger)
                         .help("Delete this snapshot — cannot be undone")
@@ -154,7 +154,7 @@ struct HiddenSpaceView: View {
                     Text(detail).font(.caption.monospacedDigit().weight(.semibold)).foregroundStyle(.secondary)
                 }
             }
-            Text(note).font(.caption2).foregroundStyle(.tertiary)
+            Text(note).font(.caption).foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.top, 2)

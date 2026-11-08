@@ -1,0 +1,762 @@
+{
+  "study_id": "tessera-disk-rescue",
+  "collection_id": "github-pages-1-10-authenticated-and-safety-2026-08-31",
+  "collected_at": "2026-08-31",
+  "status": "open",
+  "last_collection": {
+    "collection_id": "github-pages-1-10-authenticated-and-safety-2026-08-31",
+    "access_notes": [
+      "Reddit bulk JSON search returned HTTP 403 during this pass. No bulk Reddit count was added; only directly inspected Reddit pages are in the product-experience ledger.",
+      "The owner-context pass added directly inspected community and Reddit pages for iCloud local copies, Photos, iPhone backups, Docker disk images, and Xcode storage. Product disclosures and conflicting peer advice remain labeled in the ledgers.",
+      "The creator-cache pass added 20 directly inspected Reddit pages covering DaVinci Resolve, Final Cut Pro, Lightroom, and Blender. One creator page is adjacent because peer advice mixes cache cleanup with settings and add-on data.",
+      "The owner-documentation pass added 7 first-party guides for Resolve, Premiere, and Final Cut Pro. These are version-sensitive product facts and remain separate from user behavior.",
+      "The cloud-provider pass added 13 directly inspected Reddit reports about Dropbox and iCloud or Photos. Reports about stale labels, hidden provider caches, delayed optimization, logical versus physical size, and remote-delete fear remain user evidence, not system proof.",
+      "The cloud owner-documentation pass added 5 first-party guides for Dropbox, OneDrive, Google Drive, and iCloud Drive. These define provider-specific local states and action boundaries and remain separate from user behavior.",
+      "The backup and virtual-disk pass added 12 directly inspected Reddit reports about device backups, Time Machine destinations, Docker or VM images, host-versus-guest size, and live runtime state. Conflicting peer advice remains labeled as user evidence, not a safety rule.",
+      "The backup and virtual-disk owner-documentation pass added 13 first-party guides for Apple device backups and Time Machine, Docker, UTM, and Parallels. These define restore identity, prune scope, sparse images, snapshot chains, shutdown, backup, guest, and reclaim boundaries.",
+      "The cleanup-trust pass added 36 directly inspected Apple Support Community and MacRumors pages about storage accounting, cloud copies, snapshots, permissions, backup identity, and scan failure. Peer advice remains separate from system facts.",
+      "The cleanup-trust product pass added 13 directly inspected Reddit pages about emergency low-space entry, result proof, rescan, recovery, and cleanup-tool trust. Three maker or launch discussions remain market signals rather than independent demand evidence.",
+      "The cleanup-trust GitHub pass added four Pearcleaner issue or discussion records about deletion results, orphan ownership, permissions, and UI explanation. Maintainer discussions remain separate from independent user evidence.",
+      "The rescue-continuity pass added five directly inspected Apple Support Community pages and ten Reddit pages about conflicting free-space measurements, update and backup working space, recovery escalation, exact-control preferences, and cleaner product boundaries. Five Reddit maker posts remain market signals rather than independent demand evidence.",
+      "The rescue-failure-retry pass added eleven directly inspected MacRumors pages and ten Reddit pages about post-cleanup measurement failure, backup and update transactions, permission scope, iCloud and Photos local state, recovery escalation, and narrow control. These are new records only; unverified peer remedies remain evidence of uncertainty, not safety rules.",
+      "The developer-creator-state pass added ten direct Apple Support Community or MacRumors pages and thirty-four Reddit reports covering Xcode, Docker, Unity, After Effects, Lightroom, Final Cut Pro, and Time Machine. It adds counterexamples about generated media, owner-managed disk images, project state, backup identity, source-versus-working space, and recovery after a failed cleanup. Product disclosures and conflicting peer advice remain labeled in the ledgers.",
+      "The independent developer-creator agent lane added 47 new URLs: 41 first-person reports from Apple Developer Forums, Stack Overflow, Docker Community Forums, Reddit r/Unity3D, Adobe Community, and Apple Support Communities, plus 6 first-party Unity or Android documentation records. The lane is kept in tessera-disk-rescue-developer-creator-ledger.jsonl and does not estimate prevalence.",
+      "The creator-working-set lane added 54 new URLs: 36 direct reports and 18 first-party owner facts across Logic Pro, Ableton Live, Unreal Engine, Blender, and Autodesk Fusion. The lane separates owner-managed libraries, project references, derived caches, simulation bakes, offline CAD state, relocation, and per-volume transaction budgets.",
+      "The AI-model-storage lane added 54 new URLs: 25 first-person reports and 29 owner facts across Ollama, Hugging Face, LM Studio, ComfyUI, and AUTOMATIC1111. It separates logical model identity, physical blobs, shared references, links, loaded state, partial transfers, external-volume roots, staging space, and exact recovery identity.",
+      "The professional sample-library lane added 79 new URLs: 31 core reports, 4 adjacent counterexamples, and 44 owner facts across eight vendor families. It separates packages, installed content, plug-ins, owner registration, licenses, updates, helper state, standalone validation, and host or project validation.",
+      "The newer local-AI lane added 61 new URLs: 33 first-person reports and 28 owner or implementation facts across MLX, MLX-LM, Hugging Face Datasets, Draw Things, DiffusionBee, and llama.cpp. It separates user-created source state, derivatives, processed caches, projects, outputs, transfers, external roots, and runtime state.",
+      "The game-library lane added 156 new URLs: 71 core reports, 30 adjacent counterexamples, and 55 owner facts across eleven launcher or runtime families. It separates redownloadable payloads from saves, worlds, mods, screenshots, launcher registration, compatibility containers, patch staging, cloud state, and external-volume identity.",
+      "The package-cache lane added 224 new URLs: 104 core reports, 54 adjacent counterexamples, and 66 owner facts across eleven package-manager families. It separates shared stores, project materializations, build output, installed environments, global tools, offline sources, configuration, credentials, locks, and partial transfers.",
+      "The app-profile lane added 183 new URLs: 120 core reports, 5 adjacent counterexamples, and 58 owner facts across nine browser, editor, and communication-app families. It separates exact caches from sessions, bookmarks, passwords, cookies, offline site data, extensions, drafts, local history, and workspace databases.",
+      "The Apple safety API lane added 14 first-party records about file identity, volume capacity, running applications, file coordination, FSEvents invalidation, and iCloud state. These are system facts, not user-demand evidence.",
+      "The communication local probe measured only aggregate allocation on explicit macOS roots. Messages and Discord were active; no message, mail, note, account, or attachment content was read, and no file was changed.",
+      "The GitHub pages 1 through 4 follow-up added 1,788 automated title/body candidates from 11 owner repositories. Pull requests and empty bodies were excluded, existing URLs were excluded, and every record is marked automated_candidate. The records are a discovery index until manually coded.",
+      "The authenticated GitHub CLI continuation added pages 5 through 10 with 3,217 more candidates, for 5,005 automated candidates across the same 11 repositories. It used the local gh credential without exposing the token; every record remains a discovery index until manually coded.",
+      "The unauthenticated GitHub core limit reached zero during the earlier pass. The collector now prefers authenticated gh api when a local login exists, and the next loop can continue beyond page 10 while that quota remains available."
+    ],
+    "github_issue_records": 403,
+    "github_issue_repositories": 16,
+    "github_issue_records_with_body": 399,
+    "github_issue_evidence_classes": {
+      "product_issue": 274,
+      "adjacent_issue": 63,
+      "maintainer_signal": 66
+    },
+    "github_body_sample_records": 103,
+    "github_body_sample_repositories": 15,
+    "github_market_signal_records": 77,
+    "github_market_signal_stars_at_collection": 14576,
+    "community_source_records": 102,
+    "community_source_families": {
+      "apple_support_community": 66,
+      "macrumors": 36
+    },
+    "community_source_evidence_classes": {
+      "core": 81,
+      "adjacent": 19,
+      "unverified": 2
+    },
+    "product_experience_records": 147,
+    "product_experience_source_families": {
+      "reddit": 136,
+      "app_store_reviews": 8,
+      "app_store_product_pages": 3
+    },
+    "product_experience_evidence_classes": {
+      "core": 118,
+      "adjacent": 18,
+      "market_signal": 11
+    },
+    "developer_creator_state_records": 47,
+    "developer_creator_state_source_families": {
+      "apple_developer_forums": 5,
+      "stackoverflow": 14,
+      "docker_forums": 6,
+      "reddit_unity3d": 6,
+      "unity_documentation": 3,
+      "android_documentation": 3,
+      "adobe_community": 4,
+      "apple_support_community": 6
+    },
+    "developer_creator_state_evidence_classes": {
+      "core": 41,
+      "owner_fact": 6
+    },
+    "creator_working_set_records": 54,
+    "creator_working_set_source_families": {
+      "apple_support_communities": 12,
+      "ableton_forum": 6,
+      "ableton_documentation": 5,
+      "epic_developer_community_forums": 8,
+      "epic_games_documentation": 3,
+      "blender_artists": 2,
+      "blender_documentation": 2,
+      "autodesk_community": 8,
+      "apple_logic_pro_documentation": 8
+    },
+    "creator_working_set_evidence_classes": {
+      "core": 33,
+      "adjacent": 3,
+      "owner_fact": 18
+    },
+    "ai_model_storage_records": 54,
+    "ai_model_storage_source_families": {
+      "ollama_documentation": 6,
+      "hugging_face_documentation": 8,
+      "lm_studio_documentation": 6,
+      "comfyui_documentation": 6,
+      "automatic1111_documentation": 3,
+      "ollama_github_issues": 6,
+      "hugging_face_github_issues": 5,
+      "lm_studio_bug_tracker": 3,
+      "reddit_localllama": 2,
+      "reddit_localllm": 1,
+      "comfyui_github_issues": 5,
+      "automatic1111_github_community": 3
+    },
+    "ai_model_storage_evidence_classes": {
+      "core": 25,
+      "owner_fact": 29
+    },
+    "sample_library_records": 79,
+    "sample_library_source_families": {
+      "native_instruments": 22,
+      "spitfire_audio": 11,
+      "arturia": 6,
+      "toontrack": 12,
+      "eastwest": 9,
+      "uvi": 3,
+      "ik_multimedia": 7,
+      "steinberg": 9
+    },
+    "sample_library_evidence_classes": {
+      "core": 31,
+      "adjacent": 4,
+      "owner_fact": 44
+    },
+    "mlx_local_ai_records": 61,
+    "mlx_local_ai_source_families": {
+      "mlx": 8,
+      "mlx_lm": 14,
+      "hugging_face_datasets": 1,
+      "draw_things": 12,
+      "diffusionbee": 12,
+      "llama_cpp": 14
+    },
+    "mlx_local_ai_evidence_classes": {
+      "core": 33,
+      "owner_fact": 28
+    },
+    "game_library_records": 156,
+    "game_library_source_families": {
+      "ATLauncher": 10,
+      "Battle.net and World of Warcraft": 15,
+      "Epic Games": 15,
+      "GOG": 11,
+      "Heroic": 20,
+      "Minecraft": 5,
+      "PlayCover": 5,
+      "Prism Launcher": 22,
+      "Steam": 18,
+      "Whisky": 18,
+      "itch.io": 17
+    },
+    "game_library_evidence_classes": {
+      "core": 71,
+      "adjacent": 30,
+      "owner_fact": 55
+    },
+    "package_cache_records": 224,
+    "package_cache_source_families": {
+      "Cargo": 20,
+      "CocoaPods": 22,
+      "Conda": 16,
+      "Gradle": 21,
+      "Homebrew": 18,
+      "Swift Package Manager": 20,
+      "Yarn": 20,
+      "npm": 19,
+      "pip": 22,
+      "pnpm": 22,
+      "uv": 24
+    },
+    "package_cache_evidence_classes": {
+      "core": 104,
+      "adjacent": 54,
+      "owner_fact": 66
+    },
+    "app_profile_records": 183,
+    "app_profile_source_families": {
+      "Brave": 29,
+      "Chrome and Chromium": 17,
+      "Discord": 12,
+      "Firefox": 18,
+      "JetBrains": 18,
+      "Safari and WebKit": 17,
+      "Slack": 5,
+      "VS Code": 38,
+      "Zen": 29
+    },
+    "app_profile_evidence_classes": {
+      "core": 120,
+      "adjacent": 5,
+      "owner_fact": 58
+    },
+    "market_signal_records_total": 88,
+    "system_fact_records": 30,
+    "system_fact_source_families": {
+      "apple_support": 8,
+      "apple_developer_documentation": 22
+    },
+    "owner_documentation_records": 25,
+    "owner_documentation_source_families": {
+      "blackmagic_design": 2,
+      "adobe": 2,
+      "apple_final_cut_pro": 3,
+      "dropbox": 2,
+      "microsoft_onedrive": 1,
+      "google_drive": 1,
+      "apple_icloud_drive": 1,
+      "apple_iphone_backups": 1,
+      "apple_time_machine": 1,
+      "docker": 4,
+      "utm": 2,
+      "parallels": 5
+    },
+    "askdifferent_body_sample_records": 278,
+    "askdifferent_body_sample_authors": 268,
+    "askdifferent_body_sample_quota_remaining": 267,
+    "safety_api_records": 14,
+    "safety_api_source_families": {
+      "Apple Developer Documentation": 14
+    },
+    "safety_api_evidence_classes": {
+      "system_fact": 14
+    },
+    "safety_api_ledger": "tessera-disk-rescue-safety-api-ledger.jsonl",
+    "github_followup_records": 5005,
+    "github_followup_repositories": 11,
+    "github_followup_records_with_body": 5005,
+    "github_followup_evidence_classes": {
+      "core": 3979,
+      "adjacent": 1026
+    },
+    "github_followup_screening_status": "automated_candidate",
+    "github_followup_pages": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    "github_followup_ledgers": [
+      "tessera-disk-rescue-game-followup-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-ledger.jsonl",
+      "tessera-disk-rescue-game-followup-page2-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-page2-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-page2-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-page2-ledger.jsonl",
+      "tessera-disk-rescue-game-followup-page3-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-page3-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-page3-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-page3-ledger.jsonl",
+      "tessera-disk-rescue-game-followup-page4-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-page4-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-page4-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-page4-ledger.jsonl",
+      "tessera-disk-rescue-game-followup-page5-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-page5-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-page5-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-page5-ledger.jsonl",
+      "tessera-disk-rescue-game-followup-page6-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-page6-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-page6-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-page6-ledger.jsonl",
+      "tessera-disk-rescue-game-followup-page7-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-page7-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-page7-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-page7-ledger.jsonl",
+      "tessera-disk-rescue-game-followup-page8-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-page8-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-page8-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-page8-ledger.jsonl",
+      "tessera-disk-rescue-game-followup-page9-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-page9-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-page9-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-page9-ledger.jsonl",
+      "tessera-disk-rescue-game-followup-page10-ledger.jsonl",
+      "tessera-disk-rescue-package-followup-page10-ledger.jsonl",
+      "tessera-disk-rescue-profile-followup-page10-ledger.jsonl",
+      "tessera-disk-rescue-communication-followup-page10-ledger.jsonl"
+    ],
+    "github_followup_source_families": {
+      "Lutris/lutris": 648,
+      "ValveSoftware/Proton": 731,
+      "PrismLauncher/PrismLauncher": 490,
+      "python-poetry/poetry": 382,
+      "pypa/pip": 379,
+      "microsoft/vcpkg": 298,
+      "signalapp/Signal-Desktop": 655,
+      "element-hq/element-desktop": 336,
+      "mattermost/desktop": 196,
+      "telegramdesktop/tdesktop": 625,
+      "jitsi/jitsi-meet-electron": 265
+    },
+    "communication_local_probe": {
+      "method": "read_only_aggregate_path_probe",
+      "roots": [
+        "~/Library/Messages",
+        "~/Library/Application Support/discord",
+        "~/Library/Mail",
+        "~/Library/Group Containers/group.com.apple.notes"
+      ],
+      "active_owners": [
+        "Messages",
+        "Discord",
+        "WhatsApp",
+        "Mail daemon"
+      ],
+      "content_read": false,
+      "mutation": false,
+      "report": "tessera-disk-rescue-communication-local-probe-2026-08-31.md"
+    }
+  },
+  "combined_evidence_records": 3005,
+  "combined_evidence_plus_system_facts": 3035,
+  "all_deduplicated_ledger_records": 8554,
+  "stop_condition": "There is no source-count stop condition. Pause only when the current product decision has coverage across contexts, source types, and counterexamples, then reopen it when the product or environment changes.",
+  "source_families": {
+    "askdifferent": {
+      "raw_records": 1860,
+      "unique_urls": 1618,
+      "screened_core": 840,
+      "screened_adjacent": 778,
+      "records_with_answers": 1377,
+      "api_marked_answered": 1340,
+      "api_pulls": 26,
+      "ledger": "tessera-disk-rescue-source-ledger.jsonl",
+      "body_sample_ledger": "tessera-disk-rescue-askdifferent-content-sample.jsonl"
+    },
+    "public_web_sources": {
+      "status": "representative links recorded in the ethnographic study",
+      "families": [
+        "Reddit",
+        "Apple Support",
+        "Ask Different",
+        "MacRumors",
+        "App Store reviews",
+        "GitHub issues and discussions",
+        "product documentation",
+        "Apple Developer Forums",
+        "Stack Overflow",
+        "Docker Community Forums",
+        "Adobe Community",
+        "Unity Documentation",
+        "Android Developers",
+        "Ableton Forum",
+        "Ableton Documentation",
+        "Epic Developer Community Forums",
+        "Epic Games Documentation",
+        "Blender Artists",
+        "Blender Documentation",
+        "Autodesk Community",
+        "Apple Logic Pro Documentation",
+        "Ollama Documentation",
+        "Hugging Face Documentation",
+        "LM Studio Documentation",
+        "ComfyUI Documentation",
+        "AUTOMATIC1111 Documentation",
+        "Ollama GitHub Issues",
+        "Hugging Face GitHub Issues",
+        "LM Studio Bug Tracker",
+        "Reddit r/LocalLLaMA",
+        "Reddit r/LocalLLM",
+        "ComfyUI GitHub Issues",
+        "AUTOMATIC1111 GitHub Community",
+        "Native Instruments Support and Community",
+        "Spitfire Audio Support",
+        "Arturia Support",
+        "Toontrack Support and Forums",
+        "EastWest Support",
+        "UVI Support",
+        "IK Multimedia Support and Forums",
+        "Steinberg Support and Forums",
+        "MLX and MLX-LM repositories",
+        "Draw Things documentation and issues",
+        "DiffusionBee source and issues",
+        "llama.cpp source and issues",
+        "Steam, Epic, GOG, itch.io, Minecraft, and launcher documentation and communities",
+        "npm, pnpm, Yarn, Cargo, CocoaPods, Conda, Gradle, Homebrew, SwiftPM, pip, and uv documentation and issue trackers",
+        "Firefox, Chromium, Brave, Safari, VS Code, JetBrains, Zen, Slack, and Discord documentation and issue trackers"
+      ]
+    },
+    "github_issues": {
+      "unique_urls": 403,
+      "repositories": 16,
+      "records_with_body": 399,
+      "evidence_classes": {
+        "product_issue": 274,
+        "adjacent_issue": 63,
+        "maintainer_signal": 66
+      },
+      "ledger": "tessera-disk-rescue-github-issue-ledger.jsonl"
+    },
+    "github_market_scan": {
+      "unique_urls": 77,
+      "repositories": 77,
+      "stars_at_collection": 14576,
+      "evidence_class": "market_signal",
+      "ledger": "tessera-disk-rescue-market-scan.jsonl"
+    },
+    "community_sources": {
+      "unique_urls": 102,
+      "source_families": {
+        "Apple Support Communities": 66,
+        "MacRumors Forums": 36
+      },
+      "evidence_classes": {
+        "core": 81,
+        "adjacent": 19,
+        "unverified": 2
+      },
+      "ledger": "tessera-disk-rescue-community-source-ledger.jsonl",
+      "quality_note": "Direct community pages add source diversity and language. They are not independent participants, and peer advice is not a safety rule."
+    },
+    "product_experience": {
+      "unique_urls": 147,
+      "source_families": {
+        "Reddit": 136,
+        "Mac App Store reviews": 8,
+        "Mac App Store product pages": 3
+      },
+      "evidence_classes": {
+        "core": 118,
+        "adjacent": 18,
+        "market_signal": 11
+      },
+      "ledger": "tessera-disk-rescue-product-experience-ledger.jsonl",
+      "quality_note": "Direct reports add user language about permissions, owner data, undo, pricing, result proof, creator caches, project scope, and rebuild cost. Product pages stay market signals."
+    },
+    "developer_creator_state": {
+      "unique_urls": 47,
+      "source_families": {
+        "Apple Developer Forums": 5,
+        "Stack Overflow": 14,
+        "Docker Community Forums": 6,
+        "Reddit r/Unity3D": 6,
+        "Unity Documentation": 3,
+        "Android Developers": 3,
+        "Adobe Community": 4,
+        "Apple Support Communities": 6
+      },
+      "evidence_classes": {
+        "core": 41,
+        "owner_fact": 6
+      },
+      "ledger": "tessera-disk-rescue-developer-creator-ledger.jsonl",
+      "quality_note": "The independent lane keeps first-person developer, creator, and backup reports separate from first-party Unity and Android documentation. It is evidence of workflow blockers and owner boundaries, not prevalence."
+    },
+    "creator_working_set": {
+      "unique_urls": 54,
+      "source_families": {
+        "Apple Support Communities": 12,
+        "Ableton Forum": 6,
+        "Ableton Documentation": 5,
+        "Epic Developer Community Forums": 8,
+        "Epic Games Documentation": 3,
+        "Blender Artists": 2,
+        "Blender Documentation": 2,
+        "Autodesk Community": 8,
+        "Apple Logic Pro Documentation": 8
+      },
+      "evidence_classes": {
+        "core": 33,
+        "adjacent": 3,
+        "owner_fact": 18
+      },
+      "ledger": "tessera-disk-rescue-creator-workspace-ledger.jsonl",
+      "quality_note": "The lane keeps creator reports separate from first-party owner rules and records counterexamples where cache clearing or relocation does not solve the failure. It supports owner-aware working-set and relocation design, not prevalence."
+    },
+    "ai_model_storage": {
+      "unique_urls": 54,
+      "source_families": {
+        "Ollama Documentation": 6,
+        "Hugging Face Documentation": 8,
+        "LM Studio Documentation": 6,
+        "ComfyUI Documentation": 6,
+        "AUTOMATIC1111 Documentation": 3,
+        "Ollama GitHub Issues": 6,
+        "Hugging Face GitHub Issues": 5,
+        "LM Studio Bug Tracker": 3,
+        "Reddit r/LocalLLaMA": 2,
+        "Reddit r/LocalLLM": 1,
+        "ComfyUI GitHub Issues": 5,
+        "AUTOMATIC1111 GitHub Community": 3
+      },
+      "evidence_classes": {
+        "core": 25,
+        "owner_fact": 29
+      },
+      "ledger": "tessera-disk-rescue-ai-model-storage-ledger.jsonl",
+      "field_notes": "tessera-disk-rescue-ai-model-storage-agent-lane-2026-08-31.md",
+      "quality_note": "The lane keeps owner documentation separate from first-person reports and uses cross-platform issues only for workflow or safety implications that must be verified on macOS. It supports reference-graph, transfer-state, and owner-action design, not prevalence."
+    },
+    "sample_library": {
+      "unique_urls": 79,
+      "source_families": {
+        "Native Instruments": 22,
+        "Spitfire Audio": 11,
+        "Arturia": 6,
+        "Toontrack": 12,
+        "EastWest": 9,
+        "UVI": 3,
+        "IK Multimedia": 7,
+        "Steinberg": 9
+      },
+      "evidence_classes": {
+        "core": 31,
+        "adjacent": 4,
+        "owner_fact": 44
+      },
+      "ledger": "tessera-disk-rescue-sample-library-ledger.jsonl",
+      "quality_note": "The lane keeps first-person reports separate from owner facts. It supports storage-role, owner-registration, license, relocation, and host-validation design, not prevalence."
+    },
+    "mlx_local_ai": {
+      "unique_urls": 61,
+      "source_families": {
+        "MLX": 8,
+        "MLX-LM": 14,
+        "Hugging Face Datasets": 1,
+        "Draw Things": 12,
+        "DiffusionBee": 12,
+        "llama.cpp": 14
+      },
+      "evidence_classes": {
+        "core": 33,
+        "owner_fact": 28
+      },
+      "ledger": "tessera-disk-rescue-mlx-local-ai-ledger.jsonl",
+      "field_notes": "tessera-disk-rescue-mlx-local-ai-agent-lane-2026-08-31.md",
+      "quality_note": "The lane keeps owner documentation and source separate from first-person owner issue reports. It supports user-created recovery classes, semantic derivative proof, transfer state, external-root state, and owner-action design, not prevalence."
+    },
+    "game_library": {
+      "unique_urls": 156,
+      "source_families": {
+        "ATLauncher": 10,
+        "Battle.net and World of Warcraft": 15,
+        "Epic Games": 15,
+        "GOG": 11,
+        "Heroic": 20,
+        "Minecraft": 5,
+        "PlayCover": 5,
+        "Prism Launcher": 22,
+        "Steam": 18,
+        "Whisky": 18,
+        "itch.io": 17
+      },
+      "evidence_classes": {
+        "core": 71,
+        "adjacent": 30,
+        "owner_fact": 55
+      },
+      "ledger": "tessera-disk-rescue-game-library-ledger.jsonl",
+      "field_notes": "tessera-disk-rescue-game-library-agent-lane-2026-08-31.md",
+      "quality_note": "The lane separates launcher facts from user reports. It supports payload, save, mod, cloud, compatibility-container, external-root, registration, and owner-validation design, not prevalence."
+    },
+    "package_cache": {
+      "unique_urls": 224,
+      "source_families": {
+        "Cargo": 20,
+        "CocoaPods": 22,
+        "Conda": 16,
+        "Gradle": 21,
+        "Homebrew": 18,
+        "Swift Package Manager": 20,
+        "Yarn": 20,
+        "npm": 19,
+        "pip": 22,
+        "pnpm": 22,
+        "uv": 24
+      },
+      "evidence_classes": {
+        "core": 104,
+        "adjacent": 54,
+        "owner_fact": 66
+      },
+      "ledger": "tessera-disk-rescue-package-cache-ledger.jsonl",
+      "field_notes": "tessera-disk-rescue-package-cache-agent-lane-2026-08-31.md",
+      "quality_note": "The lane separates owner rules from user reports and counterexamples. It supports storage-role, reference-topology, offline-rebuild, lock-state, configured-root, and owner-action design, not prevalence."
+    },
+    "app_profile": {
+      "unique_urls": 183,
+      "source_families": {
+        "Brave": 29,
+        "Chrome and Chromium": 17,
+        "Discord": 12,
+        "Firefox": 18,
+        "JetBrains": 18,
+        "Safari and WebKit": 17,
+        "Slack": 5,
+        "VS Code": 38,
+        "Zen": 29
+      },
+      "evidence_classes": {
+        "core": 120,
+        "adjacent": 5,
+        "owner_fact": 58
+      },
+      "ledger": "tessera-disk-rescue-app-profile-ledger.jsonl",
+      "field_notes": "tessera-disk-rescue-app-profile-agent-lane-2026-08-31.md",
+      "quality_note": "The lane separates exact cache paths from profiles and durable app state. It supports profile-role, credential dependency, session recovery, workspace-state, owner-action, and app-closed checks, not prevalence."
+    },
+    "system_facts": {
+      "unique_urls": 16,
+      "source_families": {
+        "Apple Support": 8,
+        "Apple Developer Documentation": 8
+      },
+      "evidence_class": "system_fact",
+      "ledger": "tessera-disk-rescue-system-facts-ledger.jsonl",
+      "quality_note": "First-party system and API rules are kept separate from user behavior and market claims."
+    },
+    "owner_documentation": {
+      "unique_urls": 25,
+      "source_families": {
+        "Blackmagic Design": 2,
+        "Adobe": 2,
+        "Apple Final Cut Pro": 3,
+        "Dropbox": 2,
+        "Microsoft OneDrive": 1,
+        "Google Drive": 1,
+        "Apple iCloud Drive": 1,
+        "Apple iPhone Backups": 1,
+        "Apple Time Machine": 1,
+        "Docker": 4,
+        "UTM": 2,
+        "Parallels": 5
+      },
+      "evidence_class": "owner_fact",
+      "ledger": "tessera-disk-rescue-owner-documentation-ledger.jsonl",
+      "quality_note": "First-party owner-app, cloud-provider, backup, and virtual-disk guides define cache, generated-media, scope, regeneration, local state, eviction, streaming, mirroring, restore identity, prune scope, sparse images, snapshot chains, shutdown, guest state, and remote-delete behavior. They are version-sensitive product facts, not user demand."
+    },
+    "github_followup": {
+      "unique_urls": 5005,
+      "repositories": 11,
+      "records_with_body": 5005,
+      "evidence_classes": {
+        "core": 3979,
+        "adjacent": 1026
+      },
+      "screening_status": "automated_candidate",
+      "pages": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "ledgers": [
+        "tessera-disk-rescue-game-followup-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-ledger.jsonl",
+        "tessera-disk-rescue-game-followup-page2-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-page2-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-page2-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-page2-ledger.jsonl",
+        "tessera-disk-rescue-game-followup-page3-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-page3-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-page3-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-page3-ledger.jsonl",
+        "tessera-disk-rescue-game-followup-page4-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-page4-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-page4-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-page4-ledger.jsonl",
+        "tessera-disk-rescue-game-followup-page5-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-page5-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-page5-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-page5-ledger.jsonl",
+        "tessera-disk-rescue-game-followup-page6-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-page6-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-page6-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-page6-ledger.jsonl",
+        "tessera-disk-rescue-game-followup-page7-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-page7-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-page7-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-page7-ledger.jsonl",
+        "tessera-disk-rescue-game-followup-page8-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-page8-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-page8-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-page8-ledger.jsonl",
+        "tessera-disk-rescue-game-followup-page9-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-page9-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-page9-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-page9-ledger.jsonl",
+        "tessera-disk-rescue-game-followup-page10-ledger.jsonl",
+        "tessera-disk-rescue-package-followup-page10-ledger.jsonl",
+        "tessera-disk-rescue-profile-followup-page10-ledger.jsonl",
+        "tessera-disk-rescue-communication-followup-page10-ledger.jsonl"
+      ],
+      "quality_note": "Automated issue-page 1 through 10 discovery. Candidate records must be manually coded before changing a safety rule or user-demand claim."
+    },
+    "safety_api": {
+      "unique_urls": 14,
+      "source_families": {
+        "Apple Developer Documentation": 14
+      },
+      "evidence_class": "system_fact",
+      "ledger": "tessera-disk-rescue-safety-api-ledger.jsonl",
+      "quality_note": "First-party platform facts about identity, capacity, owner state, coordination, change events, and iCloud state. Not user behavior evidence."
+    },
+    "communication_local_probe": {
+      "unique_urls": 0,
+      "records": 1,
+      "evidence_class": "local_machine_probe",
+      "report": "tessera-disk-rescue-communication-local-probe-2026-08-31.md",
+      "quality_note": "One read-only aggregate snapshot of the current Mac. No content was read and no mutation was performed."
+    }
+  },
+  "content_sample": {
+    "raw_question_records": 278,
+    "unique_questions": 278,
+    "unique_authors": 268,
+    "answered": 158,
+    "unanswered": 120,
+    "keyword_screens": {
+      "uncertainty_language": 20,
+      "accounting_or_space_language": 144,
+      "recovery_language": 121,
+      "owner_or_app_context": 173,
+      "workflow_language": 167,
+      "permission_language": 30
+    },
+    "method": "Expanded stratified API sample of screened-core records: high score, recent, and unanswered. Full bodies were fetched for 278 unique questions. Keyword counts are exploratory signals, not prevalence estimates."
+  },
+  "github_content_sample": {
+    "issue_records": 103,
+    "repositories": 15,
+    "records_with_body": 102,
+    "whitespace_delimited_words": 23134,
+    "method": "At most eight high-signal issue records per repository, with direct safety and workflow signals weighted first. Maintainer-generated records remain marked as maintainer signals. Keyword counts are exploratory signals, not prevalence estimates."
+  },
+  "screening": {
+    "core_rule": "Title-level storage and cleanup signals determine the core label. Tags provide context only.",
+    "quality_warning": "A source URL is not an independent participant. Product launch posts may be promotional or AI-assisted and must stay market signals unless independent user evidence supports the claim. New GitHub follow-up records are automated candidates. Keep their raw observations, but do not treat their labels as manual coding or prevalence."
+  },
+  "next_lanes": [
+    "Apple Support Communities",
+    "MacRumors",
+    "Apple Support Communities and MacRumors direct community pages",
+    "Reddit across Mac, developer, creator, cloud, and backup contexts",
+    "GitHub issues for storage tools and apps that create large local data",
+    "App Store reviews for reminders, undo, progress, pricing, and background helpers",
+    "official Apple documentation for storage, APFS, File Provider, and permissions",
+    "first-party owner-app documentation for creator cache and generated-media behavior",
+    "provider-specific cloud documentation and user reports for local eviction, streaming, mirroring, and remote-delete boundaries",
+    "backup and virtual-disk documentation and user reports for restore identity, snapshot chains, sparse size, owner state, guest state, and source-aware reclaim",
+    "direct reports about measurement-source conflicts, missed rescue targets, recovery escalation, and exact-control preferences",
+    "post-failure retry reports where cleanup, update, backup, sync, or permission state prevents the next safe step",
+    "developer and creator reports where generated media, owner-managed disk images, project state, or backup identity changes the safe action",
+    "professional sample-library follow-up for failed repairs, offline rigs, expired entitlements, interrupted copies, and real post-move DAW or project tests",
+    "local-AI follow-up for failed exports, recovered checkpoints, corrupted derivatives, offline external roots, shared model copies, and post-cleanup load or task tests",
+    "other local training and image tools that can test the user-created, derived-expensive, redownloadable, runtime-active, partial, and unknown recovery classes",
+    "game-library follow-up for cloud-save conflicts, launcher registration loss, modded installs, compatibility-container recovery, post-move launch and save tests, offline operation, and missing external volumes",
+    "package-cache follow-up for hardlink and APFS clone allocation, offline rebuild failure, unpublished or local dependencies, owner dry-run and cleanup failure, active locks, and exclusive reclaim bytes",
+    "app-profile follow-up for post-cleanup recovery, active browser or IDE handles, encryption and key pairings, unsaved drafts, local history, offline site data, and owner reset effects",
+    "Mail, Messages, and other offline communication or media apps where a small cache sits beside irreplaceable local state",
+    "Manually code the 5,005 automated GitHub candidates before using them as behavior evidence",
+    "Continue paginating older issue history beyond page 10 while authenticated GitHub access remains available",
+    "Owner documentation and direct user reports for Messages, Mail, Signal, Telegram, Discord, Photos, and offline communication state",
+    "First-party API and source evidence for open handles, APFS clone allocation, volume identity changes, and owner-coordinated actions"
+  ]
+}

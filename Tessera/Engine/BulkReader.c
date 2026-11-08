@@ -36,26 +36,40 @@ static inline uint64_t r64(const void *p) { uint64_t v; memcpy(&v, p, 8); return
 static inline int32_t  ri32(const void *p) { int32_t  v; memcpy(&v, p, 4); return v; }
 static inline int64_t  ri64(const void *p) { int64_t  v; memcpy(&v, p, 8); return v; }
 
-int br_scan_directory(const char *path, BREntry *out, int maxEntries,
-                      void *readbuf, int readbuf_len) {
-    if (!readbuf || readbuf_len <= 0) return -1;
-    uint64_t _t0 = br_timing_enabled ? br_now_ns() : 0;
-    int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
-    if (br_timing_enabled) br_open_ns += br_now_ns() - _t0;
-    if (fd < 0) return -1;
+int br_directory_open(const char *path, BRDirectory *directory) {
+    directory->remaining = 0;
+    directory->offset = 0;
+    uint64_t t0 = br_timing_enabled ? br_now_ns() : 0;
+    directory->fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (br_timing_enabled) br_open_ns += br_now_ns() - t0;
+    return directory->fd < 0 ? -1 : 0;
+}
 
+void br_directory_close(BRDirectory *directory) {
+    if (directory->fd < 0) return;
+    uint64_t t0 = br_timing_enabled ? br_now_ns() : 0;
+    close(directory->fd);
+    directory->fd = -1;
+    if (br_timing_enabled) br_close_ns += br_now_ns() - t0;
+}
+
+int br_directory_read(BRDirectory *directory, BREntry *out, int maxEntries,
+                      void *readbuf, int readbuf_len) {
+    if (directory->fd < 0 || !out || maxEntries <= 0 || !readbuf || readbuf_len < 24) return -1;
     struct attrlist alist;
     memset(&alist, 0, sizeof(alist));
     alist.bitmapcount = ATTR_BIT_MAP_COUNT;
     // Request returned-attrs first so we can defensively check which fields are present
     alist.commonattr = (attrgroup_t)(ATTR_CMN_RETURNED_ATTRS |
+                                     ATTR_CMN_ERROR          |
                                      ATTR_CMN_NAME           |
                                      ATTR_CMN_DEVID          |
                                      ATTR_CMN_OBJTYPE        |
                                      ATTR_CMN_MODTIME        |
                                      ATTR_CMN_FLAGS          |
                                      ATTR_CMN_FILEID);
-    alist.fileattr = (attrgroup_t)(ATTR_FILE_LINKCOUNT | ATTR_FILE_ALLOCSIZE);
+    alist.fileattr = (attrgroup_t)(ATTR_FILE_LINKCOUNT | ATTR_FILE_DATALENGTH |
+                                   ATTR_FILE_ALLOCSIZE);
 
     // Caller-owned scratch buffer (reused across directories — no per-call malloc).
     char *buf = (char *)readbuf;
@@ -63,20 +77,24 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries,
     int total = 0;
 
     while (total < maxEntries) {
-        uint64_t _b0 = br_timing_enabled ? br_now_ns() : 0;
-        int count = getattrlistbulk(fd, &alist, buf, (size_t)readbuf_len, 0);
-        if (br_timing_enabled) br_bulk_ns += br_now_ns() - _b0;
-        if (count <= 0) break;
-
-        const char *ptr = buf;
-        for (int i = 0; i < count && total < maxEntries; i++) {
+        if (directory->remaining == 0) {
+            uint64_t t0 = br_timing_enabled ? br_now_ns() : 0;
+            int count = getattrlistbulk(directory->fd, &alist, buf, (size_t)readbuf_len, 0);
+            if (br_timing_enabled) br_bulk_ns += br_now_ns() - t0;
+            if (count < 0) return -1;
+            if (count == 0) break;
+            directory->remaining = count;
+            directory->offset = 0;
+        }
+        const char *ptr = buf + directory->offset;
+        while (directory->remaining > 0 && total < maxEntries) {
             const char *recstart = ptr;
+            if (directory->offset < 0 || directory->offset > readbuf_len - 24) return -1;
             uint32_t reclen = r32(ptr);
-
-            // Bounds-validate the record before reading any of its fields:
-            // a malformed/short record could otherwise read past the buffer, and
-            // reclen == 0 would loop forever on `ptr = recstart + reclen`.
-            if (reclen < 24 || recstart + reclen > buf + readbuf_len) break;
+            if (reclen < 24 || reclen > (uint32_t)(readbuf_len - directory->offset)) return -1;
+            const char *recordEnd = recstart + reclen;
+            directory->remaining -= 1;
+            directory->offset += (int)reclen;
 
             // Record layout:
             //  [0]  uint32_t length
@@ -86,6 +104,12 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries,
             uint32_t ret_file   = r32(ptr + 16); // fileattr word of attribute_set_t
 
             const char *field = ptr + 24; // first attribute data
+            if (ret_common & ATTR_CMN_ERROR) {
+                if (recordEnd - field < 4 || r32(field) != 0) return -1;
+                field += 4;
+            }
+            uint32_t required = ATTR_CMN_NAME | ATTR_CMN_DEVID | ATTR_CMN_OBJTYPE | ATTR_CMN_FILEID;
+            if ((ret_common & required) != required) return -1;
 
             BREntry e;
             memset(&e, 0, sizeof(e));
@@ -93,42 +117,38 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries,
             // ATTR_CMN_NAME: attrreference_t = { int32 offset, uint32 length } = 8 bytes
             // The name data is at field + offset (relative to the attrreference_t itself)
             if (ret_common & ATTR_CMN_NAME) {
+                if (recordEnd - field < 8) return -1;
                 int32_t  nameoff = ri32(field);
                 uint32_t namelen = r32(field + 4);   // includes NUL
+                if (nameoff < 0 || nameoff > recordEnd - field || namelen < 2 ||
+                    namelen > sizeof(e.name) || namelen > (uint32_t)(recordEnd - field - nameoff)) return -1;
                 const char *namedata = field + nameoff;
-                // Clamp overlong names instead of dropping them — dropping the name
-                // would silently discard the whole subtree rooted at this entry.
-                uint32_t copylen = (namelen > 1) ? namelen - 1 : 0;
-                if (copylen > sizeof(e.name) - 1) copylen = sizeof(e.name) - 1;
-                // Validate the name reference lies fully within the buffer; on any
-                // violation leave the name empty (the record is then skipped below).
-                if (copylen > 0 &&
-                    nameoff >= 0 &&
-                    namedata >= buf && namedata < buf + readbuf_len &&
-                    namedata + copylen <= buf + readbuf_len) {
-                    memcpy(e.name, namedata, copylen);
-                    e.name[copylen] = '\0';
-                }
+                if (namedata[namelen - 1] != '\0' || memchr(namedata, '\0', namelen - 1) ||
+                    memchr(namedata, '/', namelen - 1)) return -1;
+                memcpy(e.name, namedata, namelen);
                 field += 8;
             }
 
             // ATTR_CMN_DEVID: dev_t (4 bytes)
             if (ret_common & ATTR_CMN_DEVID) {
+                if (recordEnd - field < 4) return -1;
                 e.devid = r32(field);
                 field += 4;
             }
 
             // ATTR_CMN_OBJTYPE: uint32_t
             if (ret_common & ATTR_CMN_OBJTYPE) {
+                if (recordEnd - field < 4) return -1;
                 e.type = r32(field);
                 field += 4;
             }
 
             // ATTR_CMN_MODTIME: struct timespec (tv_sec int64 + tv_nsec, 16 bytes).
-            // Bit 0x400 sorts between OBJTYPE (0x8) and FLAGS (0x40000). We keep the
-            // seconds only — it's the directory's content version for incremental
+            // Bit 0x400 sorts between OBJTYPE (0x8) and FLAGS (0x40000). Keep the
+            // full timestamp as the directory's content version for incremental
             // re-scan (changes when entries are added/removed/renamed).
             if (ret_common & ATTR_CMN_MODTIME) {
+                if (recordEnd - field < 16) return -1;
                 int64_t sec  = ri64(field);
                 int64_t nsec = ri64(field + 8);
                 e.mod_time = sec * 1000000000LL + nsec;  // nanoseconds, for exact change detection
@@ -139,25 +159,40 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries,
             // cloud items). Parsed in ascending-bit order: after MODTIME (0x400),
             // before FILEID (0x2000000).
             if (ret_common & ATTR_CMN_FLAGS) {
+                if (recordEnd - field < 4) return -1;
                 e.flags = r32(field);
                 field += 4;
             }
 
             // ATTR_CMN_FILEID: uint64_t (8 bytes, but only 4-byte aligned in the buffer)
             if (ret_common & ATTR_CMN_FILEID) {
+                if (recordEnd - field < 8) return -1;
                 e.inode = r64(field);
                 field += 8;
             }
 
             // ATTR_FILE_LINKCOUNT: uint32_t (file attr section; not present for dirs)
             if (ret_file & ATTR_FILE_LINKCOUNT) {
+                if (recordEnd - field < 4) return -1;
                 e.nlink = r32(field);
                 field += 4;
             }
 
+            if (e.type == BR_TYPE_REG && !(ret_file & ATTR_FILE_ALLOCSIZE)) return -1;
+
             // ATTR_FILE_ALLOCSIZE: int64_t
             if (ret_file & ATTR_FILE_ALLOCSIZE) {
+                if (recordEnd - field < 8) return -1;
                 e.alloc_size = ri64(field);
+                field += 8;
+            }
+
+            // Match lstat and URLResourceValues.fileSize: data fork only.
+            // TOTALSIZE includes resource forks and would reject unchanged files.
+            if (e.type == BR_TYPE_REG && !(ret_file & ATTR_FILE_DATALENGTH)) return -1;
+            if (ret_file & ATTR_FILE_DATALENGTH) {
+                if (recordEnd - field < 8) return -1;
+                e.logical_size = ri64(field);
             }
 
             // Skip . and .. and unnamed entries
@@ -172,9 +207,14 @@ int br_scan_directory(const char *path, BREntry *out, int maxEntries,
             ptr = recstart + reclen;
         }
     }
-
-    uint64_t _c0 = br_timing_enabled ? br_now_ns() : 0;
-    close(fd);
-    if (br_timing_enabled) br_close_ns += br_now_ns() - _c0;
     return total;
+}
+
+int br_scan_directory(const char *path, BREntry *out, int maxEntries,
+                      void *readbuf, int readbuf_len) {
+    BRDirectory directory;
+    if (br_directory_open(path, &directory) != 0) return -1;
+    int count = br_directory_read(&directory, out, maxEntries, readbuf, readbuf_len);
+    br_directory_close(&directory);
+    return count;
 }

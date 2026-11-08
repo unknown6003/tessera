@@ -152,6 +152,11 @@ final class UpdaterController: ObservableObject {
     private let driver: SilentUserDriver?
 
     init() {
+        guard !DebugAutomation.isAutomated else {
+            updater = nil
+            driver = nil
+            return
+        }
         // Runs regardless of whether Sparkle itself is configured: the version
         // changed on disk either way, and the user should still be told.
         defer { detectUpdateSinceLastLaunch() }

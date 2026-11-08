@@ -1,5 +1,126 @@
 import Foundation
 
+/// The small identity record captured during a scan. A path is only a location;
+/// the volume, resource, type, and change metadata make it possible to reject a
+/// stale result before an action uses it.
+struct ScanIdentity: Codable, Equatable, Sendable {
+    enum ResourceType: String, Codable, Hashable, Sendable {
+        case file
+        case directory
+        case package
+        case unknown
+
+        var isDirectory: Bool {
+            self == .directory || self == .package
+        }
+    }
+
+    /// Present for roots and hand-built records. Scanned children derive their
+    /// location from the FileNode parent chain to avoid storing a full path per
+    /// entry in a potentially million-node tree.
+    let path: String?
+    let volumeIdentifier: String?
+    let resourceIdentifier: String?
+    let device: UInt32?
+    let inode: UInt64?
+    let resourceType: ResourceType
+    let logicalSize: Int64?
+    let allocatedSize: Int64?
+    let modificationTime: Int64?
+
+    /// A path-only record is not enough to authorize a filesystem action.
+    var hasStableObjectIdentifier: Bool {
+        resourceType != .unknown
+            && (volumeIdentifier != nil || device != nil)
+            && (resourceIdentifier != nil || (device != nil && inode != nil))
+    }
+
+    init(path: String? = nil,
+         volumeIdentifier: String? = nil,
+         resourceIdentifier: String? = nil,
+         device: UInt32? = nil,
+         inode: UInt64? = nil,
+         resourceType: ResourceType = .unknown,
+         logicalSize: Int64? = nil,
+         allocatedSize: Int64? = nil,
+         modificationTime: Int64? = nil) {
+        self.path = path.map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+        self.volumeIdentifier = volumeIdentifier
+        self.resourceIdentifier = resourceIdentifier
+        self.device = device
+        self.inode = inode
+        self.resourceType = resourceType
+        self.logicalSize = logicalSize
+        self.allocatedSize = allocatedSize
+        self.modificationTime = modificationTime
+    }
+
+    /// Capture the current object without following a symlink.
+    static func current(at url: URL) -> ScanIdentity? {
+        let path = url.standardizedFileURL.path
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+              let type = attributes[.type] as? FileAttributeType else { return nil }
+
+        let isDirectory = type == .typeDirectory
+        let resourceType: ResourceType = isDirectory
+            ? (BulkDirScanner.isPackageName(path) ? .package : .directory)
+            : .file
+        let values = try? url.resourceValues(forKeys: [
+            .fileResourceIdentifierKey,
+            .volumeIdentifierKey,
+            .fileSizeKey,
+            .totalFileAllocatedSizeKey,
+            .contentModificationDateKey,
+        ])
+        let modificationTime = values?.contentModificationDate.map {
+            Int64(($0.timeIntervalSince1970 * 1_000_000_000).rounded())
+        }
+        let fileID = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
+        let device = (attributes[.systemNumber] as? NSNumber)?.uint32Value
+        return ScanIdentity(
+            path: path,
+            volumeIdentifier: values?.volumeIdentifier.map { String(describing: $0) },
+            resourceIdentifier: values?.fileResourceIdentifier.map { String(describing: $0) },
+            device: device,
+            inode: fileID,
+            resourceType: resourceType,
+            logicalSize: isDirectory ? nil : values?.fileSize.map(Int64.init),
+            // Bulk ALLOCSIZE and lstat blocks include the resource fork too.
+            allocatedSize: values?.totalFileAllocatedSize.map(Int64.init),
+            modificationTime: modificationTime
+        )
+    }
+
+    /// Identity match used at the last safe step. Directory size may change as
+    /// children change, so directory checks rely on identity, type, and mtime.
+    func matches(_ current: ScanIdentity) -> Bool {
+        if let path {
+            guard let currentPath = current.path, path == currentPath else { return false }
+        }
+        guard resourceType == current.resourceType else { return false }
+        if let volumeIdentifier, current.volumeIdentifier != volumeIdentifier { return false }
+        if let resourceIdentifier, current.resourceIdentifier != resourceIdentifier { return false }
+        if let device, current.device != device { return false }
+        if let inode, current.inode != inode { return false }
+        // Foundation exposes dates through a Double, while the scanner gets the
+        // filesystem nanoseconds directly. Allow the conversion noise, but still
+        // reject a real mtime change.
+        if let modificationTime {
+            guard let currentTime = current.modificationTime,
+                  abs(modificationTime - currentTime) <= 1_000_000 else { return false }
+        }
+        if !resourceType.isDirectory,
+           let logicalSize {
+            guard current.logicalSize == logicalSize else { return false }
+        }
+        if !resourceType.isDirectory,
+           let allocatedSize {
+            guard current.allocatedSize == allocatedSize else { return false }
+        }
+        return true
+    }
+}
+
 /// A node in the on-disk file tree.
 /// `size` is the on-disk allocated size (512-byte blocks × 512), aggregated for directories.
 final class FileNode: Identifiable, @unchecked Sendable {
@@ -38,6 +159,79 @@ final class FileNode: Identifiable, @unchecked Sendable {
     private(set) var size: Int64
     private(set) var children: [FileNode]
     weak var parent: FileNode?
+    /// Identity captured at scan time. Hand-built presentation fixtures may leave
+    /// this nil; action paths must then fail closed.
+    private let storedIdentity: StoredIdentity
+    var scanIdentity: ScanIdentity? { storedIdentity.value }
+
+    /// Scanned entries have no path strings. Keep their numeric metadata inline;
+    /// only roots and hand-built action records need the full identity record.
+    private enum StoredIdentity {
+        case absent
+        case scanned(CompactIdentity)
+        case located(LocatedIdentity)
+
+        init(_ value: ScanIdentity?) {
+            guard let value else { self = .absent; return }
+            if value.path != nil || value.volumeIdentifier != nil || value.resourceIdentifier != nil {
+                self = .located(LocatedIdentity(value))
+            } else {
+                self = .scanned(CompactIdentity(value))
+            }
+        }
+
+        var value: ScanIdentity? {
+            switch self {
+            case .absent: return nil
+            case .scanned(let value): return value.expanded
+            case .located(let value): return value.identity
+            }
+        }
+    }
+
+    private final class LocatedIdentity {
+        let identity: ScanIdentity
+        init(_ identity: ScanIdentity) { self.identity = identity }
+    }
+
+    private struct CompactIdentity {
+        let inode: UInt64
+        let logicalSize: Int64
+        let allocatedSize: Int64
+        let modificationTime: Int64
+        let device: UInt32
+        let present: UInt8
+        let resourceType: ScanIdentity.ResourceType
+
+        init(_ identity: ScanIdentity) {
+            inode = identity.inode ?? 0
+            logicalSize = identity.logicalSize ?? 0
+            allocatedSize = identity.allocatedSize ?? 0
+            modificationTime = identity.modificationTime ?? 0
+            device = identity.device ?? 0
+            resourceType = identity.resourceType
+            present = (identity.device == nil ? 0 : 1)
+                | (identity.inode == nil ? 0 : 2)
+                | (identity.logicalSize == nil ? 0 : 4)
+                | (identity.allocatedSize == nil ? 0 : 8)
+                | (identity.modificationTime == nil ? 0 : 16)
+        }
+
+        var expanded: ScanIdentity {
+            ScanIdentity(device: present & 1 == 0 ? nil : device,
+                         inode: present & 2 == 0 ? nil : inode,
+                         resourceType: resourceType,
+                         logicalSize: present & 4 == 0 ? nil : logicalSize,
+                         allocatedSize: present & 8 == 0 ? nil : allocatedSize,
+                         modificationTime: present & 16 == 0 ? nil : modificationTime)
+        }
+    }
+    /// Directories the scanner could not enumerate. Stored on the root so a
+    /// partial scan remains visible without inventing a zero-byte file node.
+    private(set) var scanCoverageGaps: [String] = []
+    /// Logical file size. Hard-linked duplicates are set to zero when their
+    /// allocated size is deduplicated from the chart.
+    private(set) var logicalSize: Int64?
 
     /// Set only on nodes that carry an explicit location — the scan root and the
     /// synthetic nodes (Hidden Space, "Other", a cloud boundary's own root). For
@@ -56,14 +250,25 @@ final class FileNode: Identifiable, @unchecked Sendable {
     /// for this (selection, reveal in Finder, delete, inspector), so the cost is
     /// kept off the scan's hot path.
     var url: URL {
-        if let explicitURL { return explicitURL }
-        if let parent { return parent.url.appendingPathComponent(name, isDirectory: isDirectory) }
-        return URL(fileURLWithPath: name)
+        var components: [String] = []
+        var cursor: FileNode? = self
+        while let node = cursor {
+            if let base = node.explicitURL {
+                let suffix = components.reversed().joined(separator: "/")
+                if suffix.isEmpty { return base }
+                let path = base.path == "/" ? "/" + suffix : base.path + "/" + suffix
+                return URL(fileURLWithPath: path, isDirectory: isDirectory)
+            }
+            components.append(node.name)
+            cursor = node.parent
+        }
+        return URL(fileURLWithPath: components.reversed().joined(separator: "/"), isDirectory: isDirectory)
     }
 
     /// Hot-path initializer for scanned children: stores no URL — the location is
     /// derived from the parent chain only when actually needed.
-    init(name: String, isDirectory: Bool, size: Int64, kind: Kind = .regular, modTime: Int64 = 0) {
+    init(name: String, isDirectory: Bool, size: Int64, kind: Kind = .regular, modTime: Int64 = 0,
+         identity: ScanIdentity? = nil) {
         self.name = name
         self.isDirectory = isDirectory
         self.kind = kind
@@ -71,13 +276,16 @@ final class FileNode: Identifiable, @unchecked Sendable {
         self.children = []
         self.explicitURL = nil
         self.modTime = modTime
+        self.storedIdentity = StoredIdentity(identity)
+        self.logicalSize = identity?.logicalSize
     }
 
     /// Initializer for nodes that own an explicit location: the scan root and
     /// synthetic nodes (and the test fixtures). Rare, so its URL cost is
     /// irrelevant.
     init(url: URL, name: String, isDirectory: Bool, size: Int64,
-         kind: Kind = .regular, children: [FileNode] = [], modTime: Int64 = 0) {
+         kind: Kind = .regular, children: [FileNode] = [], modTime: Int64 = 0,
+         identity: ScanIdentity? = nil) {
         self.explicitURL = url
         self.name = name
         self.isDirectory = isDirectory
@@ -85,6 +293,9 @@ final class FileNode: Identifiable, @unchecked Sendable {
         self.size = size
         self.children = children
         self.modTime = modTime
+        self.storedIdentity = StoredIdentity(identity)
+        self.logicalSize = identity?.logicalSize
+        for child in children { child.parent = self }
     }
 
     /// True for synthetic nodes that must never be trashed or revealed in Finder.
@@ -93,6 +304,23 @@ final class FileNode: Identifiable, @unchecked Sendable {
     /// Children sorted largest-first.
     var sortedChildren: [FileNode] { children.sorted { $0.size > $1.size } }
 
+    /// Keep only the requested largest rows, without sorting a wide directory.
+    func largestChildren(limit: Int) -> [FileNode] {
+        guard limit > 0 else { return [] }
+        var largest: [FileNode] = []
+        for child in children {
+            if largest.count == limit, let last = largest.last, child.size <= last.size { continue }
+            let index = largest.firstIndex { $0.size < child.size } ?? largest.endIndex
+            largest.insert(child, at: index)
+            if largest.count > limit { largest.removeLast() }
+        }
+        return largest
+    }
+
+    /// Allocated size shown by the scan. Directory sizes are aggregated from
+    /// children and are therefore not taken from the identity record.
+    var physicalSize: Int64 { size }
+
     /// Set children. Does not aggregate sizes — call `recomputeDirectorySizes()`
     /// on the root once the whole tree is assembled.
     func setChildren(_ newChildren: [FileNode]) {
@@ -100,9 +328,22 @@ final class FileNode: Identifiable, @unchecked Sendable {
         for child in newChildren { child.parent = self }
     }
 
+    func addScanCoverageGap(_ path: String) {
+        scanCoverageGaps.append(URL(fileURLWithPath: path).standardizedFileURL.path)
+    }
+
+    func setScanCoverageGaps(_ paths: [String]) {
+        var seen = Set<String>()
+        scanCoverageGaps = paths.compactMap { path in
+            let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+            return seen.insert(normalized).inserted ? normalized : nil
+        }
+    }
+
     /// Used by the scanner to zero out duplicate hard links after the fact.
     func overrideSize(_ newSize: Int64) {
         size = newSize
+        if !isDirectory && newSize == 0 { logicalSize = 0 }
     }
 
     /// Turn this node (an empty mount-point directory the scan couldn't descend)
@@ -137,13 +378,20 @@ final class FileNode: Identifiable, @unchecked Sendable {
 
     /// Remove a child node (after deletion). Propagates size reduction up the tree.
     func remove(_ node: FileNode) {
-        let delta = node.size
-        children.removeAll { $0.id == node.id }
-        propagateSizeChange(-delta)
+        removeChildren(withIDs: [node.id])
     }
 
-    private func propagateSizeChange(_ delta: Int64) {
-        size += delta
-        parent?.propagateSizeChange(delta)
+    func removeChildren(withIDs ids: Set<ObjectIdentifier>) {
+        var removedBytes: Int64 = 0
+        children.removeAll { child in
+            guard ids.contains(child.id) else { return false }
+            removedBytes += child.size
+            return true
+        }
+        var cursor: FileNode? = self
+        while let node = cursor {
+            node.size -= removedBytes
+            cursor = node.parent
+        }
     }
 }

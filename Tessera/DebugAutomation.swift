@@ -8,6 +8,34 @@ import AppKit
 /// Inert in normal launches.
 @MainActor
 enum DebugAutomation {
+    static var isAutomated: Bool {
+        let env = ProcessInfo.processInfo.environment
+        return env["SO_AUTOSCAN"] != nil || env["SO_BENCH"] != nil || env["SO_BENCH_RESCAN"] != nil
+    }
+
+    private static let preferenceDomain: String? = {
+        isAutomated ? "TesseraAutomation." + UUID().uuidString : nil
+    }()
+
+    static var defaults: UserDefaults {
+        preferenceDomain.flatMap(UserDefaults.init(suiteName:)) ?? .standard
+    }
+
+    static func cleanPreferences() {
+        if let preferenceDomain { defaults.removePersistentDomain(forName: preferenceDomain) }
+    }
+
+    static func recordScanPhase(_ phase: String, startedAt: Date?) {
+        guard ProcessInfo.processInfo.environment["SO_AUTOSCAN"] != nil, let startedAt else { return }
+        log(String(format: "scan phase: %@ elapsed=%.3fs", phase, Date().timeIntervalSince(startedAt)))
+    }
+
+    nonisolated static func recordSourceDiscovery(startedAt: Date, count: Int) {
+        guard ProcessInfo.processInfo.environment["SO_AUTOSCAN"] != nil else { return }
+        log(String(format: "source discovery: main=%@ elapsed=%.3fs sources=%d",
+                   Thread.isMainThread ? "true" : "false", Date().timeIntervalSince(startedAt), count))
+    }
+
     static func runIfRequested(vm: ScanViewModel) {
         let env = ProcessInfo.processInfo.environment
 
@@ -24,8 +52,8 @@ enum DebugAutomation {
             return
         }
 
-        // Incremental re-scan benchmark: full parallel scan, then a re-scan reusing
-        // the prior tree (unchanged subtrees skipped).
+        // Rescan correctness benchmark. The cache argument no longer skips
+        // subtrees, since directory mtime cannot prove descendant contents.
         //   SO_BENCH_RESCAN=<path>   SO_AUTOQUIT=1
         if let benchPath = env["SO_BENCH_RESCAN"] {
             runRescanBench(path: benchPath, autoQuit: env["SO_AUTOQUIT"] == "1")
@@ -38,11 +66,32 @@ enum DebugAutomation {
 
         log("automation armed: scan=\(scanPath)")
         Task { @MainActor in
+            if let snapshotDir {
+                do { try FileManager.default.createDirectory(atPath: snapshotDir, withIntermediateDirectories: true) }
+                catch { log("snapshot directory failed: \(error.localizedDescription)") }
+            }
             try? await Task.sleep(for: .milliseconds(800))
             log("starting scan; windows=\(NSApp.windows.map { "\($0.title):num=\($0.windowNumber):visible=\($0.isVisible):opaque=\($0.isOpaque):bgAlpha=\(String(format: "%.2f", $0.backgroundColor.alphaComponent)):fullSizeContent=\($0.styleMask.contains(.fullSizeContentView))" })")
+            vm.dismissFDAOnboarding()
             let scanStart = Date()
             vm.startScan(volumeURL: URL(fileURLWithPath: scanPath))
 
+            Task { @MainActor in
+                var longest = 0.0
+                while vm.isScanning {
+                    let start = ContinuousClock.now
+                    try? await Task.sleep(for: .milliseconds(50))
+                    let duration = start.duration(to: .now)
+                    let milliseconds = Double(duration.components.seconds) * 1000
+                        + Double(duration.components.attoseconds) / 1e15
+                    longest = max(longest, milliseconds)
+                    if milliseconds > 500 {
+                        log(String(format: "UI heartbeat delayed: %.1f ms phase=%@ elapsed=%.3fs",
+                                   milliseconds, vm.rescuePhase.rawValue, Date().timeIntervalSince(scanStart)))
+                    }
+                }
+                log(String(format: "UI heartbeat longest interval: %.1f ms", longest))
+            }
             try? await Task.sleep(for: .milliseconds(700))
             if let dir = snapshotDir, vm.isScanning {
                 snapshotKeyWindow(to: dir + "/scanning.png")
@@ -54,15 +103,17 @@ enum DebugAutomation {
                 ticks += 1
                 if ticks % 150 == 0 {  // every ~30s
                     let p = vm.progress
-                    log("progress: dirs \(p.dirsScanned)/\(p.dirsDiscovered) files \(p.filesScanned) at \(p.currentPath)")
+                    let path = env["SO_PRIVATE_SUMMARY"] == "1" ? "hidden" : p.currentPath
+                    log("progress: dirs \(p.dirsScanned)/\(p.dirsDiscovered) files \(p.filesScanned) at \(path)")
                 }
             }
             let p = vm.progress
             let elapsed = Date().timeIntervalSince(scanStart)
             let rate = elapsed > 0 ? Int(Double(p.dirsScanned) / elapsed) : 0
             log("scan finished: root=\(vm.rootNode?.size ?? -1) error=\(vm.errorMessage ?? "none") " +
-                "cancelled=\(vm.scanTaskWasCancelled) dirs \(p.dirsScanned)/\(p.dirsDiscovered) " +
-                "elapsed=\(String(format: "%.2f", elapsed))s rate=\(rate) dirs/s")
+                "cancelled=\(vm.scanTaskWasCancelled) files=\(p.filesScanned) dirs \(p.dirsScanned)/\(p.dirsDiscovered) " +
+                "elapsed=\(String(format: "%.2f", elapsed))s rate=\(rate) dirs/s " +
+                "coverage=\(vm.rescuePlan?.coverage.state.rawValue ?? "unknown") gaps=\(vm.rootNode?.scanCoverageGaps.count ?? 0)")
             // Cleanup classification is published async after the tree is built;
             // poll up to ~6s for it to land.
             var waited = 0
@@ -72,7 +123,7 @@ enum DebugAutomation {
             if let report = vm.cleanupReport {
                 log("cleanup: safe=\(Theme.format(report.safeTotalBytes)) in \(report.safeGroups.count) groups, \(report.reviewGroups.count) review groups")
                 for g in report.groups {
-                    log("  [\(g.category.confidence == .safeRegenerable ? "safe" : "review")] \(g.category.title): \(Theme.format(g.totalBytes)) (\(g.nodes.count))")
+                    log("  [\(g.risk.rawValue)] \(g.category.title): \(Theme.format(g.totalBytes)) (\(g.nodes.count))")
                 }
             } else {
                 log("cleanup: no report")
@@ -100,12 +151,45 @@ enum DebugAutomation {
                 renderSunburst(root: vm.currentRoot, to: dir + "/sunburst.png")
                 dumpLayout(root: vm.currentRoot, to: dir + "/layout.csv")
             }
+            if let dir = snapshotDir, env["SO_CAPTURE_VARIANTS"] == "1" {
+                await captureVariants(vm: vm, directory: dir)
+            }
             if autoQuit {
+                cleanPreferences()
                 NSApp.terminate(nil)
             } else {
                 prepareForCapture()
             }
         }
+    }
+
+    /// Finite rendering proof. These states only stage disposable fixture data;
+    /// no command here executes Trash or permanent removal.
+    private static func captureVariants(vm: ScanViewModel, directory: String) async {
+        guard let source = vm.scannedURL,
+              source.resolvingSymlinksInPath().path.contains("/tmp/tessera-"),
+              let window = NSApp.windows.first(where: { $0.isVisible }) else {
+            log("UI proof requires an agent-owned temporary fixture")
+            return
+        }
+        let variants: [(Int, String)] = [(820, "explore"), (1100, "explore"),
+            (1440, "explore"), (1920, "explore"), (1100, "details"),
+            (1100, "rescue"), (1100, "review")]
+        for (width, state) in variants {
+            window.setContentSize(NSSize(width: CGFloat(width), height: 780))
+            NotificationCenter.default.post(name: .init("Tessera.captureState"), object: nil,
+                                              userInfo: ["state": state])
+            try? await Task.sleep(for: .milliseconds(500))
+            snapshotKeyWindow(to: directory + "/\(state)-\(width).png")
+            log("UI proof state=\(state) content=\(NSStringFromRect(window.contentView?.bounds ?? .zero))")
+        }
+        NotificationCenter.default.post(name: .init("Tessera.captureState"), object: nil,
+                                          userInfo: ["state": "explore"])
+        // Let SwiftUI dismiss Review before asking AppKit to terminate.
+        try? await Task.sleep(for: .milliseconds(500))
+        if let sheet = window.attachedSheet { window.endSheet(sheet, returnCode: .cancel) }
+        try? await Task.sleep(for: .milliseconds(300))
+        log("UI proof teardown: attachedSheet=\(window.attachedSheet != nil)")
     }
 
     /// Single-threaded scan benchmark. Warms the metadata cache once, then times
@@ -177,9 +261,8 @@ enum DebugAutomation {
         }
     }
 
-    /// Incremental re-scan benchmark: warm, full scan, then a re-scan that reuses
-    /// the prior tree for unchanged subtrees. Reports both times + a correctness
-    /// check that the incremental total matches the full total.
+    /// Warm, full scan, then a fresh rescan through the cache-compatible API.
+    /// Reports both times and checks their allocated-byte totals.
     private static func runRescanBench(path: String, autoQuit: Bool) {
         Task.detached(priority: .userInitiated) {
             let url = URL(fileURLWithPath: path)
@@ -226,7 +309,8 @@ enum DebugAutomation {
         guard let window = NSApp.windows.first(where: { $0.isVisible }) ?? NSApp.windows.first else {
             log("snapshot \(path): no window"); return
         }
-        guard let view = window.contentView else { log("snapshot \(path): no contentView"); return }
+        let captureWindow = window.attachedSheet ?? NSApp.keyWindow ?? window
+        guard let view = captureWindow.contentView else { log("snapshot \(path): no contentView"); return }
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
             log("snapshot \(path): no bitmap rep (bounds=\(view.bounds))"); return
         }

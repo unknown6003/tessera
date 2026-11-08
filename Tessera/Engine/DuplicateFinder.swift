@@ -57,10 +57,12 @@ enum DuplicateFinder {
     /// snapshot before handing the flat list to `find(files:)` on a background thread
     /// — closing the data race where the main actor could mutate `children` (via the
     /// collector delete flow) while a background pass traversed the same arrays.
-    static func collectFiles(root: FileNode, minSize: Int64 = defaultMinSize) -> [FileNode] {
+    static func collectFiles(root: FileNode, minSize: Int64 = defaultMinSize,
+                             shouldStop: @Sendable () -> Bool = { false }) -> [FileNode] {
         var files: [FileNode] = []
         var stack = root.children
         while let node = stack.popLast() {
+            if shouldStop() { return [] }
             if node.isSynthetic { continue }
             if node.isDirectory {
                 stack.append(contentsOf: node.children)

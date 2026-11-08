@@ -2,9 +2,12 @@ import Foundation
 
 enum FileScannerError: LocalizedError {
     case sourceUnavailable(URL)
+    case resourcesBusy
 
     var errorDescription: String? {
         switch self {
+        case .resourcesBusy:
+            return "A previous disk read is still waiting for the device. Reconnect it before trying again."
         case .sourceUnavailable(let url):
             let name = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
             return "The selected source “\(name)” is no longer available. Reconnect it or choose another source, then try again."
@@ -14,10 +17,7 @@ enum FileScannerError: LocalizedError {
 
 // MARK: - Progress
 
-/// Progress derived from directories scanned vs. directories discovered.
-/// Unlike a bytes-vs-volume-used model, this ratio is guaranteed to reach 1.0:
-/// every discovered directory is eventually scanned, so the bar can never
-/// plateau on unreachable bytes (snapshots, purgeable space, protected files).
+/// Counts observed during enumeration. Remaining work is unknown until it ends.
 struct ScanProgress: Sendable {
     var filesScanned: Int = 0
     var bytesFound: Int64 = 0
@@ -25,30 +25,18 @@ struct ScanProgress: Sendable {
     var dirsDiscovered: Int = 1
     var currentPath: String = ""
     /// The volume's used-bytes figure, when scanning a whole volume (0 otherwise).
-    /// Used as the denominator for an honest, bytes-based progress fraction.
+    /// Used for capacity reporting, not as a completion denominator.
     var volumeUsedTotal: Int64 = 0
-    /// Set on the final tick so the bar reads exactly 100% regardless of metric.
+    /// Enumeration has ended. View-model diagnosis may still be running.
     var isComplete: Bool = false
 
-    /// 0…1 fraction of completion, or nil while the estimate is still too noisy.
+    /// Completion is unknown until enumeration ends.
     var fraction: Double? {
         if isComplete { return 1.0 }
 
-        // Whole-volume scan: report bytes found against the volume's used bytes.
-        // This is what the user compares against ("550 GB of 900 GB"), and unlike
-        // a directory-count ratio it can never race ahead of the data actually
-        // discovered. Capped just under 1.0 until the final tick, because a little
-        // used space is unreachable (snapshots, purgeable, protected files) and is
-        // reconciled as "Hidden Space" at the end.
-        if volumeUsedTotal > 0 {
-            return min(0.99, Double(bytesFound) / Double(volumeUsedTotal))
-        }
-
-        // Folder scan: no known byte total, so fall back to directories scanned
-        // vs. discovered (guaranteed to reach 1.0 — every dir is eventually seen).
-        if dirsScanned >= dirsDiscovered && dirsScanned > 0 { return 1.0 }
-        guard dirsDiscovered >= 16 else { return nil }
-        return min(1.0, Double(dirsScanned) / Double(dirsDiscovered))
+        // Enumeration discovers new work as it runs. Neither bytes nor the
+        // directory count is a valid completion denominator.
+        return nil
     }
 }
 
@@ -86,11 +74,8 @@ struct FileScanner: Sendable {
         onProgress: @Sendable @escaping (ScanProgress) -> Void
     ) async throws -> FileNode {
         let rootPath = url.path
-        // Incremental re-scan: a directory whose modtime is unchanged since the
-        // cached scan has the same listing, so we reuse its whole cached subtree
-        // (and skip every getattrlistbulk inside it). Built only when a cache for
-        // the same root is supplied.
-        let cacheMap = cache.map { buildCacheMap($0) }
+        // A directory's mtime cannot validate file writes or deeper changes.
+        // Keep the cache argument for source switching, but always enumerate a rescan.
         let allowedDevices = Self.allowedDevices(forRoot: rootPath)
         // A removed folder, disconnected share, or unmounted disk cannot produce a
         // trustworthy scan. Previously an lstat failure left this set empty and the
@@ -102,8 +87,10 @@ struct FileScanner: Sendable {
         let isVolumeRoot = (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume ?? (rootPath == "/")
 
         let rootName = url.lastPathComponent.isEmpty ? rootPath : url.lastPathComponent
-        let rootNode = FileNode(url: url, name: rootName, isDirectory: true, size: 0)
-
+        let rootIdentity = ScanIdentity.current(at: url)
+            ?? ScanIdentity(path: rootPath, resourceType: .directory)
+        let rootNode = FileNode(url: url, name: rootName, isDirectory: true, size: 0,
+                                identity: rootIdentity)
         var progress = ScanProgress(currentPath: rootPath)
         // Only use the volume-bytes denominator for a true volume scan; for a
         // folder we don't know its byte total up front, so leave it 0.
@@ -113,7 +100,6 @@ struct FileScanner: Sendable {
             rootNode: rootNode,
             rootWork: DirWork(path: rootPath, node: rootNode),
             allowedDevices: allowedDevices,
-            cacheMap: cacheMap,
             volumeUsed: volumeUsed,
             isVolumeRoot: isVolumeRoot,
             progress: progress,
@@ -158,7 +144,7 @@ struct FileScanner: Sendable {
         var bytes: Int64 = 0
         var hardlinks: [HardlinkCandidate] = []
         /// Count of cached subtrees reused unchanged (incremental re-scan).
-        var reusedDirs = 0
+        var coverageGapPaths: [String] = []
     }
 
     // MARK: Per-directory node construction (shared hot path)
@@ -170,12 +156,13 @@ struct FileScanner: Sendable {
     /// here lifts both.
     private static func buildResult(forEntries entries: [EntryInfo], parentPath: String,
                                     allowedDevices: Set<UInt32>,
-                                    cacheMap: [String: FileNode]? = nil) -> DirResult {
+                                    shouldStop: () -> Bool = { false }) -> DirResult {
         var result = DirResult()
         result.children.reserveCapacity(entries.count)
         let parentHasSlash = parentPath.hasSuffix("/")
 
-        for entry in entries {
+        for (index, entry) in entries.enumerated() {
+            if index.isMultiple(of: 256), shouldStop() { break }
             switch entry.type {
             case .symlink, .other:
                 continue
@@ -209,31 +196,59 @@ struct FileScanner: Sendable {
 
                 let kind: FileNode.Kind = BulkDirScanner.isPackageName(entry.name) ? .package : .regular
 
-                // Incremental re-scan: if the cached scan has this directory with the
-                // same (non-zero) modtime, its listing is unchanged — reuse the whole
-                // cached subtree (size + children) and DON'T descend, skipping every
-                // getattrlistbulk inside it.
-                if let cached = cacheMap?[childPath],
-                   cached.modTime != 0, cached.modTime == entry.modTime,
-                   cached.isDirectory, cached.kind == kind {
-                    result.children.append(cached)
-                    result.reusedDirs += 1
-                    continue
-                }
-
-                let childNode = FileNode(name: entry.name, isDirectory: true, size: 0,
-                                         kind: kind, modTime: entry.modTime)
+                let childNode = FileNode(
+                    name: entry.name,
+                    isDirectory: true,
+                    size: 0,
+                    kind: kind,
+                    modTime: entry.modTime,
+                    identity: ScanIdentity(
+                        device: entry.device == 0 ? nil : entry.device,
+                        inode: entry.inode == 0 ? nil : entry.inode,
+                        resourceType: kind == .package ? .package : .directory,
+                        allocatedSize: entry.allocatedSize > 0 ? entry.allocatedSize : nil,
+                        modificationTime: entry.modTime > 0 ? entry.modTime : nil
+                    )
+                )
                 result.children.append(childNode)
                 result.subdirs.append(DirWork(path: childPath, node: childNode))
 
             case .file:
-                // Dataless (online-only) file: not materialized, ~0 local disk.
-                // Skip entirely — no node, no bytes, not counted.
-                if entry.isDataless { continue }
+                // Dataless (online-only) file: keep a non-actionable boundary so
+                // coverage stays honest without counting remote bytes as local.
+                if entry.isDataless {
+                    result.children.append(FileNode(
+                        name: entry.name,
+                        isDirectory: false,
+                        size: 0,
+                        kind: .cloudOnlyStorage,
+                        modTime: entry.modTime,
+                        identity: ScanIdentity(
+                            device: entry.device == 0 ? nil : entry.device,
+                            inode: entry.inode == 0 ? nil : entry.inode,
+                            resourceType: .file,
+                            logicalSize: entry.logicalSize,
+                            allocatedSize: entry.allocatedSize,
+                            modificationTime: entry.modTime > 0 ? entry.modTime : nil
+                        )))
+                    continue
+                }
                 // Carry the file's mtime (already read by the bulk syscall — no extra
                 // cost) so age-based cleanup ("older than 6 months") works per file.
-                let childNode = FileNode(name: entry.name, isDirectory: false,
-                                         size: entry.allocatedSize, modTime: entry.modTime)
+                let childNode = FileNode(
+                    name: entry.name,
+                    isDirectory: false,
+                    size: entry.allocatedSize,
+                    modTime: entry.modTime,
+                    identity: ScanIdentity(
+                        device: entry.device == 0 ? nil : entry.device,
+                        inode: entry.inode == 0 ? nil : entry.inode,
+                        resourceType: .file,
+                        logicalSize: entry.logicalSize,
+                        allocatedSize: entry.allocatedSize,
+                        modificationTime: entry.modTime > 0 ? entry.modTime : nil
+                    )
+                )
                 result.children.append(childNode)
                 if entry.linkCount > 1, entry.inode > 0 {
                     result.hardlinks.append(HardlinkCandidate(device: entry.device, inode: entry.inode, node: childNode))
@@ -243,23 +258,6 @@ struct FileScanner: Sendable {
             }
         }
         return result
-    }
-
-    /// Build a path → directory-node map from a prior scan tree, for incremental
-    /// re-scan lookups. Paths are built by cheap string concatenation (not the
-    /// CFURL-based `node.url`). Synthetic nodes (hidden space, cross-volume, cloud)
-    /// are excluded so they're always re-evaluated.
-    static func buildCacheMap(_ root: FileNode) -> [String: FileNode] {
-        var map: [String: FileNode] = [:]
-        var stack: [(node: FileNode, path: String)] = [(root, root.url.path)]
-        while let (node, path) = stack.popLast() {
-            guard node.isDirectory, !node.isSynthetic else { continue }
-            map[path] = node
-            for child in node.children where child.isDirectory && !child.isSynthetic {
-                stack.append((child, path + "/" + child.name))
-            }
-        }
-        return map
     }
 
     // MARK: Single-threaded driver (benchmark baseline + per-worker unit)
@@ -291,7 +289,10 @@ struct FileScanner: Sendable {
         let rootPath = url.path
         let allowedDevices = Self.allowedDevices(forRoot: rootPath)
         let rootName = url.lastPathComponent.isEmpty ? rootPath : url.lastPathComponent
-        let root = FileNode(url: url, name: rootName, isDirectory: true, size: 0)
+        let rootIdentity = ScanIdentity.current(at: url)
+            ?? ScanIdentity(path: rootPath, resourceType: .directory)
+        let root = FileNode(url: url, name: rootName, isDirectory: true, size: 0,
+                            identity: rootIdentity)
 
         var stack: [DirWork] = [DirWork(path: rootPath, node: root)]
         var stats = SerialScanStats()
@@ -304,7 +305,15 @@ struct FileScanner: Sendable {
 
         while let work = stack.popLast() {
             let t0 = DispatchTime.now().uptimeNanoseconds
-            guard let entries = BulkDirScanner.workerEntries(atPath: work.path, scratch: scratch) else { continue }
+            guard let listing = BulkDirScanner.workerListing(atPath: work.path, scratch: scratch) else {
+                root.addScanCoverageGap(work.path)
+                continue
+            }
+            for path in listing.unreadablePaths { root.addScanCoverageGap(path) }
+            let entries = listing.entries
+            if entries.isEmpty && !FileManager.default.isReadableFile(atPath: work.path) {
+                root.addScanCoverageGap(work.path)
+            }
             let t1 = DispatchTime.now().uptimeNanoseconds
             let result = buildResult(forEntries: entries, parentPath: work.path,
                                      allowedDevices: allowedDevices)
@@ -344,10 +353,12 @@ struct FileScanner: Sendable {
     /// Termination is tracked by `pending` (directories discovered but not yet
     /// completed): starts at 1 (the root); each completion does
     /// `pending += childDirCount; pending -= 1`. When `pending` hits 0 the whole
-    /// tree is done. A watchdog force-finishes if progress stalls on an
-    /// uninterruptible syscall, so the scan ALWAYS terminates.
+    /// tree is done. A watchdog publishes partial coverage if reads stall and no
+    /// worker is committing children. An OS read can outlive the scan.
     private final class ScanCoordinator: @unchecked Sendable {
         private let cond = NSCondition()
+        private static let workerSlots = DispatchSemaphore(value: 12)
+        private let readSession = DirectoryReadSession()
 
         // Shared mutable state — guarded by `cond`.
         private var queue: [DirWork] = []
@@ -355,11 +366,13 @@ struct FileScanner: Sendable {
         private var cancelled = false
         private var finished = false       // continuation resumed (single-resume guard)
         private var activeWorkers = 0      // workers currently inside a directory
+        private var activePaths = Set<String>()
         /// Workers authorized to attach an enumeration result. The watchdog may
         /// only publish the tree when this is zero, otherwise SwiftUI could receive
         /// a tree while a late worker is mutating it.
         private var commitsInProgress = 0
         private var seenInodes = Set<DevIno>()
+        private var coverageGaps: [String] = []
         private var progress: ScanProgress
 
         // Watchdog stall detection (guarded by `cond`).
@@ -369,7 +382,6 @@ struct FileScanner: Sendable {
         // Immutable config.
         private let rootNode: FileNode
         private let allowedDevices: Set<UInt32>
-        private let cacheMap: [String: FileNode]?
         private let volumeUsed: Int64
         private let isVolumeRoot: Bool
         private let onProgress: @Sendable (ScanProgress) -> Void
@@ -384,12 +396,11 @@ struct FileScanner: Sendable {
         private var watchdog: DispatchSourceTimer?
 
         init(rootNode: FileNode, rootWork: DirWork, allowedDevices: Set<UInt32>,
-             cacheMap: [String: FileNode]?,
-             volumeUsed: Int64, isVolumeRoot: Bool, progress: ScanProgress,
+             volumeUsed: Int64, isVolumeRoot: Bool,
+             progress: ScanProgress,
              onProgress: @escaping @Sendable (ScanProgress) -> Void) {
             self.rootNode = rootNode
             self.allowedDevices = allowedDevices
-            self.cacheMap = cacheMap
             self.volumeUsed = volumeUsed
             self.isVolumeRoot = isVolumeRoot
             self.onProgress = onProgress
@@ -397,7 +408,7 @@ struct FileScanner: Sendable {
             self.queue = [rootWork]
             if let override = ProcessInfo.processInfo.environment["SO_SCAN_WORKERS"],
                let n = Int(override), n > 0 {
-                self.workerCount = n
+                self.workerCount = min(n, 12)
             } else {
                 // getattrlistbulk dominates the scan (~71% of single-thread time).
                 // Some parallelism hides per-read SSD latency, but oversubscribing
@@ -425,27 +436,37 @@ struct FileScanner: Sendable {
             cond.unlock()
 
             startWatchdog()
+            var started = 0
             for _ in 0 ..< workerCount {
-                // Utility QoS lets AppKit's main-thread resize/hover/scroll work
-                // preempt the sustained disk scan.
-                DispatchQueue.global(qos: .utility).async { [weak self] in
-                    self?.workerLoop()
+                guard Self.workerSlots.wait(timeout: started == 0 ? .now() + .milliseconds(250) : .now()) == .success else { break }
+                started += 1
+                DispatchQueue.global(qos: .utility).async { [self] in
+                    defer { Self.workerSlots.signal() }
+                    workerLoop()
                 }
+            }
+            if started == 0 {
+                cond.lock()
+                finished = true
+                cond.unlock()
+                resumeThrowing(FileScannerError.resourcesBusy)
             }
         }
 
         func cancel() {
+            readSession.cancel()
             cond.lock()
             cancelled = true
             cond.broadcast()
             cond.unlock()
+            resumeThrowing(CancellationError())
         }
 
         // MARK: Worker loop
 
         private func workerLoop() {
             // One reusable buffer set per worker, for its whole lifetime.
-            let scratch = BulkScratch()
+            let scratch = BulkScratch(session: readSession, onBatch: { [weak self] in self?.noteRead() })
             while true {
                 cond.lock()
                 // Wait for work, cancellation, or completion.
@@ -471,6 +492,7 @@ struct FileScanner: Sendable {
                 }
                 let work = queue.removeLast()
                 activeWorkers += 1
+                activePaths.insert(work.path)
                 cond.unlock()
 
                 // Drain per directory. Each worker runs the whole scan inside a
@@ -487,6 +509,7 @@ struct FileScanner: Sendable {
                 cond.lock()
                 guard !cancelled, !finished else {
                     activeWorkers -= 1
+                    activePaths.remove(work.path)
                     cond.unlock()
                     if cancelled { resumeThrowing(CancellationError()) }
                     return
@@ -503,6 +526,7 @@ struct FileScanner: Sendable {
                 commitsInProgress -= 1
                 if cancelled {
                     activeWorkers -= 1
+                    activePaths.remove(work.path)
                     cond.broadcast()
                     cond.unlock()
                     resumeThrowing(CancellationError())
@@ -512,11 +536,13 @@ struct FileScanner: Sendable {
                 // commit is reserved, but never merge into an abandoned tree.
                 if finished {
                     activeWorkers -= 1
+                    activePaths.remove(work.path)
                     cond.unlock()
                     return
                 }
                 let progressToEmit = merge(result, for: work)
                 activeWorkers -= 1
+                activePaths.remove(work.path)
                 cond.unlock()
                 // Emit progress only after releasing the lock: `onProgress` is caller-
                 // supplied, so invoking it under `cond` would risk deadlock/priority
@@ -529,13 +555,23 @@ struct FileScanner: Sendable {
         /// result if the directory blew its deadline (treated as childless but
         /// counted). The per-entry node construction is shared with the
         /// single-threaded driver via `FileScanner.buildResult`.
+        private func noteRead() {
+            cond.lock()
+            lastAdvanceAt = .now()
+            cond.unlock()
+        }
+
         private func enumerate(_ work: DirWork, scratch: BulkScratch) -> DirResult {
-            guard let entries = BulkDirScanner.workerEntries(atPath: work.path, scratch: scratch) else {
-                // Dead/stalled directory — skip its contents, still counts as scanned.
-                return DirResult()
+            guard let listing = BulkDirScanner.workerListing(atPath: work.path, scratch: scratch) else {
+                var result = DirResult()
+                result.coverageGapPaths = [work.path]
+                return result
             }
-            return FileScanner.buildResult(forEntries: entries, parentPath: work.path,
-                                           allowedDevices: allowedDevices, cacheMap: cacheMap)
+            var result = FileScanner.buildResult(forEntries: listing.entries, parentPath: work.path,
+                                                  allowedDevices: allowedDevices,
+                                                  shouldStop: { self.readSession.isCancelled })
+            result.coverageGapPaths = listing.unreadablePaths
+            return result
         }
 
         /// Merge one directory's result under the lock: attach children, enqueue
@@ -556,6 +592,7 @@ struct FileScanner: Sendable {
             progress.bytesFound += result.bytes
             progress.dirsScanned += 1
             progress.dirsDiscovered += result.subdirs.count
+            coverageGaps.append(contentsOf: result.coverageGapPaths)
             progress.currentPath = work.path
 
             // Hard-link dedup against the shared set (under the lock).
@@ -612,12 +649,14 @@ struct FileScanner: Sendable {
             FileScanner.attachHiddenSpace(to: rootNode, volumeUsed: volumeUsed, isVolumeRoot: isVolumeRoot)
 
             cond.lock()
-            progress.dirsScanned = progress.dirsDiscovered
+            let coverageGaps = self.coverageGaps
             progress.isComplete = true
             let snapshot = progress
             let cont = continuation
             continuation = nil
             cond.unlock()
+
+            rootNode.setScanCoverageGaps(rootNode.scanCoverageGaps + coverageGaps)
 
             onProgress(snapshot)
             cont?.resume(returning: rootNode)
@@ -635,9 +674,8 @@ struct FileScanner: Sendable {
         // MARK: Watchdog
 
         /// Guarantees termination even if a worker is stuck in an uninterruptible
-        /// syscall. If progress hasn't advanced for ~60s while the queue is empty
-        /// (all remaining pending dirs are stuck in-flight), force completion with
-        /// whatever has been scanned and abandon the stuck worker threads.
+        /// syscall. After 60 seconds without a directory or batch read, publish
+        /// partial coverage and record every active and queued directory.
         private func startWatchdog() {
             let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
             timer.schedule(deadline: .now() + 5, repeating: 5)
@@ -680,15 +718,18 @@ struct FileScanner: Sendable {
                 return
             }
 
-            // No advance. Only force-finish if there is no queued work left to do —
-            // i.e. the remaining `pending` dirs are all stuck in-flight in workers.
+            // Queued work must not prevent termination when every worker stalls.
             let stalledNanos = DispatchTime.now().uptimeNanoseconds &- lastAdvanceAt.uptimeNanoseconds
             let stalled = Double(stalledNanos) / 1_000_000_000 >= Self.stallTimeoutSeconds
-            guard stalled, pending > 0, queue.isEmpty, commitsInProgress == 0 else {
+            guard stalled, pending > 0, commitsInProgress == 0 else {
                 cond.unlock()
                 return
             }
 
+            coverageGaps.append(contentsOf: activePaths)
+            coverageGaps.append(contentsOf: queue.map(\.path))
+            queue.removeAll()
+            readSession.cancel()
             finished = true
             cond.broadcast()   // release idle workers (stuck ones are abandoned)
             cond.unlock()

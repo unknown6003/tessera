@@ -63,10 +63,11 @@ enum FileSearch {
     /// `find(files:filter:)` on a background thread — closing the data race where the
     /// main actor could mutate `children` (via the collector delete flow) while a
     /// background search traversed the same arrays.
-    static func collectFiles(root: FileNode) -> [FileNode] {
+    static func collectFiles(root: FileNode, shouldStop: @Sendable () -> Bool = { false }) -> [FileNode] {
         var files: [FileNode] = []
         var stack: [FileNode] = root.children
         while let node = stack.popLast() {
+            if shouldStop() { return [] }
             if node.isSynthetic { continue }
             if node.isDirectory && node.kind != .package {
                 stack.append(contentsOf: node.children)
@@ -100,7 +101,7 @@ enum FileSearch {
     static func find(files: [FileNode],
                      filter: Filter,
                      nowEpochSeconds: Int64 = Int64(Date().timeIntervalSince1970),
-                     limit: Int = resultCap) -> [FileNode] {
+                     limit: Int = resultCap, shouldStop: @Sendable () -> Bool = { false }) -> [FileNode] {
         // A trivial filter would match everything — return nothing instead.
         guard !filter.isTrivial else { return [] }
 
@@ -110,7 +111,8 @@ enum FileSearch {
         let needsPath = !filter.pathContains.isEmpty
 
         var matches: [FileNode] = []
-        for node in files {
+        for (index, node) in files.enumerated() {
+            if index.isMultiple(of: 256), shouldStop() { return [] }
             // A regular file (or a package, treated as a file leaf).
             if let minSize = filter.minSizeBytes, node.size < minSize { continue }
             if let maxSize = filter.maxSizeBytes, node.size > maxSize { continue }

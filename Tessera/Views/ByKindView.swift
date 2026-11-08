@@ -8,15 +8,20 @@ import AppKit
 /// on-device classification (filename extension only); nothing is deleted here.
 struct ByKindView: View {
     @ObservedObject var vm: ScanViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// How many largest-files to surface when a kind is expanded.
     private let largestN = 12
 
     @State private var expanded: FileKind?
+    @State private var breakdown: [(kind: FileKind, bytes: Int64, count: Int)] = []
+    @State private var largest: [FileNode] = []
+    @State private var isLoading = false
+    @State private var isLoadingLargest = false
 
-    private var breakdown: [(kind: FileKind, bytes: Int64, count: Int)] {
-        guard let root = vm.rootNode else { return [] }
-        return FileKind.breakdown(root: root)
+    private struct LargestKey: Equatable {
+        let tree: ScanTreeRevision
+        let kind: FileKind?
     }
 
     private var totalBytes: Int64 { breakdown.reduce(0) { $0 + $1.bytes } }
@@ -27,12 +32,14 @@ struct ByKindView: View {
                 FeatureSectionLabel("By Kind")
 
                 let rows = breakdown
-                if rows.isEmpty {
+                if isLoading {
+                    ProgressView("Reading file types…")
+                } else if rows.isEmpty {
                     Label("No files to categorize yet.", systemImage: "square.grid.2x2")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text("Disk use grouped by file type. Tap a kind to see its largest files.")
-                        .font(.caption2).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     ForEach(rows, id: \.kind) { row in
@@ -41,7 +48,35 @@ struct ByKindView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .task(id: vm.treeRevision) { await loadBreakdown() }
+            .task(id: LargestKey(tree: vm.treeRevision, kind: expanded)) { await loadLargest() }
         }
+    }
+
+    private func loadBreakdown() async {
+        let revision = vm.treeRevision
+        isLoading = true
+        breakdown = []
+        let rows = await vm.readTree { root, cancel in
+            FileKind.breakdown(root: root, shouldStop: { cancel.isCancelled })
+        }
+        guard !Task.isCancelled, revision == vm.treeRevision else { return }
+        breakdown = rows ?? []
+        isLoading = false
+    }
+
+    private func loadLargest() async {
+        largest = []
+        guard let kind = expanded else { isLoadingLargest = false; return }
+        let revision = vm.treeRevision
+        let limit = largestN
+        isLoadingLargest = true
+        let files = await vm.readTree { root, cancel in
+            FileKind.largestFiles(of: kind, in: root, limit: limit, shouldStop: { cancel.isCancelled })
+        }
+        guard !Task.isCancelled, revision == vm.treeRevision, expanded == kind else { return }
+        largest = files ?? []
+        isLoadingLargest = false
     }
 
     // MARK: Kind row
@@ -53,7 +88,7 @@ struct ByKindView: View {
 
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
                     expanded = isOpen ? nil : row.kind
                 }
             } label: {
@@ -76,11 +111,11 @@ struct ByKindView: View {
                         }
                         bar(fraction: fraction)
                         Text("\(row.count) file\(row.count == 1 ? "" : "s")")
-                            .font(.caption2).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.secondary)
                     }
 
                     Image(systemName: isOpen ? "chevron.down" : "chevron.right")
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -110,11 +145,13 @@ struct ByKindView: View {
 
     @ViewBuilder
     private func largestFiles(for kind: FileKind) -> some View {
-        let files = vm.rootNode.map { FileKind.largestFiles(of: kind, in: $0, limit: largestN) } ?? []
+        let files = largest
 
-        if files.isEmpty {
+        if isLoadingLargest {
+            ProgressView("Finding largest files…").controlSize(.small)
+        } else if files.isEmpty {
             Text("No files of this kind.")
-                .font(.caption2).foregroundStyle(.tertiary)
+                .font(.caption).foregroundStyle(.tertiary)
         } else {
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(files) { file in
@@ -133,7 +170,7 @@ struct ByKindView: View {
                     .font(.caption.weight(.medium))
                     .lineLimit(1).truncationMode(.middle)
                 Text(displayPath(file))
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
             }
@@ -141,13 +178,13 @@ struct ByKindView: View {
             Spacer(minLength: 4)
 
             Text(Theme.format(file.size))
-                .font(.caption2.monospacedDigit().weight(.semibold))
+                .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.secondary)
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([file.url])
             } label: {
-                Image(systemName: "magnifyingglass").font(.system(size: 10))
+                Image(systemName: "magnifyingglass").font(.caption)
             }
             .buttonStyle(.interactive).foregroundStyle(.tint)
             .help("Reveal in Finder")

@@ -2,9 +2,10 @@ import SwiftUI
 
 struct InspectorView: View {
     @ObservedObject var vm: ScanViewModel
+    @State private var largestRows: [FileNode] = []
 
     private var inspectedNode: FileNode? {
-        vm.hoveredNode ?? vm.selectedNode ?? vm.currentRoot
+        vm.selectedNode
     }
 
     var body: some View {
@@ -18,10 +19,14 @@ struct InspectorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Full-height glass rail mirroring the sidebar — same behind-window panel
-        // treatment, flush top and edges — so the left and right rails read as a
-        // symmetric pair instead of a short inset card floating against the edge.
-        .desktopGlassPanel(cornerRadius: 24, shadowRadius: 28, shadowY: 16)
+        .background(Theme.bg)
+        .disabled(vm.isDeleting || vm.isScanning)
+        .onChange(of: inspectedNode?.id, initial: true) { _, _ in refreshLargestRows() }
+        .onChange(of: vm.chartRevision) { _, _ in refreshLargestRows() }
+    }
+
+    private func refreshLargestRows() {
+        largestRows = inspectedNode?.largestChildren(limit: 5) ?? []
     }
 
     // MARK: - Details Section
@@ -36,7 +41,7 @@ struct InspectorView: View {
                     HiddenSpaceView(vm: vm, hiddenBytes: node.size)
                 } else {
                     pathRow(node)
-                    if node.isDirectory && !node.sortedChildren.isEmpty {
+                    if node.isDirectory && !node.children.isEmpty {
                         topChildrenList(node)
                     }
                     actionButtons(node)
@@ -84,8 +89,8 @@ struct InspectorView: View {
     private func pathRow(_ node: FileNode) -> some View {
         Text(node.url.path)
             .font(.caption)
-            .foregroundStyle(.tertiary)
-            .lineLimit(2)
+            .foregroundStyle(.secondary)
+            .lineLimit(3)
             .truncationMode(.middle)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -95,17 +100,13 @@ struct InspectorView: View {
     private func topChildrenList(_ node: FileNode) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Largest Items")
-                .font(.caption2.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 6)
 
-            ForEach(node.sortedChildren.prefix(5)) { child in
+            ForEach(largestRows) { child in
                 Button {
-                    if child.isDirectory {
-                        vm.zoomIn(to: child)
-                    } else {
-                        vm.selectedNode = child
-                    }
+                    vm.selectedNode = child
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: Theme.icon(for: child))
@@ -117,7 +118,7 @@ struct InspectorView: View {
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text(Theme.format(child.size))
-                            .font(.system(.caption2, design: .monospaced))
+                            .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
@@ -148,7 +149,7 @@ struct InspectorView: View {
                 Button {
                     vm.addToCollector(node)
                 } label: {
-                    Label("Collect", systemImage: alreadyCollected ? "checkmark.circle" : "plus.circle")
+                    Label("Add to list", systemImage: alreadyCollected ? "checkmark.circle" : "plus.circle")
                         .font(.subheadline)
                 }
                 .buttonStyle(.flat)
@@ -171,10 +172,9 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.caption2.weight(.semibold))
+        Text(text)
+            .font(.headline.weight(.semibold))
             .foregroundStyle(.secondary)
-            .kerning(0.8)
     }
 
     private func iconCircleColor(_ node: FileNode) -> Color {
@@ -189,4 +189,3 @@ struct InspectorView: View {
         }
     }
 }
-

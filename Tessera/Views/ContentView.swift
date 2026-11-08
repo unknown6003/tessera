@@ -2,327 +2,560 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
-    @StateObject private var vm = ScanViewModel()
-    /// Drives drag-and-drop of chart wedges into the bottom dock.
-    @StateObject private var drag = CollectorDragController()
-    /// Auto-updater. We only talk to it to say "don't relaunch right now".
-    @EnvironmentObject private var updater: UpdaterController
+    private enum AppMode: String, CaseIterable, Identifiable {
+        case explore, rescue
+        var id: String { rawValue }
+        var title: String { rawValue.capitalized }
+    }
 
-    /// Whether the "permanently delete the whole collector" confirmation is showing.
+    private struct RemovalSnapshot: Identifiable {
+        let id = UUID()
+        let nodes: [FileNode]
+        let sourcePath: String
+        let rootID: ObjectIdentifier?
+        let revision: UInt64
+        let collectorIDs: Set<ObjectIdentifier>
+    }
+
+    @StateObject private var vm = ScanViewModel(defaults: DebugAutomation.defaults)
+    @StateObject private var drag = CollectorDragController()
+    @EnvironmentObject private var updater: UpdaterController
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appMode: AppMode = .explore
+    @State private var showSidebar = true
+    @State private var showInspector = false
+    @State private var showCompactInspector = false
+    @State private var windowWidth: CGFloat = 1240
+    @State private var largestRows: [FileNode] = []
+    @State private var queuedReviewAction: RemovalSnapshot?
+    @State private var queuedReviewIsPermanent = false
+    @State private var reviewSnapshot: RemovalSnapshot?
+    @State private var showTrashConfirm = false
     @State private var showDeleteAllConfirm = false
-    /// Title for the failure alert ("Move to Trash Failed" / "Delete Failed").
-    @State private var deleteErrorTitle = "Couldn’t Remove Items"
+    @State private var pendingTrash: RemovalSnapshot?
+    @State private var pendingDelete: RemovalSnapshot?
+    @State private var removalRequested = false
+    @State private var deleteErrorTitle = "Could not remove items"
     @State private var deleteError: String?
 
-    var body: some View {
-        VStack(spacing: 18) {
-            HStack(spacing: 18) {
-                Sidebar(vm: vm)
-                    .frame(width: 252)
+    private var removalBusy: Bool { vm.isDeleting || removalRequested }
 
-                VStack(spacing: 12) {
-                    if vm.rootNode != nil {
-                        CleanupActionBar(vm: vm)
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                Sidebar(vm: vm)
+                    .frame(width: showSidebar ? 210 : 0)
+                    .clipped()
+                    .opacity(showSidebar ? 1 : 0)
+                    .accessibilityHidden(!showSidebar)
+                    .disabled(removalBusy || !showSidebar)
+                if showSidebar { Divider() }
+
+                VStack(spacing: 0) {
+                    sourceHeader
+                    Divider()
+                    if vm.isScanning {
+                        ScanningView(vm: vm)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if appMode == .rescue && vm.errorMessage == nil && !vm.needsFullDiskAccess {
+                        rescueWorkspace
+                    } else {
+                        HStack(spacing: 0) {
+                            centerArea
+                            if showInspector && geometry.size.width >= 1100 {
+                                Divider()
+                                InspectorView(vm: vm)
+                                    .frame(width: min(300, max(240, geometry.size.width * 0.22)))
+                            }
+                        }
                     }
-                    centerArea
+                    if vm.rootNode != nil || removalBusy {
+                        Divider()
+                        CollectorDock(vm: vm, drag: drag, onReview: openReview)
+                            .disabled(removalBusy)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                InspectorView(vm: vm)
-                    .frame(width: 296)
-            }
-
-            // Full-width collector dock + trash drop-zone, shown once there's a
-            // chart to drag from.
-            if vm.rootNode != nil {
-                CollectorDock(vm: vm, drag: drag,
-                              onTrashAll: { performTrash(vm.collector) },
-                              onDeleteAll: { showDeleteAllConfirm = true })
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .padding(18)
-        .frame(minWidth: 920, minHeight: 600)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Flat, solid near-black background — no vibrancy, no desktop refraction,
-        // so the app renders identically regardless of what sits behind it.
+        .frame(minWidth: 820, minHeight: 600)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
         .background(Theme.bg.ignoresSafeArea())
         .background(TransparentWindowConfigurator())
-        .background(KeyboardShortcuts(vm: vm))
+        .background(KeyboardShortcuts(vm: vm).disabled(removalBusy || vm.isScanning))
         .tint(Theme.electricBlue)
-        // No keyboard focus rings anywhere. macOS draws them in the SYSTEM accent
-        // colour (a Mac set to pink halos our controls in pink, ignoring `.tint`),
-        // and this app is driven by pointer, not tab order. Disabled at the root so
-        // it covers every control, not just our own button styles. Revisit if
-        // keyboard navigation is ever added.
-        .focusEffectDisabled()
         .preferredColorScheme(.dark)
-        // Shared coordinate space so the chart's drag location and the dock's drop
-        // zones are measured against the same origin.
         .coordinateSpace(.named(CollectorDragController.appSpace))
-        // Floating chip that follows the cursor mid-drag.
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button { showSidebar.toggle() } label: {
+                    Label("Sources", systemImage: "sidebar.left")
+                }
+                .keyboardShortcut("s", modifiers: [.command, .control])
+                .help(showSidebar ? "Hide sources" : "Show sources")
+            }
+            ToolbarItem(placement: .principal) {
+                Picker("Workspace", selection: $appMode) {
+                    ForEach(AppMode.allCases) { mode in Text(mode.title).tag(mode) }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 190)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                CleanupActionBar(vm: vm, onRescue: { appMode = .rescue })
+                    .disabled(removalBusy || vm.isScanning || vm.rootNode == nil)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    if windowWidth < 1100 { showCompactInspector.toggle() }
+                    else { showInspector.toggle() }
+                } label: {
+                    Label("Details", systemImage: "sidebar.right")
+                }
+                .keyboardShortcut("i", modifiers: [.command, .control])
+                .help("Show or hide selected item details")
+                .disabled(appMode != .explore)
+                .popover(isPresented: $showCompactInspector) {
+                    InspectorView(vm: vm).frame(width: 320, height: 500)
+                }
+            }
+        }
         .overlay {
             if let node = drag.node {
-                DragPreview(node: node)
-                    .position(drag.location)
-                    .allowsHitTesting(false)
+                DragPreview(node: node).position(drag.location).allowsHitTesting(false)
             }
         }
         .overlay {
-            if vm.showFDAOnboarding {
-                FullDiskAccessOnboarding(vm: vm)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-            }
+            if vm.showFDAOnboarding { FullDiskAccessOnboarding(vm: vm) }
         }
-        .animation(.smooth(duration: 0.3), value: vm.showFDAOnboarding)
-        .animation(.smooth(duration: 0.3), value: vm.rootNode != nil)
-        // Updates install and relaunch the app on their own — but never mid-scan,
-        // and never while the user has files staged in the Cleanup List (a relaunch
-        // would throw that list away). While either is true the update is held and
-        // applied as soon as the app goes idle.
+        .transaction { if reduceMotion { $0.animation = nil } }
         .onChange(of: vm.isScanning, initial: true) { _, _ in syncUpdaterBusy() }
+        .onChange(of: vm.isDeleting) { _, _ in syncUpdaterBusy() }
+        .onChange(of: vm.currentRoot?.id, initial: true) { _, _ in refreshLargestRows() }
+        .onChange(of: vm.chartRevision) { _, _ in refreshLargestRows() }
+        .onChange(of: removalRequested) { _, _ in syncUpdaterBusy() }
         .onChange(of: vm.collector.isEmpty) { _, _ in syncUpdaterBusy() }
-        .confirmationDialog(
-            "Permanently Delete \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s")?",
-            isPresented: $showDeleteAllConfirm,
-            titleVisibility: .visible
-        ) {
-            // Safe option first, so it reads as the default/recommended path.
-            Button("Move to Trash Instead") {
-                performTrash(vm.collector)
+        .sheet(item: $reviewSnapshot, onDismiss: finishReview) { snapshot in
+            CleanupReviewSheet(vm: vm, nodes: snapshot.nodes, sourcePath: snapshot.sourcePath,
+                                   rootID: snapshot.rootID, revision: snapshot.revision,
+                                   onTrash: { nodes in
+                                       queueReviewAction(nodes, permanent: false)
+                                   }, onDelete: { nodes in
+                                       queueReviewAction(nodes, permanent: true)
+                                   })
+        }
+        .confirmationDialog("Move \(Theme.itemCount(pendingTrash?.nodes.count ?? 0)) to Trash?",
+                            isPresented: $showTrashConfirm, titleVisibility: .visible) {
+            Button("Move to Trash") {
+                if let snapshot = pendingTrash { performTrash(snapshot) }
             }
-            .keyboardShortcut(.defaultAction)
-            Button("Delete \(vm.collector.count) Item\(vm.collector.count == 1 ? "" : "s") Permanently", role: .destructive) {
-                performDelete(vm.collector)
+            Button("Cancel", role: .cancel) { vm.cancelTrashConfirmation() }
+        } message: {
+            Text("Move \(Theme.format(pendingTrash?.nodes.reduce(0) { $0 + $1.physicalSize } ?? 0)) to Finder Trash. \(pendingTrashRiskSummary) \(pendingTrashTargetSummary) You can restore these items. Trash uses disk space until you empty it.")
+        }
+        .confirmationDialog("Permanently delete \(Theme.itemCount(pendingDelete?.nodes.count ?? 0))?",
+                            isPresented: $showDeleteAllConfirm, titleVisibility: .visible) {
+            Button("Move to Trash Instead") {
+                if let snapshot = pendingDelete { requestTrash(snapshot) }
+            }
+            Button("Delete Permanently", role: .destructive) {
+                if let snapshot = pendingDelete { performDelete(snapshot) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This frees \(Theme.format(vm.collectorTotalSize)) immediately and cannot be undone. To keep the option to restore, move the items to the Trash instead.")
+            Text("This removes \(Theme.format(pendingDelete?.nodes.reduce(0) { $0 + $1.physicalSize } ?? 0)) and cannot be undone. Check every path in the Cleanup List first.")
         }
         .alert(deleteErrorTitle, isPresented: Binding(
-            get: { deleteError != nil },
-            set: { if !$0 { deleteError = nil } }
-        )) {
-            Button("OK") { deleteError = nil }
-        } message: {
-            Text(deleteError ?? "")
-        }
+            get: { deleteError != nil }, set: { if !$0 { deleteError = nil } }
+        )) { Button("OK") { deleteError = nil } } message: { Text(deleteError ?? "") }
         .onAppear {
             vm.refreshFullDiskAccessStatus()
-            // Expose this window's single VM to the Finder Service provider, and run
-            // any scan it requested before the window existed (cold launch).
             SharedScanContext.shared.register(vm)
             DebugAutomation.runIfRequested(vm: vm)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // Returning from System Settings after granting access auto-dismisses.
             vm.refreshFullDiskAccessStatus()
         }
-    }
-
-    /// Move `nodes` to the Trash (recoverable), surfacing any failure as an alert.
-    /// The default action — no confirmation needed since it can be undone in Finder.
-    private func performTrash(_ nodes: [FileNode]) {
-        deleteError = nil
-        do {
-            try vm.moveToTrash(nodes)
-        } catch {
-            deleteErrorTitle = "Move to Trash Failed"
-            deleteError = error.localizedDescription
-        }
-    }
-
-    /// Permanently delete `nodes`, surfacing any failure as an alert.
-    private func performDelete(_ nodes: [FileNode]) {
-        deleteError = nil
-        do {
-            try vm.deletePermanently(nodes)
-        } catch {
-            deleteErrorTitle = "Delete Failed"
-            deleteError = error.localizedDescription
-        }
-    }
-
-    // MARK: - Center area
-
-    @ViewBuilder
-    private var centerArea: some View {
-        ZStack {
-            if vm.needsFullDiskAccess {
-                centeredCard { fullDiskAccessContent }
-            } else if let error = vm.errorMessage {
-                centeredCard { errorContent(error) }
-            } else if vm.rootNode == nil && vm.isScanning {
-                centeredCard { ScanningView(vm: vm) }
-            } else if vm.rootNode == nil {
-                centeredCard { emptyContent }
-            } else {
-                chartContent
+        .onReceive(NotificationCenter.default.publisher(for: .init("Tessera.captureState"))) { note in
+            guard ProcessInfo.processInfo.environment["SO_CAPTURE_VARIANTS"] == "1",
+                  let source = vm.scannedURL,
+                  source.resolvingSymlinksInPath().path.contains("/tmp/tessera-"),
+                  let state = note.userInfo?["state"] as? String else { return }
+            reviewSnapshot = nil
+            showTrashConfirm = false
+            showDeleteAllConfirm = false
+            showInspector = state == "details"
+            if state == "details" { vm.selectedNode = vm.rootNode?.largestChildren(limit: 1).first }
+            appMode = state == "rescue" ? .rescue : .explore
+            if state == "review" || state == "confirm" {
+                for node in vm.rootNode?.largestChildren(limit: 3) ?? [] { vm.addToCollector(node) }
+                if state == "review" { openReview() }
+                else if let snapshot = self.snapshot(vm.collector) { requestTrash(snapshot) }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.smooth(duration: 0.35), value: vm.rootNode?.id)
-        .animation(.smooth(duration: 0.25), value: vm.isScanning)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            DebugAutomation.cleanPreferences()
+        }
+        .onChange(of: showTrashConfirm) { _, presented in
+            if !presented {
+                if !removalRequested { vm.cancelTrashConfirmation() }
+                pendingTrash = nil
+            }
+        }
+        .onChange(of: showDeleteAllConfirm) { _, presented in
+            if !presented { pendingDelete = nil }
+        }
+        .onChange(of: vm.scannedURL) { _, _ in
+            showTrashConfirm = false
+            showDeleteAllConfirm = false
+        }
+        .onChange(of: vm.isScanning) { _, scanning in
+            if scanning {
+                showTrashConfirm = false
+                showDeleteAllConfirm = false
+                drag.reset()
+            }
+        }
     }
 
-    // MARK: - Chart + breadcrumb
+    private var sourceHeader: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(vm.currentRoot?.name ?? sourceName)
+                    .font(.headline)
+                    .lineLimit(1)
+                Text(vm.scannedURL?.path ?? vm.selectedSourceURL?.path ?? "Choose a source to begin")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+            Spacer(minLength: 8)
+            if removalBusy {
+                ProgressView().controlSize(.small)
+                Text("Removing \(vm.deletionProgress) of \(vm.deletionTotal)")
+                    .font(.caption.monospacedDigit())
+                    .accessibilityLabel("Removal progress")
+            } else if !vm.isScanning {
+                if !vm.scanStatus.isEmpty, vm.rootNode != nil {
+                    Text(vm.scanStatus).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if vm.scannedURL != nil && vm.selectedSourceURL != vm.scannedURL {
+                    Text("Scan \(sourceName)")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Button {
+                    if let source = vm.selectedSourceURL { vm.startScan(volumeURL: source) }
+                } label: {
+                    Label(vm.selectedSourceURL == vm.scannedURL ? "Rescan" : "Scan source",
+                          systemImage: "arrow.clockwise")
+                }
+                .disabled(vm.selectedSourceURL == nil)
+                .buttonStyle(.bordered)
+                .keyboardShortcut("r", modifiers: .command)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+    }
 
-    @ViewBuilder
+    private var sourceName: String {
+        guard let source = vm.selectedSourceURL else { return "Tessera" }
+        return source.lastPathComponent.isEmpty ? source.path : source.lastPathComponent
+    }
+
+    private var rescueWorkspace: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                if vm.rootNode == nil { emptyContent }
+                CleanupSuggestionsView(vm: vm, onMoveToTrash: openReview)
+            }
+            .padding(24)
+            .frame(maxWidth: 1000, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .disabled(removalBusy)
+    }
+
+    @ViewBuilder private var centerArea: some View {
+        if vm.needsFullDiskAccess {
+            taskState { fullDiskAccessContent }
+        } else if let error = vm.errorMessage {
+            taskState { errorContent(error) }
+        } else if vm.rootNode == nil {
+            taskState { emptyContent }
+        } else {
+            chartContent
+        }
+    }
+
     private var chartContent: some View {
-        // Give navigation and help their own rows. Overlaying them on the chart
-        // made the visible circle collide with controls as the window narrowed.
-        VStack(spacing: 8) {
-            if let current = vm.currentRoot {
-                breadcrumb(for: current)
+        VStack(spacing: 0) {
+            if let current = vm.currentRoot { breadcrumb(for: current) }
+            GeometryReader { geometry in
+                if geometry.size.width >= 580 {
+                    HStack(spacing: 16) {
+                        chart
+                        largestItems.frame(width: min(230, geometry.size.width * 0.30))
+                    }
+                    .padding(.horizontal, 20)
+                } else {
+                    VStack(spacing: 0) {
+                        chart
+                        largestItems
+                            .frame(height: min(142, max(86, geometry.size.height * 0.24)))
+                            .padding(.horizontal, 20)
+                    }
+                }
             }
-
-            SunburstChart(
-                root: vm.currentRoot,
-                contentRevision: vm.chartRevision,
-                hoveredNode: vm.hoveredNode,
-                selectedNode: vm.selectedNode,
-                onHover: { vm.hoveredNode = $0 },
-                onSelect: { vm.selectedNode = $0 },
-                onZoomIn: { vm.zoomIn(to: $0) },
-                onZoomOut: { vm.zoomOut() },
-                onAddToCollector: { vm.addToCollector($0) },
-                onRevealInFinder: { node in
-                    NSWorkspace.shared.activateFileViewerSelecting([node.url])
-                },
-                drag: drag,
-                onDrop: { node in vm.addToCollector(node) }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .layoutPriority(1)
-
-            chartHints
+            selectedItemBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Always-visible, plain-language legend for the chart's three interactions.
-    private var chartHints: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) {
-                hint("cursorarrow.click", "Click a slice to open it")
-                hint("arrow.up.left.circle", "Click the middle to go back")
-                hint("arrow.down.to.line", "Drag a slice to the list below to remove it")
+    private var chart: some View {
+        SunburstChart(root: vm.currentRoot, contentRevision: vm.chartRevision,
+                      hoveredNode: vm.hoveredNode, selectedNode: vm.selectedNode,
+                      onHover: { vm.hoveredNode = $0 }, onSelect: { vm.selectedNode = $0 },
+                      onZoomIn: { vm.zoomIn(to: $0) }, onZoomOut: { vm.zoomOut() },
+                      onAddToCollector: { if !removalBusy { vm.addToCollector($0) } },
+                      onRevealInFinder: { NSWorkspace.shared.activateFileViewerSelecting([$0.url]) },
+                      drag: drag, onDrop: { if !removalBusy { vm.addToCollector($0) } })
+            .disabled(removalBusy)
+    }
+
+    private func refreshLargestRows() {
+        largestRows = vm.currentRoot?.largestChildren(limit: 5) ?? []
+    }
+
+    private var largestItems: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Largest items").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(largestRows) { node in
+                        HStack(spacing: 6) {
+                            Button { vm.selectedNode = node } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: Theme.icon(for: node))
+                                        .foregroundStyle(Theme.electricBlue).frame(width: 16)
+                                    Text(node.name).lineLimit(1).truncationMode(.middle)
+                                    Spacer(minLength: 4)
+                                    Text(Theme.format(node.size)).monospacedDigit().foregroundStyle(.secondary)
+                                }
+                                .font(.caption)
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 6)
+                                .background(vm.selectedNode?.id == node.id ? Theme.selectionTint : .clear,
+                                            in: RoundedRectangle(cornerRadius: 4))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Select \(node.name), \(Theme.format(node.size))")
+                            .accessibilityAddTraits(vm.selectedNode?.id == node.id ? .isSelected : [])
+                            if node.isDirectory && !node.isSynthetic {
+                                Button { vm.zoomIn(to: node) } label: {
+                                    Image(systemName: "chevron.right")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Open \(node.name)")
+                                .accessibilityLabel("Open \(node.name)")
+                            }
+                        }
+                    }
+                }
             }
-            .fixedSize(horizontal: true, vertical: false)
-
-            Label("Click: open · Center: back · Drag: add to Cleanup List",
-                  systemImage: "cursorarrow.click")
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
         }
-        .font(.caption)
-        .foregroundStyle(Theme.mutedForeground)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(Theme.surface, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
-        .allowsHitTesting(false)
-    }
-
-    private func hint(_ symbol: String, _ text: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol)
-                .foregroundStyle(Theme.electricBlue)
-            Text(text)
+        .disabled(removalBusy)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Largest items")
+        .onMoveCommand { direction in
+            guard !removalBusy else { return }
+            let nodes = largestRows
+            guard !nodes.isEmpty else { return }
+            let index = nodes.firstIndex { $0.id == vm.selectedNode?.id }
+            if direction == .down { vm.selectedNode = nodes[min(nodes.count - 1, (index ?? -1) + 1)] }
+            if direction == .up { vm.selectedNode = nodes[max(0, (index ?? nodes.count) - 1)] }
         }
     }
 
-    // MARK: - Glass card wrapper
+    private var selectedItemBar: some View {
+        HStack(spacing: 10) {
+            if let node = vm.selectedNode {
+                Text(node.url.path).font(.caption).lineLimit(1).truncationMode(.middle)
+                    .textSelection(.enabled)
+                Spacer(minLength: 8)
+                if !node.isSynthetic {
+                    if node.isDirectory { Button("Open") { vm.zoomIn(to: node) } }
+                    Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+                    Button(vm.isCollected(node) ? "Added" : "Add to Cleanup List") { vm.addToCollector(node) }
+                        .disabled(vm.isCollected(node))
+                }
+            } else {
+                Text("Select an item for actions. Open folders with a double-click.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+        }
+        .controlSize(.small)
+        .buttonStyle(.bordered)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .disabled(removalBusy)
+    }
 
-    private func centeredCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(40)
-            .frame(maxWidth: 460)
-            // Behind-window glass so the empty / scanning / error cards refract the
-            // desktop instead of refracting nothing over the transparent window.
-            .desktopGlassPanel(cornerRadius: 28, shadowRadius: 34, shadowY: 18)
+    private func taskState<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content().padding(32).frame(maxWidth: 520)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .transition(.opacity.combined(with: .scale(scale: 0.97)))
     }
-
-    // MARK: - Empty state
 
     private var emptyContent: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "internaldrive")
-                .font(.system(size: 64, weight: .ultraLight))
-                .foregroundStyle(.secondary)
-            VStack(spacing: 8) {
-                Text("See what's using your disk")
-                    .font(.title2.weight(.semibold))
-                Text("Pick a disk in the list on the left, then click the blue **Scan** button at the bottom of that list. Tessera reads the whole drive and maps it — nothing is changed or deleted.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 18) {
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable().frame(width: 64, height: 64).accessibilityHidden(true)
+            Text("See where your space goes").font(.title.weight(.semibold))
+            Text("Choose a source, then scan it. Explore the map or use Rescue to review cleanup suggestions.")
+                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let source = vm.selectedSourceURL {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(source.path).font(.caption.monospaced()).foregroundStyle(.secondary)
+                        .lineLimit(2).truncationMode(.middle)
+                    Button { vm.startScan(volumeURL: source) } label: {
+                        Label("Scan \(sourceName)", systemImage: "magnifyingglass")
+                    }
+                    .buttonStyle(.flatProminent).controlSize(.large)
+                    .disabled(removalBusy)
+                }
             }
+            Text("Scanning does not change your files.").font(.caption).foregroundStyle(.secondary)
         }
-        .multilineTextAlignment(.center)
     }
-
-    // MARK: - Full Disk Access
 
     private var fullDiskAccessContent: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "lock.shield")
-                .font(.system(size: 56, weight: .light))
-                .foregroundStyle(.orange)
-            VStack(spacing: 8) {
-                Text("Full Disk Access Required")
-                    .font(.title2.weight(.semibold))
-                Text("Grant Full Disk Access in System Settings, then scan again.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            Button("Open System Settings") {
-                vm.openFullDiskAccessSettings()
-            }
-            .buttonStyle(.flatProminent)
-            .controlSize(.large)
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Full Disk Access needed", systemImage: "lock.shield").font(.title2)
+            Text("Grant access in System Settings, then scan again.").foregroundStyle(.secondary)
+            Button("Open System Settings") { vm.openFullDiskAccessSettings() }.buttonStyle(.flatProminent)
         }
     }
-
-    // MARK: - Error
 
     private func errorContent(_ message: String) -> some View {
-        VStack(spacing: 20) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 56, weight: .light))
-                .foregroundStyle(.red)
-            VStack(spacing: 8) {
-                Text("Scan Failed")
-                    .font(.title2.weight(.semibold))
-                Text(message)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+        VStack(alignment: .leading, spacing: 16) {
+            Label("Scan failed", systemImage: "exclamationmark.triangle").font(.title2)
+            Text(message).foregroundStyle(.secondary).textSelection(.enabled)
+            if vm.canRetryLastScan {
+                Button("Try again") { vm.errorMessage = nil; vm.retryLastScan() }
+                    .buttonStyle(.flatProminent).disabled(removalBusy)
             }
-            HStack(spacing: 10) {
-                if vm.canRetryLastScan {
-                    Button("Try Again") {
-                        vm.errorMessage = nil
-                        vm.retryLastScan()
-                    }
-                    .buttonStyle(.flatProminent)
-                    .controlSize(.large)
-                }
-                Button("Dismiss") {
-                    vm.errorMessage = nil
-                }
-                .buttonStyle(.flat)
-                .controlSize(.large)
-            }
+            Button("Dismiss") { vm.errorMessage = nil }
         }
     }
 
-    /// Hold back a self-relaunch while a scan is running or files are staged.
+    private func openReview() {
+        guard !vm.isScanning, !removalBusy, let snapshot = snapshot(vm.collector) else { return }
+        reviewSnapshot = snapshot
+    }
+
+    private func snapshot(_ nodes: [FileNode]) -> RemovalSnapshot? {
+        guard !nodes.isEmpty, let path = vm.scannedURL?.standardizedFileURL.path else { return nil }
+        return RemovalSnapshot(nodes: nodes, sourcePath: path, rootID: vm.rootNode?.id,
+                               revision: vm.chartRevision, collectorIDs: Set(vm.collector.map(\.id)))
+    }
+
+    private func queueReviewAction(_ nodes: [FileNode], permanent: Bool) {
+        guard let review = reviewSnapshot, !nodes.isEmpty else { return }
+        queuedReviewAction = RemovalSnapshot(nodes: nodes, sourcePath: review.sourcePath,
+                                            rootID: review.rootID, revision: review.revision,
+                                            collectorIDs: Set(nodes.map(\.id)))
+        queuedReviewIsPermanent = permanent
+        reviewSnapshot = nil
+    }
+
+    private func finishReview() {
+        guard let snapshot = queuedReviewAction else { return }
+        queuedReviewAction = nil
+        if queuedReviewIsPermanent { requestDelete(snapshot) }
+        else { requestTrash(snapshot) }
+    }
+
+    private func requestTrash(_ snapshot: RemovalSnapshot) {
+        guard !removalBusy, snapshotIsCurrent(snapshot) else {
+            deleteErrorTitle = "Review needed"
+            deleteError = "The scan or Cleanup List changed. Open the list and review it again."
+            return
+        }
+        pendingTrash = snapshot
+        vm.beginTrashConfirmation()
+        showTrashConfirm = true
+    }
+
+    private func requestDelete(_ snapshot: RemovalSnapshot) {
+        guard !removalBusy, snapshotIsCurrent(snapshot) else {
+            deleteErrorTitle = "Review needed"
+            deleteError = "The scan or Cleanup List changed. Open the list and review it again."
+            return
+        }
+        pendingDelete = snapshot
+        showDeleteAllConfirm = true
+    }
+
+    private func snapshotIsCurrent(_ snapshot: RemovalSnapshot) -> Bool {
+        !vm.isScanning && !vm.isDeleting
+            && snapshot.sourcePath == vm.scannedURL?.standardizedFileURL.path
+            && snapshot.rootID == vm.rootNode?.id
+            && snapshot.revision == vm.chartRevision
+            && snapshot.collectorIDs == Set(vm.collector.map(\.id))
+            && Set(snapshot.nodes.map(\.id)).isSubset(of: snapshot.collectorIDs)
+    }
+
+    private func performTrash(_ snapshot: RemovalSnapshot) {
+        removalRequested = true
+        deleteError = nil
+        Task { @MainActor in
+            defer { removalRequested = false }
+            guard snapshotIsCurrent(snapshot) else {
+                vm.cancelTrashConfirmation()
+                deleteErrorTitle = "Move to Trash failed"
+                deleteError = "The scan or Cleanup List changed. Review the current list before moving anything."
+                return
+            }
+            do { try await vm.moveToTrash(snapshot.nodes) }
+            catch { deleteErrorTitle = "Move to Trash failed"; deleteError = error.localizedDescription }
+        }
+    }
+
+    private func performDelete(_ snapshot: RemovalSnapshot) {
+        removalRequested = true
+        deleteError = nil
+        Task { @MainActor in
+            defer { removalRequested = false }
+            guard snapshotIsCurrent(snapshot) else {
+                deleteErrorTitle = "Delete failed"
+                deleteError = "The scan or Cleanup List changed. Review the current list before deleting anything."
+                return
+            }
+            do { try await vm.deletePermanently(snapshot.nodes) }
+            catch { deleteErrorTitle = "Delete failed"; deleteError = error.localizedDescription }
+        }
+    }
+
+    private var pendingTrashRiskSummary: String {
+        guard let plan = vm.rescuePlan, let nodes = pendingTrash?.nodes else { return "Review the exact paths." }
+        let parts = [(CleanupRisk.safe, "safe"), (.review, "review"), (.protected, "protected")].compactMap { risk, title -> String? in
+            let count = nodes.filter { node in plan.recommendations.first { $0.node.id == node.id }?.risk == risk }.count
+            return count > 0 ? "\(count) \(title)" : nil
+        }
+        return parts.isEmpty ? "Review the exact paths." : parts.joined(separator: ", ") + "."
+    }
+
+    private var pendingTrashTargetSummary: String {
+        guard let plan = vm.rescuePlan, let target = plan.targetSpace else { return "No capacity target is available." }
+        return "Goal: under \(Int((plan.capacityGoal * 100).rounded()))% used, \(Theme.format(target)) free."
+    }
+
     private func syncUpdaterBusy() {
-        updater.isBusy = vm.isScanning || !vm.collector.isEmpty
+        updater.isBusy = vm.isScanning || removalBusy || !vm.collector.isEmpty
     }
 
     // MARK: - Breadcrumb
@@ -365,11 +598,9 @@ struct ContentView: View {
                 breadcrumbCurrent(node)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
-        .frame(maxWidth: 560)
-        .background(Theme.elevated, in: Capsule())
-        .liquidGlassDepth(Capsule(), highlight: 0.9, shadowRadius: 16, shadowY: 8)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var breadcrumbHome: some View {
@@ -418,114 +649,58 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Scanning state
+// MARK: - Scan status
 
 private struct ScanningView: View {
     @ObservedObject var vm: ScanViewModel
 
     var body: some View {
-        VStack(spacing: 24) {
-            PulsingRings()
-                .frame(width: 140, height: 140)
-
-            VStack(spacing: 6) {
-                Text("Scanning…")
-                    .font(.title2.weight(.semibold))
-                if let fraction = vm.progress.fraction {
-                    Text("\(Int(fraction * 100))%")
-                        .font(.system(.largeTitle, design: .rounded).weight(.medium).monospacedDigit())
-                        .contentTransition(.numericText())
-                        .animation(.smooth, value: fraction)
+        VStack(alignment: .leading, spacing: 20) {
+            Text(vm.scanStatus.isEmpty ? "Scanning source" : vm.scanStatus)
+                .font(.title2.weight(.semibold))
+            Text("Tessera is reading this source. Your files stay in place.")
+                .foregroundStyle(.secondary)
+            ProgressView().progressViewStyle(.linear)
+                .accessibilityLabel("Scan in progress")
+            HStack(spacing: 24) {
+                metric("Files read", "\(vm.progress.filesScanned)")
+                metric("Folders read", "\(vm.progress.dirsScanned)")
+                metric("Mapped", Theme.format(vm.progress.bytesFound))
+            }
+            if let start = vm.scanStartedAt {
+                HStack(spacing: 6) {
+                    Text("Elapsed")
+                    Text(start, style: .timer).monospacedDigit()
                 }
+                .font(.caption).foregroundStyle(.secondary)
             }
-
-            HStack(spacing: 28) {
-                counter(value: "\(vm.progress.filesScanned)", label: "Files")
-                counter(value: Theme.format(vm.progress.bytesFound), label: "Found")
-            }
-
-            Text(vm.progress.currentPath)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 360)
-
-            Button(role: .cancel) {
-                vm.cancelScan()
-            } label: {
-                Label("Stop", systemImage: "stop.fill")
-            }
-            .buttonStyle(.flat)
-            .controlSize(.large)
+            Text(vm.progress.currentPath.isEmpty ? "Preparing source…" : vm.progress.currentPath)
+                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Cancel scan", role: .cancel) { vm.cancelScan() }
+                .buttonStyle(.bordered).keyboardShortcut(".", modifiers: .command)
         }
+        .padding(32)
+        .frame(maxWidth: 560, alignment: .leading)
     }
 
-    private func counter(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.title3.weight(.semibold).monospacedDigit())
-                .contentTransition(.numericText())
-                .animation(.smooth, value: value)
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func metric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value).font(.title3.monospacedDigit())
+            Text(label).font(.caption).foregroundStyle(.secondary)
         }
     }
 }
-
-// MARK: - Pulsing concentric rings
-
-/// Flat indeterminate scan indicator: a hairline track with a single accent arc
-/// sweeping around it, and a solid hub. No gradients, glows, or glass.
-private struct PulsingRings: View {
-    var body: some View {
-        ZStack {
-            // Static hairline track.
-            Circle()
-                .strokeBorder(Theme.border, lineWidth: 3)
-
-            // One accent arc, rotating steadily — clearly "working", never "stuck".
-            TimelineView(.animation) { timeline in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                let angle = Angle(degrees: (t * 110).truncatingRemainder(dividingBy: 360))
-                Circle()
-                    .trim(from: 0, to: 0.22)
-                    .stroke(Theme.electricBlue,
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .rotationEffect(angle)
-                    .padding(1.5)
-            }
-
-            // Solid hub.
-            Circle()
-                .fill(Theme.card)
-                .frame(width: 46, height: 46)
-                .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
-                .overlay(
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Theme.electricBlue)
-                )
-        }
-    }
-}
-
-// MARK: - Keyboard shortcuts (hidden helper buttons)
 
 private struct KeyboardShortcuts: View {
     @ObservedObject var vm: ScanViewModel
-
     var body: some View {
         ZStack {
-            Button("Zoom Out") { vm.zoomOut() }
-                .keyboardShortcut(.upArrow, modifiers: .command)
-            Button("Clear Selection") { vm.selectedNode = nil }
-                .keyboardShortcut(.escape, modifiers: [])
+            Button("Zoom Out") { vm.zoomOut() }.keyboardShortcut(.upArrow, modifiers: .command)
+            Button("Clear Selection") { vm.selectedNode = nil }.keyboardShortcut(.escape, modifiers: [])
         }
-        .opacity(0)
-        .frame(width: 0, height: 0)
-        .accessibilityHidden(true)
+        .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
     }
 }
 
@@ -533,7 +708,7 @@ private struct KeyboardShortcuts: View {
 
 /// First-launch overlay that asks for Full Disk Access once, up front, so the
 /// app can read the whole disk instead of failing per-directory mid-scan. It
-/// dims the window behind a glass card and auto-dismisses the moment access is
+    /// dims the window behind a solid card and auto-dismisses the moment access is
 /// detected (the window re-checks on reactivation).
 private struct FullDiskAccessOnboarding: View {
     @ObservedObject var vm: ScanViewModel
@@ -541,7 +716,7 @@ private struct FullDiskAccessOnboarding: View {
     private let steps: [(symbol: String, text: String)] = [
         ("1.circle.fill", "Click **Open System Settings** below."),
         ("2.circle.fill", "Find **Tessera** in the list and turn it on."),
-        ("3.circle.fill", "Return here — scanning unlocks automatically."),
+        ("3.circle.fill", "Return here. Scanning unlocks automatically."),
     ]
 
     var body: some View {
@@ -553,17 +728,17 @@ private struct FullDiskAccessOnboarding: View {
 
             card
                 .frame(maxWidth: 520)
-                .padding(40)
+                .padding(24)
         }
     }
 
     private var card: some View {
-        let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
-        return VStack(spacing: 24) {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        return VStack(spacing: 20) {
             ZStack {
                 Circle()
                     .fill(.orange.opacity(0.18))
-                    .frame(width: 96, height: 96)
+                .frame(width: 80, height: 80)
                 Image(systemName: "lock.shield.fill")
                     .font(.system(size: 46, weight: .light))
                     .foregroundStyle(.orange)
@@ -573,7 +748,7 @@ private struct FullDiskAccessOnboarding: View {
             VStack(spacing: 10) {
                 Text("Grant Full Disk Access")
                     .font(.title.weight(.semibold))
-                Text("Tessera needs Full Disk Access to measure every folder on your Mac. Grant it once and you're set — no more per-folder prompts.")
+                Text("Tessera needs Full Disk Access to measure every folder on your Mac. You can also choose a folder without granting full access.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -612,7 +787,7 @@ private struct FullDiskAccessOnboarding: View {
                 .controlSize(.large)
             }
         }
-        .padding(40)
+        .padding(28)
         .background(Theme.elevated, in: shape)
         .liquidGlassDepth(shape, shadowRadius: 40, shadowY: 22)
     }

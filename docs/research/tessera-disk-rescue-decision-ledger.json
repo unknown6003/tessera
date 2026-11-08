@@ -1,0 +1,247 @@
+{
+  "study_id": "tessera-disk-rescue",
+  "updated_at": "2026-08-31",
+  "authority": "A submitted TempliLink response is authoritative for a user choice. A recommendation remains open until Ammar submits it or states a choice in chat.",
+  "foundational_choices": [
+    {
+      "id": "entry-point",
+      "selection": "rescue-first",
+      "label": "Rescue first",
+      "source": "First TempliLink interview, recorded in the implementation handoff"
+    },
+    {
+      "id": "default-staging",
+      "selection": "safe-only",
+      "label": "Stage safe items only",
+      "source": "First TempliLink interview, recorded in the implementation handoff"
+    },
+    {
+      "id": "candidate-scope",
+      "selection": "rank-all",
+      "label": "Rank safe, review, and protected results",
+      "source": "First TempliLink interview, recorded in the implementation handoff"
+    },
+    {
+      "id": "execution",
+      "selection": "confirm-trash-and-verify",
+      "label": "Confirm the Trash move and verify the result",
+      "source": "First TempliLink interview, recorded in the implementation handoff"
+    },
+    {
+      "id": "recurrence",
+      "selection": "remember-now",
+      "label": "Remember useful context after fresh checks",
+      "source": "First TempliLink interview, recorded in the implementation handoff"
+    }
+  ],
+  "rounds": [
+    {
+      "round": 2,
+      "interaction_id": "tessera-rescue-memory-corpus",
+      "state": "settled",
+      "source_slug": "tessera-disk-rescue-study-corpus-r12",
+      "submitted_at": "2026-08-30T19:54:59.465Z",
+      "choices": [
+        {
+          "field_id": "reminder-surface",
+          "selection": "threshold-and-schedule",
+          "label": "Threshold plus schedule"
+        },
+        {
+          "field_id": "memory-scope",
+          "selection": "specific-profile",
+          "label": "Specific profile"
+        },
+        {
+          "field_id": "evidence-depth",
+          "selection": "compact-expandable",
+          "label": "Reason, then proof"
+        },
+        {
+          "field_id": "ambiguous-items",
+          "selection": "review-only-handoff",
+          "label": "Review-only handoff"
+        },
+        {
+          "field_id": "trash-follow-up",
+          "selection": "separate-empty-step",
+          "label": "Offer separate Empty Trash"
+        },
+        {
+          "field_id": "privacy-boundary",
+          "selection": "optional-sync",
+          "label": "Optional preference sync later"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "interaction_id": "tessera-rescue-safety-gates",
+      "state": "settled",
+      "source_slug": "tessera-disk-rescue-study-corpus-r12",
+      "submitted_at": "2026-08-30T19:55:18.790Z",
+      "choices": [
+        {
+          "field_id": "active-owner-state",
+          "selection": "hard-hold-handoff",
+          "label": "Hold and hand off"
+        },
+        {
+          "field_id": "only-local-copy",
+          "selection": "archive-first",
+          "label": "Archive or back up first"
+        },
+        {
+          "field_id": "verification-mismatch",
+          "selection": "continue-safe-items",
+          "label": "Stop the mismatched item and continue items that pass"
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "interaction_id": "tessera-rescue-owner-context",
+      "state": "settled",
+      "source_slug": "tessera-disk-rescue-study-corpus-r12",
+      "submitted_at": "2026-08-30T19:56:17.222Z",
+      "choices": [
+        {
+          "field_id": "remote-backed-action",
+          "selection": "owner-handoff",
+          "label": "Owner handoff first"
+        },
+        {
+          "field_id": "local-state-display",
+          "selection": "show-local-state",
+          "label": "Show local state and recovery path"
+        },
+        {
+          "field_id": "owner-disk-images",
+          "selection": "review-path",
+          "label": "Allow warned raw-path review"
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "interaction_id": "tessera-rescue-creator-context",
+      "state": "settled",
+      "source_slug": "tessera-disk-rescue-study-corpus-r14",
+      "submitted_at": "2026-08-30T20:54:47.193Z",
+      "choices": [
+        {
+          "field_id": "creator-cache-action",
+          "selection": "source-aware-purge",
+          "label": "Source-aware purge"
+        },
+        {
+          "field_id": "cache-retention",
+          "selection": "opt-in-retention-guard",
+          "label": "Opt-in retention guard"
+        },
+        {
+          "field_id": "active-project-state",
+          "selection": "hard-hold-active-project",
+          "label": "Hard hold active project state"
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "interaction_id": "tessera-rescue-cloud-context",
+      "state": "settled",
+      "source_slug": "tessera-disk-rescue-study-corpus-r14",
+      "submitted_at": "2026-08-30T20:55:10.650Z",
+      "choices": [
+        {
+          "field_id": "provider-backed-action",
+          "selection": "source-aware-eviction",
+          "label": "Source-aware eviction"
+        },
+        {
+          "field_id": "cloud-state-detail",
+          "selection": "provider-specific-state",
+          "label": "Provider-specific state"
+        },
+        {
+          "field_id": "online-only-size",
+          "selection": "logical-and-physical",
+          "label": "Show logical and physical size"
+        }
+      ]
+    },
+    {
+      "round": 7,
+      "interaction_id": "tessera-rescue-recovery-context",
+      "state": "open",
+      "questions": [
+        "owner action or warned raw-path review",
+        "verified recovery copy or warning without proof",
+        "host plus guest state or host file only"
+      ]
+    },
+    {
+      "round": 8,
+      "interaction_id": "tessera-rescue-goal-continuity",
+      "state": "settled",
+      "source_slug": "tessera-disk-rescue-study-corpus-r17",
+      "submitted_at": "2026-08-30T21:40:47.684Z",
+      "choices": [
+        {
+          "field_id": "rescue-finish-line",
+          "selection": "goal-and-buffer",
+          "label": "Ask for the goal and required buffer"
+        },
+        {
+          "field_id": "rescue-case-continuity",
+          "selection": "save-local-case",
+          "label": "Save a local resumable case"
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "interaction_id": "tessera-rescue-measurement-escalation",
+      "state": "settled",
+      "source_slug": "tessera-disk-rescue-study-corpus-r17",
+      "submitted_at": "2026-08-30T21:41:53.221Z",
+      "choices": [
+        {
+          "field_id": "measurement-source",
+          "selection": "name-and-source",
+          "label": "Name each measurement source"
+        },
+        {
+          "field_id": "recovery-escalation",
+          "selection": "keep-cleaning",
+          "label": "Keep suggesting reviewed cleanup until the target is met"
+        },
+        {
+          "field_id": "control-scope",
+          "selection": "narrow-review",
+          "label": "Start with narrow review"
+        }
+      ]
+    },
+    {
+      "round": 10,
+      "interaction_id": "tessera-rescue-post-failure",
+      "state": "open",
+      "questions": [
+        "pause and inspect or retry the same plan",
+        "show the blocker and owner or one generic step",
+        "no background work or an explicit local observer"
+      ]
+    },
+    {
+      "round": 11,
+      "interaction_id": "tessera-rescue-working-set-boundary",
+      "state": "deferred_for_rewrite",
+      "reason": "Goal and buffer, active work, and source-aware owner behavior already have settled choices. Recovery proof depends on Round 7. The game, package-cache, and app-profile evidence lanes are complete. After Rounds 7 and 10 are settled, rewrite only the remaining owner-boundary question. Do not present the old Round 11 form as a fresh decision."
+    }
+  ],
+  "current_frontier": [
+    "tessera-rescue-recovery-context",
+    "tessera-rescue-post-failure"
+  ]
+}

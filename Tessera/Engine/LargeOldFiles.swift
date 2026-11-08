@@ -40,7 +40,7 @@ enum LargeOldFiles {
     static func find(root: FileNode,
                      query: Query,
                      nowEpochSeconds: Int64 = Int64(Date().timeIntervalSince1970),
-                     limit: Int = resultCap) -> [FileNode] {
+                     limit: Int = resultCap, shouldStop: @Sendable () -> Bool = { false }) -> [FileNode] {
         // Age cutoff in nanoseconds: a file qualifies when modTime <= cutoffNanos.
         let cutoffNanos: Int64? = query.maxAgeDays.map { days in
             (nowEpochSeconds - Int64(days) * 86_400) * 1_000_000_000
@@ -53,6 +53,7 @@ enum LargeOldFiles {
         // treats them as a single file, and FileKind classifies them as such).
         var stack: [FileNode] = root.children.reversed()
         while let node = stack.popLast() {
+            if shouldStop() { return [] }
             if node.isSynthetic { continue }
 
             if node.isDirectory && node.kind != .package {

@@ -13,6 +13,7 @@ struct FileSearchView: View {
     @State private var query: String = ""
     @State private var result: SearchResult?
     @State private var isSearching = false
+    @State private var searchTask: Task<Void, Never>?
     /// Bumped each time a search starts so a slow search that finishes after a
     /// newer one is ignored — the last query the user ran wins.
     @State private var runToken = 0
@@ -41,7 +42,7 @@ struct FileSearchView: View {
                 FeatureSectionLabel("Search Files")
 
                 Text("Describe what you're looking for — type, size, age, name, or location.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 searchField
@@ -57,6 +58,11 @@ struct FileSearchView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .onDisappear { cancelSearch() }
+            .onChange(of: vm.treeRevision) { _, _ in
+                cancelSearch()
+                result = nil
+            }
         }
     }
 
@@ -72,6 +78,7 @@ struct FileSearchView: View {
                 .onSubmit(run)
             if !query.isEmpty {
                 Button {
+                    cancelSearch()
                     query = ""
                     result = nil
                     focused = true
@@ -107,7 +114,7 @@ struct FileSearchView: View {
                     run()
                 } label: {
                     Text(example)
-                        .font(.caption2)
+                        .font(.caption)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
                         .background(Capsule().fill(Theme.surface))
@@ -135,7 +142,7 @@ struct FileSearchView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "text.magnifyingglass")
-                    .font(.caption2).foregroundStyle(Theme.electricBlue)
+                    .font(.caption).foregroundStyle(Theme.electricBlue)
                 Text(FileSearchParser.describe(result.filter))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -190,7 +197,7 @@ struct FileSearchView: View {
                     .font(.caption.weight(.medium))
                     .lineLimit(1).truncationMode(.middle)
                 Text(displayPath(file))
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
             }
@@ -198,13 +205,13 @@ struct FileSearchView: View {
             Spacer(minLength: 4)
 
             Text(Theme.format(file.size))
-                .font(.caption2.monospacedDigit().weight(.semibold))
+                .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.secondary)
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([file.url])
             } label: {
-                Image(systemName: "magnifyingglass").font(.system(size: 10))
+                Image(systemName: "magnifyingglass").font(.caption)
             }
             .buttonStyle(.interactive).foregroundStyle(.tint)
             .help("Reveal in Finder")
@@ -224,27 +231,33 @@ struct FileSearchView: View {
 
     /// Parse the current query into a filter and run it over the scanned tree,
     /// off the main actor.
+    private func cancelSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        runToken &+= 1
+        isSearching = false
+    }
+
     private func run() {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let root = vm.rootNode else { return }
+        guard !trimmed.isEmpty, vm.rootNode != nil else { return }
+        let revision = vm.treeRevision
         runToken += 1
         let token = runToken
         isSearching = true
         result = nil
         let now = Int64(Date().timeIntervalSince1970)
         let filter = FileSearchParser.parse(trimmed)
-        // Snapshot the candidate leaves here on the main actor, before handing them
-        // to the background filter pass — the background must never walk
-        // `FileNode.children` while the collector delete flow can mutate the same
-        // arrays on the main actor.
-        let candidates = FileSearch.collectFiles(root: root)
-        Task {
-            let nodes = await Task.detached(priority: .userInitiated) {
-                FileSearch.find(files: candidates, filter: filter, nowEpochSeconds: now)
-            }.value
+        searchTask?.cancel()
+        searchTask = Task {
+            let nodes = await vm.readTree { root, cancel in
+                let candidates = FileSearch.collectFiles(root: root, shouldStop: { cancel.isCancelled })
+                return FileSearch.find(files: candidates, filter: filter, nowEpochSeconds: now,
+                                       shouldStop: { cancel.isCancelled })
+            }
             // Ignore a stale search superseded by a newer one.
-            guard token == runToken else { return }
-            result = SearchResult(query: trimmed, filter: filter, nodes: nodes)
+            guard token == runToken, revision == vm.treeRevision else { return }
+            result = SearchResult(query: trimmed, filter: filter, nodes: nodes ?? [])
             isSearching = false
         }
     }

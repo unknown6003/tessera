@@ -1,0 +1,427 @@
+{
+  "schemaVersion": 1,
+  "host": {
+    "cpu": "Apple M1 Max",
+    "cores": 10,
+    "memoryGiB": 32,
+    "os": "macOS 27.0.1 (26A434)",
+    "xcode": "27.2 (27B52)",
+    "swift": "6.4.2"
+  },
+  "limits": [
+    "Live root scans are not controlled datasets.",
+    "Root coverage is partial; protected paths remain unreadable.",
+    "Fresh-process probes do not control the kernel metadata cache or other host load.",
+    "sampled RSS and getrusage max RSS are distinct measures."
+  ],
+  "rootEngineRuns": [
+    {
+      "revision": "f28bc079043dcfeb77e92fda4ac0958723bada39",
+      "seconds": 64.85850725,
+      "files": 4522312,
+      "directoriesIncludingRoot": 1297265,
+      "coverageGaps": 303,
+      "sampledPeakRssBytes": 2084716544,
+      "getrusagePeakRssBytes": 1968816128
+    },
+    {
+      "revision": "301cb2506118442f9f2b28f774fb38252dd5295c",
+      "seconds": 50.843039584,
+      "files": 4522337,
+      "directoriesIncludingRoot": 1297266,
+      "coverageGaps": 303,
+      "sampledPeakRssBytes": 2143223808,
+      "getrusagePeakRssBytes": 2143223808
+    },
+    {
+      "revision": "2a9c99f33a22f94d06c29b81e7562e2836e6bb67",
+      "seconds": 186.115229417,
+      "files": 4508017,
+      "directoriesIncludingRoot": 1295899,
+      "coverageGaps": 303,
+      "sampledPeakRssBytes": 1456357376,
+      "getrusagePeakRssBytes": 1349042176
+    }
+  ],
+  "nativeQualification": [
+    {
+      "revision": "f28bc079043dcfeb77e92fda4ac0958723bada39",
+      "debugTestsPassed": 54,
+      "releaseBuild": "passed"
+    },
+    {
+      "revision": "c9a64360acf1f2183c1f7ddd440bfdc50d81b562",
+      "debugTestsPassed": 59,
+      "releaseBuild": "passed"
+    },
+    {
+      "revision": "301cb2506118442f9f2b28f774fb38252dd5295c",
+      "debugTests": "compile failed: optional-return inference",
+      "releaseBuild": "compile failed: optional-return inference",
+      "fixedBy": "4bfe423"
+    },
+    {
+      "revision": "2a9c99f33a22f94d06c29b81e7562e2836e6bb67",
+      "debugTestsPassed": 67,
+      "debugTestsFailed": 1,
+      "debugFailure": "Stale result string expectation, fixed by f80598c",
+      "releaseBuild": "passed",
+      "rootApp": {
+        "configuration": "Debug",
+        "stopReason": "300 second deadline",
+        "completed": false,
+        "sampledPeakRssBytes": 546045952
+      },
+      "fixture": {
+        "files": 124581,
+        "directoriesIncludingRoot": 455,
+        "uniqueUrls": 125036,
+        "missingIdentity": 0,
+        "unstableIdentity": 0,
+        "coverageGaps": 0
+      },
+      "visualLimits": [
+        "Selected details were empty; fixture selection added in f80598c.",
+        "Confirmation cacheDisplay bitmap unreadable; real-window proof pending.",
+        "No keyboard or drag input proof."
+      ]
+    },
+    {
+      "revision": "f80598ccde649060707d9bc993ad24fee0ce8481",
+      "debugTestsPassed": 68,
+      "releaseBuild": "passed",
+      "confirmation": "Real compositor capture readable; earlier cacheDisplay bitmap was not accepted."
+    },
+    {
+      "revision": "5836a6822f5218fdd20416f6cd7e75105e5f9f13",
+      "debugTestsPassed": 68,
+      "releaseBuild": "passed",
+      "finiteUiVariants": 7,
+      "finiteAutoquit": "passed",
+      "reviewFirstOpen": "Failed: empty 100x80 sheet, fixed by a0626c4."
+    },
+    {
+      "revision": "163c245770ffde073c6aa1c6c511154b9de11251",
+      "debugTestsPassed": 69,
+      "releaseBuild": "passed",
+      "realInputProof": [
+        "Global HID drag from Media chart wedge to Cleanup List.",
+        "Populated 700x620 Review at first opening and two repeat openings.",
+        "Trash confirmation and permanent confirmation opened; AX Cancel dismissed both.",
+        "Command-Control-I opened Details once."
+      ],
+      "toolProof": [
+        "Browse by Type totals and Video expansion match known fixture.",
+        "Big & Old Files has zero matches at 1GB and 100MB.",
+        "Search example returns one 2MiB PDF in Downloads.",
+        "Duplicates returns no matches."
+      ],
+      "finiteUiVariants": 7,
+      "finiteAutoquit": "Failed at 120-second deadline; narrow teardown fix fd1d84e needs qualification.",
+      "nativeLimits": [
+        "Escape guard refused to post because frontmost PID differed.",
+        "Full keyboard focus and native query/source-change reset unproved."
+      ],
+      "fixtureHashesUnchanged": true
+    },
+    {
+      "revision": "298201d1981266dd867a98cb2a399edc152fabe9",
+      "qualified": false,
+      "debugTestsPassed": 69,
+      "debugTestsFailed": 1,
+      "debugFailure": "Resource fork allocation 20480 in scan versus 4096 in Foundation live check. Four issues in one test.",
+      "fixedBy": "0fcd162 pending native qualification",
+      "releaseBuild": "passed",
+      "finiteUiVariants": 7,
+      "finiteAutoquit": "passed",
+      "finiteWallSeconds": 8.813,
+      "finiteAttachedSheet": false,
+      "fixtureLiveIdentityAuditRuns": 3,
+      "fixtureFiles": 124581,
+      "fixtureDirectoriesIncludingRoot": 455,
+      "fixtureUniqueUrls": 125036,
+      "fixtureIdentityMismatches": 0,
+      "fixtureCoverageGaps": 0,
+      "auditTimeLimit": "13.26-16.31 seconds includes per-node live checks, not scan-only timing.",
+      "capacityRefreshRegression": "passed",
+      "fixtureHashesUnchanged": true
+    },
+    {
+      "revision": "0fcd1629c9b1c04d3d8a3c82736b9b42050e4afd",
+      "debugTestsPassed": 70,
+      "debugTestsFailed": 0,
+      "releaseBuild": "passed",
+      "resourceForkRemoval": "passed",
+      "capacityRefresh": "passed",
+      "fixtureStableIdentities": 125036,
+      "fixtureIdentityMismatches": 0,
+      "fixtureCoverageGaps": 0,
+      "fixtureHashesUnchanged": true
+    },
+    {
+      "revision": "7319f83bee28f3446eddc4b2420b8c2b8b0cda28",
+      "debugTestsPassed": 72,
+      "releaseBuild": "passed",
+      "literalPathMatching": "passed, all37productioncontainsneedles covered",
+      "protectedDescendantPaths": "passed, all6typesunderASCIIandUnicodehomes",
+      "controlledClassifierEquivalence": "passed",
+      "fixtureHashesUnchanged": true
+    },
+    {
+      "revision": "cbdeeb964f09b0e3827999d6498db7b76eb93e98",
+      "debugTestsPassed": 72,
+      "releaseBuild": "passed",
+      "releaseExecutableSha256": "c076a63448a7af1cd0956185aa6cb174800c1db967df0862cc225d94f3c65562",
+      "sourceRefreshMainThread": false,
+      "sourceRefreshSeconds": 0.001,
+      "sourceRefreshSelectionRetained": true,
+      "sourcesHideShow": "passed",
+      "fixtureHashesUnchanged": true,
+      "sourceFilesMatched": 55,
+      "limits": [
+        "AX did not capture the one-millisecond in-flight refresh state.",
+        "Concurrent custom additions and refresh saturation not forced.",
+        "Full keyboard focus, Escape and native Finder-driven Search reset remain unproved."
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at301cb250",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at2a9c99f",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/atf80598c",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at5836a68",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at163c245",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at298201d-79721",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at0fcd162-1794154444",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-7319-qualify-1794155368",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-cbdeeb9-qualify",
+      "report": "REPORT.md"
+    }
+  ],
+  "rootAppRuns": [
+    {
+      "revision": "f80598ccde649060707d9bc993ad24fee0ce8481",
+      "configuration": "Release",
+      "completed": true,
+      "seconds": 132.56,
+      "files": 4465626,
+      "directoriesIncludingRoot": 1285043,
+      "sampledPeakRssBytes": 1647722496,
+      "heartbeatMilliseconds": 228.9,
+      "coverageGaps": null,
+      "coverageLimit": "Not logged; directory counters do not establish complete coverage."
+    },
+    {
+      "revision": "5836a6822f5218fdd20416f6cd7e75105e5f9f13",
+      "configuration": "Release",
+      "completed": true,
+      "seconds": 96.69,
+      "files": 4469000,
+      "directoriesIncludingRoot": 1285196,
+      "sampledPeakRssBytes": 1648885760,
+      "heartbeatMilliseconds": 120.8,
+      "coverageGaps": null,
+      "coverageLimit": "Not logged. This is a live root, not a controlled comparison."
+    },
+    {
+      "revision": "298201d1981266dd867a98cb2a399edc152fabe9",
+      "configuration": "Release",
+      "completed": true,
+      "seconds": 134.52,
+      "filesLastObserved": 4476804,
+      "directoriesIncludingRoot": 1284487,
+      "sampledPeakRssBytes": 1650032640,
+      "heartbeatMilliseconds": 4093.7,
+      "coverageState": "partial",
+      "coverageGaps": 303,
+      "limits": [
+        "Last progress file count, not a separately logged final count.",
+        "A 4.09-second heartbeat interval prevents a continuously responsive claim."
+      ]
+    },
+    {
+      "revision": "0fcd1629c9b1c04d3d8a3c82736b9b42050e4afd",
+      "configuration": "Release",
+      "completed": false,
+      "stopReason": "240.115-second deadline",
+      "profiled": true,
+      "sampleSessions": 28,
+      "sampledPeakRssBytes": 1656635392,
+      "filesLastObserved": 4535670,
+      "directoriesLastObserved": 1296950,
+      "coverageGaps": null,
+      "heartbeatMilliseconds": null,
+      "hotStacks": [
+        "CleanupClassifier.rules.first and Foundation substring search.",
+        "CleanupClassifier.hasProtectedDescendant and protectedCategory.",
+        "Sidebar.reloadVolumes -> StorageSourceDiscovery on main thread in one sample."
+      ],
+      "limits": [
+        "28 sample sessions add overhead; no unprofiled estimate.",
+        "No final summary, coverage or heartbeat emitted before termination.",
+        "Staging and chart causes remain unproved."
+      ]
+    },
+    {
+      "revision": "7319f83bee28f3446eddc4b2420b8c2b8b0cda28",
+      "configuration": "Release",
+      "completed": true,
+      "profiled": false,
+      "seconds": 140.13,
+      "filesLastObserved": 4478944,
+      "directoriesIncludingRoot": 1285701,
+      "sampledPeakRssBytes": 1655701504,
+      "heartbeatMilliseconds": 1717.0,
+      "coverageState": "partial",
+      "coverageGaps": 303,
+      "limits": [
+        "No exact internal phase durations.",
+        "No sample at heartbeat gap.",
+        "Live filesystem and host load varied."
+      ]
+    },
+    {
+      "revision": "cbdeeb964f09b0e3827999d6498db7b76eb93e98",
+      "configuration": "Release",
+      "completed": true,
+      "profiled": false,
+      "seconds": 56.37,
+      "phaseElapsedSeconds": {
+        "enumerationFinished": 51.512,
+        "diagnosisFinished": 56.219,
+        "resultsPublished": 56.227
+      },
+      "files": 4478551,
+      "directoriesIncludingRoot": 1285046,
+      "sampledPeakRssBytes": 1655422976,
+      "heartbeatMilliseconds": 113.9,
+      "heartbeatDelaysOver500ms": 0,
+      "coverageState": "partial",
+      "coverageGaps": 303,
+      "appExit": 0,
+      "limits": [
+        "One live root run; filesystem warmth and host load vary.",
+        "303 gaps prevent a full-access completeness claim.",
+        "RSS sampled every five seconds; not kernel high-water mark.",
+        "Two Sources UI operations occurred during enumeration."
+      ]
+    }
+  ],
+  "controlledFixtureComparison": {
+    "revisions": [
+      "301cb2506118442f9f2b28f774fb38252dd5295c",
+      "f80598ccde649060707d9bc993ad24fee0ce8481"
+    ],
+    "files": 124581,
+    "directoriesIncludingRoot": 455,
+    "coverageGaps": 0,
+    "serialSeconds": [
+      [
+        0.645474,
+        0.608423,
+        0.63429
+      ],
+      [
+        0.619715,
+        0.618136,
+        0.681435
+      ]
+    ],
+    "medianPeakRssBytes": [
+      61538304,
+      50003968
+    ],
+    "medianChildBuildMilliseconds": [
+      18.302,
+      12.053
+    ],
+    "limits": [
+      "Alternating warm processes. Kernel cache and host load are not controlled.",
+      "Total time ranges overlap. No robust total-time gain is claimed."
+    ]
+  },
+  "ci": [
+    {
+      "revision": "7fb83866b330d73bee5e6a50572bb996d7d0a127",
+      "nativeTests": 70,
+      "stressTestExecutions": 350,
+      "releaseBuild": "passed",
+      "webChecks": "passed",
+      "scannerRescan": "MATCH",
+      "ciRunId": 42499018642,
+      "qualificationRunId": 42499018771,
+      "skippedReviewServices": [
+        "CodeRabbit",
+        "Macroscope"
+      ]
+    }
+  ],
+  "classifierComparison": {
+    "baseline": "0fcd1629c9b1c04d3d8a3c82736b9b42050e4afd",
+    "candidate": "7319f83bee28f3446eddc4b2420b8c2b8b0cda28",
+    "fixture": "Deterministic in-memory tree with100000 unmatched dirs,100000 ordinary DerivedData files,Unicodeand protected branches.",
+    "baselineCpuSeconds": [
+      5.984602,
+      5.995127,
+      5.984132
+    ],
+    "candidateCpuSeconds": [
+      0.531498,
+      0.525049,
+      0.528163
+    ],
+    "baselineWallSeconds": [
+      6.086471,
+      6.044618,
+      6.06071
+    ],
+    "candidateWallSeconds": [
+      0.535806,
+      0.527112,
+      0.531248
+    ],
+    "recommendations": 7,
+    "resultSha256": "34d4a21d04a94b1896aa0dd1b017e945f30bbea81fe79b625c3e815d67411e71",
+    "resultFields": [
+      "category ID",
+      "path",
+      "risk",
+      "logical bytes",
+      "physical bytes"
+    ],
+    "limits": [
+      "One deterministic synthetic workload.",
+      "Excludes fixture creation, aggregation, hashing and filesystem enumeration.",
+      "Does not predict root pipeline time."
+    ]
+  }
+}
