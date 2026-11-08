@@ -105,8 +105,12 @@ struct RemovalRegressionTests {
         let unrelated = try #require(vm.rootNode?.children.first { $0.name == ".docker" })
         try #require(vm.rescuePlan?.recommendations.contains { $0.node.id == unrelated.id && $0.risk == .protected } == true)
         let bytes = target.physicalSize
+        vm.addToCollector(target)
+        vm.addToCollector(target)
+        try #require(vm.collectorNotice != nil)
         try await vm.deletePermanently([target])
         let summary = try #require(vm.lastRemovalSummary)
+        #expect(vm.collectorNotice == nil)
         #expect(summary.moved == 1 && summary.movedBytes == bytes)
         #expect(summary.held == 0 && summary.failed == 0)
         #expect(summary.permanently)

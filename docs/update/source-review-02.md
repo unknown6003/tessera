@@ -143,3 +143,32 @@ Swift tests: the UI's long modifier chain hit the Swift type-checker limit
 on Xcode 27.2. CI on Xcode 26.6 also hit the limit at `e2a23dc`. The Opus
 writer split the chain and extracted handlers in `f4cc139`; its compile
 proof remains pending.
+
+## UI iteration 3 review and build gates
+
+Independent Opus Standards and Spec reads covered `92aa5e6..eed3503`.
+Standards found no hard rule breach. Its soft findings concern repeated focus
+modifiers, duplicate layout constants and repeated capacity view logic. These
+remain deferred until the UI compiles. DESIGN.md now describes the custom
+cyan focus ring correctly.
+
+Spec found three source defects: several filled Rescue actions, a stale
+browser focus request after focus moves elsewhere, and a focus restore guard
+that accepted another Tessera window. The Opus patch integrated at `8a99b8b`
+uses one dock visibility rule, clears intent on actual map or source focus,
+and checks the exact view's window. The bottom-bar height still needs a native
+measurement. The requested UI overhaul permits the added source hover style.
+
+A separate Opus Risk read covered `92aa5e6..8a99b8b`. It found that an old
+collector refusal notice hides a later removal result and its recovery actions.
+Source inspection confirmed the notice had no removal reset. Accepted removal
+now clears it before background work begins. The existing operation-scoped
+removal regression creates a duplicate-add notice and requires it to be gone
+when the result arrives. Its macOS run and the actual dock path remain pending.
+
+Native Debug and Release builds at exact `8a99b8b` failed before any Swift test
+ran. The previous type-check timeout is gone. A standalone native reproduction
+isolated a new ambiguous initializer to the optional method reference passed
+to CleanupSuggestionsView. An explicit closure compiled in the reproduction.
+The Opus writer is applying that minimal fix. Neither the reproduction nor
+these source reviews qualify the app UI, accessibility or a score of nine.

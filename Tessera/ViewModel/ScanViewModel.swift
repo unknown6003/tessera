@@ -972,6 +972,7 @@ final class ScanViewModel: ObservableObject {
         let targets = topLevelTargets(nodes.filter { !$0.isSynthetic })
         guard !targets.isEmpty else { return }
         isDeleting = true
+        collectorNotice = nil
         lastRemovalSummary = nil
         let removalStarted = DispatchTime.now().uptimeNanoseconds
         Analytics.shared.capture(.cleanupStarted, values: ["items": .integer(targets.count),
