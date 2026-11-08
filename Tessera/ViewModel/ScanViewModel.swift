@@ -324,7 +324,9 @@ final class ScanViewModel: ObservableObject {
             // restoring the cached tree. Cancellation alone is cooperative.
             scanGeneration &+= 1
             scanTask?.cancel()
+            diagnosisTask?.cancel()
             scanTask = nil
+            diagnosisTask = nil
             isScanning = false
         }
         // Cancelling the awaiting Task is not enough: DuplicateFinder runs on a
