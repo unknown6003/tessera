@@ -37,6 +37,17 @@ struct RemovalRegressionTests {
         #expect(FileManager.default.fileExists(atPath: nested.path))
     }
 
+    @Test("Old saved results decode as recoverable Trash moves")
+    func oldResultCompatibility() throws {
+        let json = Data("""
+        {"movedBytes":4096,"failedBytes":0,"failedPaths":[]}
+        """.utf8)
+        let result = try JSONDecoder().decode(RescueVerification.self, from: json)
+        #expect(result.removalMethod == nil)
+        #expect(result.removalTitle == "Moved to Trash")
+        #expect(result.recoveryNote.contains("empty it"))
+    }
+
     @Test("Async cleanup yields the main actor, holds the source, and prunes partial success")
     func responsivePartialCleanup() async throws {
         let url = try fixture()
@@ -44,7 +55,10 @@ struct RemovalRegressionTests {
         for index in 0..<128 {
             try Data(repeating: 1, count: 4096).write(to: url.appendingPathComponent("file-\(index)"))
         }
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         vm.startScan(volumeURL: url)
         let deadline = ContinuousClock.now + .seconds(15)
         while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
@@ -66,6 +80,9 @@ struct RemovalRegressionTests {
             Issue.record("The stale file must fail identity validation")
         } catch { }
         #expect(!vm.isDeleting)
+        #expect(vm.rescueVerification?.removalMethod == .permanent)
+        #expect(vm.rescueVerification?.removalTitle == "Deleted permanently")
+        #expect(vm.savedRescueCase?.verification?.removalMethod == .permanent)
         #expect(vm.deletionProgress == targets.count)
         #expect(root.children.count == 1)
         #expect(root.children.first?.id == stale.id)

@@ -83,7 +83,7 @@ struct CollectorDock: View {
                     .accessibilityValue("\(vm.deletionProgress) of \(vm.deletionTotal)")
             } else {
                 Button("Review list…", action: onReview)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.flatProminent)
                     .disabled(vm.collector.isEmpty || vm.isScanning)
                     .keyboardShortcut("l", modifiers: [.command, .shift])
             }
@@ -231,7 +231,7 @@ struct CleanupReviewSheet: View {
                     .fixedSize()
                     Spacer()
                     Button("Move to Trash…") { onTrash(items.map(\.node)) }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.flatProminent)
                 }
                 .disabled(!isCurrent || items.isEmpty)
             }

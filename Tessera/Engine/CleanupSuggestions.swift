@@ -872,6 +872,10 @@ struct RescuePlan: Sendable {
 
 /// The result vocabulary keeps a successful Trash move separate from verified
 /// volume space. It is pure, so it can be tested without touching real files.
+enum RemovalMethod: String, Codable, Sendable {
+    case trash, permanent
+}
+
 struct RescueVerification: Codable, Equatable, Sendable {
     let requestedBytes: Int64?
     let movedBytes: Int64
@@ -883,6 +887,16 @@ struct RescueVerification: Codable, Equatable, Sendable {
     let measurementMismatchPaths: [String]?
     let before: RescueMeasurement?
     let after: RescueMeasurement?
+
+    // Optional so cases saved before the major update still decode as Trash moves.
+    var removalMethod: RemovalMethod? = nil
+
+    var removalTitle: String { removalMethod == .permanent ? "Deleted permanently" : "Moved to Trash" }
+    var recoveryNote: String {
+        removalMethod == .permanent
+            ? "These items were permanently deleted and cannot be restored from Trash."
+            : "Trash still uses disk space until you empty it."
+    }
 
     var verifiedReclaimedBytes: Int64? {
         guard let before = before?.primaryBytes, let after = after?.primaryBytes else { return nil }
@@ -903,9 +917,9 @@ struct RescueVerification: Codable, Equatable, Sendable {
     var status: String {
         if failedBytes > 0 { return "Some items failed" }
         if movedBytes == 0, (heldBytes ?? 0) > 0 {
-            return "Nothing moved; items held for review"
+            return "Nothing removed; items held for review"
         }
-        if hasMeasurementMismatch { return "Moved, but reclaimed space is not proven" }
+        if hasMeasurementMismatch { return "Removed, but reclaimed space is not proven" }
         if after?.primaryBytes == nil {
             return requestedBytes != nil ? "Target could not be verified" : "Usable space change could not be verified"
         }

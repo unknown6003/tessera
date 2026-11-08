@@ -105,10 +105,13 @@ final class ScanViewModel: ObservableObject {
     /// Diagnostic: true when the last scan ended via CancellationError.
     private(set) var scanTaskWasCancelled = false
 
-    init() {
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         savedRescueCase = nil
         do {
-            savedRescueCase = try RescueCaseStore.load()
+            savedRescueCase = try RescueCaseStore.load(defaults: defaults)
             if let savedGoal = savedRescueCase?.capacityGoal {
                 rescueCapacityGoal = RescuePlan.clampedCapacityGoal(savedGoal)
             }
@@ -557,7 +560,7 @@ final class ScanViewModel: ObservableObject {
     }
 
     func discardSavedRescueCase() {
-        RescueCaseStore.clear()
+        RescueCaseStore.clear(defaults: defaults)
         savedRescueCase = nil
         pendingRescueCase = nil
         restoredRescueCandidateIDs = []
@@ -656,7 +659,7 @@ final class ScanViewModel: ObservableObject {
             errorMessage: lastRescueError
         )
         do {
-            try RescueCaseStore.save(rescueCase)
+            try RescueCaseStore.save(rescueCase, defaults: defaults)
             savedRescueCase = rescueCase
         } catch {
             if lastRescueError == nil {
@@ -883,7 +886,7 @@ final class ScanViewModel: ObservableObject {
             if let root, let source { return RescueMeasurement.capture(volumeURL: source, root: root) }
             return nil as RescueMeasurement?
         }
-        recordRescueResult(before: before, after: after, targets: attemptedTargets, failures: failures,
+        recordRescueResult(before: before, after: after, removalMethod: permanently ? .permanent : .trash, targets: attemptedTargets, failures: failures,
                            measurementMismatchPaths: [], heldNodes: heldTargets,
                            errorMessage: heldError)
         if let heldError { throw RescueActionError.ownerActive(heldError) }
@@ -947,7 +950,7 @@ final class ScanViewModel: ObservableObject {
         }
     }
 
-    private func recordRescueResult(before: RescueMeasurement?, after: RescueMeasurement?, targets: [FileNode],
+    private func recordRescueResult(before: RescueMeasurement?, after: RescueMeasurement?, removalMethod: RemovalMethod, targets: [FileNode],
                                     failures: [DeletionService.DeletionError],
                                     measurementMismatchPaths: [String],
                                     heldNodes: [FileNode] = [],
@@ -984,7 +987,8 @@ final class ScanViewModel: ObservableObject {
                 + unplannedHeldNodes.map { $0.url.standardizedFileURL.path },
             measurementMismatchPaths: measurementMismatchPaths.isEmpty ? nil : measurementMismatchPaths,
             before: before,
-            after: after
+            after: after,
+            removalMethod: removalMethod
         )
         lastRescueError = errorMessage ?? failures.first?.localizedDescription
         rescuePhase = .result

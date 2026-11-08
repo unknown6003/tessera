@@ -44,7 +44,10 @@ struct ViewModelTests {
 
     @Test("Collector add, remove, clear and total size are correct")
     func collectorAddRemoveClear() {
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         let root = makeTree()
         guard let childA = root.children.first(where: { $0.name == "a" }),
               let childB = root.children.first(where: { $0.name == "b" }) else {
@@ -75,7 +78,10 @@ struct ViewModelTests {
 
     @Test("addToCollector does not add the same node twice")
     func collectorNoDuplicates() {
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         let root = makeTree()
         guard let childB = root.children.first(where: { $0.name == "b" }) else {
             Issue.record("Missing childB")
@@ -92,7 +98,10 @@ struct ViewModelTests {
 
     @Test("addToCollector refuses .hiddenSpace and .aggregate nodes")
     func collectorRefusesSynthetic() {
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         let base = URL(fileURLWithPath: "/tmp")
 
         let hiddenNode = FileNode(url: base.appendingPathComponent("hidden"),
@@ -112,7 +121,10 @@ struct ViewModelTests {
 
     @Test("zoomIn only works on directories; zoomOut walks to parent; zoomToRoot restores")
     func zoomNavigation() {
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         let root = makeTree()
         guard let childA = root.children.first(where: { $0.name == "a" }),
               let childB = root.children.first(where: { $0.name == "b" }) else {
@@ -149,7 +161,10 @@ struct ViewModelTests {
 
     @Test("zoomOut is a no-op when currentRoot has no parent")
     func zoomOutAtRoot() {
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         let root = makeTree()
         vm.rootNode = root
         vm.currentRoot = root
@@ -231,7 +246,10 @@ struct ViewModelTests {
         try Data(repeating: 1, count: 100).write(to: a.appendingPathComponent("fa.bin"))
         try Data(repeating: 2, count: 200).write(to: b.appendingPathComponent("fb.bin"))
 
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         func scan(_ url: URL) async {
             vm.startScan(volumeURL: url)
             for _ in 0..<500 where vm.isScanning || vm.rootNode == nil {
@@ -281,7 +299,10 @@ struct ViewModelTests {
         }
         try Data("newest".utf8).write(to: latest.appendingPathComponent("latest.marker"))
 
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         for iteration in 0 ..< 12 {
             vm.startScan(volumeURL: slow)
             await Task.yield()
@@ -303,7 +324,10 @@ struct ViewModelTests {
     func failedScanCanRetry() async throws {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
 
         vm.startScan(volumeURL: missing)
         for _ in 0..<500 where vm.isScanning {
@@ -332,7 +356,10 @@ struct ViewModelTests {
         try payload.write(to: duplicates.appendingPathComponent("copy-b.bin"))
         try Data("other".utf8).write(to: other.appendingPathComponent("other.bin"))
 
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         func scan(_ url: URL) async throws {
             vm.startScan(volumeURL: url)
             for _ in 0..<500 where vm.isScanning || vm.rootNode == nil {
@@ -367,7 +394,10 @@ struct ViewModelTests {
         try Data(repeating: 7, count: 128)
             .write(to: directory.appendingPathComponent("remove-me.bin"))
 
-        let vm = ScanViewModel()
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
         vm.startScan(volumeURL: directory)
         for _ in 0..<500 where vm.isScanning || vm.rootNode == nil {
             try? await Task.sleep(for: .milliseconds(10))

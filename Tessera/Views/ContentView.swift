@@ -399,7 +399,7 @@ struct ContentView: View {
                     Button { vm.startScan(volumeURL: source) } label: {
                         Label("Scan \(sourceName)", systemImage: "magnifyingglass")
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .buttonStyle(.flatProminent).controlSize(.large)
                     .disabled(removalBusy)
                 }
             }
@@ -411,7 +411,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             Label("Full Disk Access needed", systemImage: "lock.shield").font(.title2)
             Text("Grant access in System Settings, then scan again.").foregroundStyle(.secondary)
-            Button("Open System Settings") { vm.openFullDiskAccessSettings() }.buttonStyle(.borderedProminent)
+            Button("Open System Settings") { vm.openFullDiskAccessSettings() }.buttonStyle(.flatProminent)
         }
     }
 
@@ -421,7 +421,7 @@ struct ContentView: View {
             Text(message).foregroundStyle(.secondary).textSelection(.enabled)
             if vm.canRetryLastScan {
                 Button("Try again") { vm.errorMessage = nil; vm.retryLastScan() }
-                    .buttonStyle(.borderedProminent).disabled(removalBusy)
+                    .buttonStyle(.flatProminent).disabled(removalBusy)
             }
             Button("Dismiss") { vm.errorMessage = nil }
         }

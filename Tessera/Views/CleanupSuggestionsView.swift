@@ -518,7 +518,7 @@ struct CleanupSuggestionsView: View {
                 }
             }
 
-            Text("Trash still uses disk space until you empty it.")
+            Text(verification.recoveryNote)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -528,7 +528,7 @@ struct CleanupSuggestionsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            pathDisclosure(title: "Moved paths", paths: verification.movedPaths)
+            pathDisclosure(title: verification.removalMethod == .permanent ? "Deleted paths" : "Moved paths", paths: verification.movedPaths)
             pathDisclosure(title: "Held paths", paths: verification.heldPaths)
             pathDisclosure(title: "Paths that did not match", paths: verification.measurementMismatchPaths)
             pathDisclosure(title: "Failed paths", paths: verification.failedPaths)
@@ -540,7 +540,7 @@ struct CleanupSuggestionsView: View {
 
     @ViewBuilder
     private func verificationMetrics(_ verification: RescueVerification) -> some View {
-        metric("Moved to Trash", Theme.format(verification.movedBytes))
+        metric(verification.removalTitle, Theme.format(verification.movedBytes))
         metric("Failed", Theme.format(verification.failedBytes))
         if let reclaimed = verification.verifiedReclaimedBytes {
             metric(verification.hasMeasurementMismatch ? "Measured change" : "Verified change",
