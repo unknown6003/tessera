@@ -19,6 +19,8 @@ def main():
     args = parser.parse_args()
     source = Path(__file__).resolve().parent.parent
     state = args.state.resolve()
+    if any(character in str(state) for character in ("\n", "\r")):
+        raise ValueError("CI state path must not contain a line break")
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = (state / "runner.lock").open("w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -68,7 +70,7 @@ def main():
         quote = lambda text: '"' + text.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
         (folder / (name + ".service")).write_text(
             "[Unit]\nDescription=Tessera external CI\n[Service]\nType=oneshot\n"
-            + "WorkingDirectory=" + quote(str(code)) + "\nExecStart=" + " ".join(quote(item) for item in command)
+            + "WorkingDirectory=" + str(code).replace("%", "%%") + "\nExecStart=" + " ".join(quote(item) for item in command)
             + "\nTimeoutStartSec=3930\nKillMode=control-group\nNice=10\nUMask=0077\n"
             + 'Environment="PATH=' + path_env + '"\n')
         (folder / (name + ".timer")).write_text(

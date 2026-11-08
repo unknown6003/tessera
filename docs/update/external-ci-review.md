@@ -33,3 +33,11 @@ lanes must run the exact final source. The legacy publisher and stale
 release instructions remain separate work. The flat-toolbar native proof
 is recorded in `ui-iteration-4.md`; its final one-line divider removal
 requires a fresh build and capture.
+
+## First installation
+
+Linux rejected a quoted `WorkingDirectory=` value. The installer now writes
+that path without shell quotes, with systemd percent escaping. State paths
+with line breaks are refused. `systemd-analyze --user verify` then passed
+and the web timer became active. This is service readiness, not a passing
+CI job. The signed live campaigns still remain to be run.
