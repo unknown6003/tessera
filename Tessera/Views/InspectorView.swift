@@ -2,6 +2,7 @@ import SwiftUI
 
 struct InspectorView: View {
     @ObservedObject var vm: ScanViewModel
+    @State private var largestRows: [FileNode] = []
 
     private var inspectedNode: FileNode? {
         vm.selectedNode
@@ -20,6 +21,10 @@ struct InspectorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg)
         .disabled(vm.isDeleting || vm.isScanning)
+    }
+
+    private func refreshLargestRows() {
+        largestRows = inspectedNode?.largestChildren(limit: 5) ?? []
     }
 
     // MARK: - Details Section
@@ -97,7 +102,7 @@ struct InspectorView: View {
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 6)
 
-            ForEach(node.largestChildren(limit: 5)) { child in
+            ForEach(largestRows) { child in
                 Button {
                     vm.selectedNode = child
                 } label: {

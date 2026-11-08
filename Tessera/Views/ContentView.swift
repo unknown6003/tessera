@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var showInspector = false
     @State private var showCompactInspector = false
     @State private var windowWidth: CGFloat = 1240
+    @State private var largestRows: [FileNode] = []
     @State private var queuedReviewAction: RemovalSnapshot?
     @State private var queuedReviewIsPermanent = false
     @State private var showReview = false
@@ -130,6 +131,8 @@ struct ContentView: View {
         .transaction { if reduceMotion { $0.animation = nil } }
         .onChange(of: vm.isScanning, initial: true) { _, _ in syncUpdaterBusy() }
         .onChange(of: vm.isDeleting) { _, _ in syncUpdaterBusy() }
+        .onChange(of: vm.currentRoot?.id, initial: true) { _, _ in refreshLargestRows() }
+        .onChange(of: vm.chartRevision) { _, _ in refreshLargestRows() }
         .onChange(of: removalRequested) { _, _ in syncUpdaterBusy() }
         .onChange(of: vm.collector.isEmpty) { _, _ in syncUpdaterBusy() }
         .sheet(isPresented: $showReview, onDismiss: finishReview) {
@@ -323,12 +326,16 @@ struct ContentView: View {
             .disabled(removalBusy)
     }
 
+    private func refreshLargestRows() {
+        largestRows = vm.currentRoot?.largestChildren(limit: 5) ?? []
+    }
+
     private var largestItems: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Largest items").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             ScrollView {
                 VStack(spacing: 0) {
-                    ForEach(vm.currentRoot?.largestChildren(limit: 5) ?? []) { node in
+                    ForEach(largestRows) { node in
                         HStack(spacing: 6) {
                             Button { vm.selectedNode = node } label: {
                                 HStack(spacing: 8) {
@@ -366,7 +373,7 @@ struct ContentView: View {
         .accessibilityLabel("Largest items")
         .onMoveCommand { direction in
             guard !removalBusy else { return }
-            let nodes = vm.currentRoot?.largestChildren(limit: 5) ?? []
+            let nodes = largestRows
             guard !nodes.isEmpty else { return }
             let index = nodes.firstIndex { $0.id == vm.selectedNode?.id }
             if direction == .down { vm.selectedNode = nodes[min(nodes.count - 1, (index ?? -1) + 1)] }
