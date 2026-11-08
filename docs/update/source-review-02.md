@@ -136,3 +136,10 @@ has its own finally block. Three independent Codex Standards, Spec and Risk
 reads retained no finding in `0c615a8..37e7e6e`. All 20 Python tests pass on
 Linux, including the transient denial, lasting denial and cleanup-error cases.
 Fresh macOS proof remains required. No app source changed in this delta.
+
+The later native run at `eed3503` passed all 20 Python checks and five real
+child-cleanup trials. The runner fix has macOS proof. That run compiled no
+Swift tests: the UI's long modifier chain hit the Swift type-checker limit
+on Xcode 27.2. CI on Xcode 26.6 also hit the limit at `e2a23dc`. The Opus
+writer split the chain and extracted handlers in `f4cc139`; its compile
+proof remains pending.

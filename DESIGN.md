@@ -204,7 +204,9 @@ an opaque-window configurator + one solid panel modifier.
   Trash first, as the default**.
 - ✅ **Hidden Space snapshot deletion is confirmed** (both "Delete all" and
   per-snapshot) — it previously deleted with no confirmation at all.
-- ✅ **Keyboard focus restored** (`.focusEffectDisabled()` removed).
+- Keyboard focus uses custom cyan marks on Tessera buttons and rows. Native
+  controls keep the system effect. The latest UI still needs native keyboard
+  checks.
 - ✅ **Error card offers "Try Again"**, not just "Dismiss".
 - ✅ **De-jargoned:** tool bar ("Apps"→"Uninstall Apps", "By Kind"→"Browse by
   Type", "Large & Old"→"Big & Old Files", "Search"→"Search Files"); Hidden Space
