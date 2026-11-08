@@ -18,11 +18,15 @@ struct InspectorView: View {
             VStack(alignment: .leading, spacing: 16) {
                 detailsSection
             }
-            .padding(16)
+            // 12 pt top inset: the same line as the "In this folder" header.
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // No panel fill: the window background shows through, so empty space
+        // below short content does not read as a large filled box.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.bg)
         .disabled(vm.isDeleting || vm.isScanning)
         .onChange(of: inspectedNode?.id, initial: true) { _, _ in refreshLargestRows() }
         .onChange(of: vm.chartRevision) { _, _ in refreshLargestRows() }
@@ -106,7 +110,7 @@ struct InspectorView: View {
     @ViewBuilder
     private func topChildrenList(_ node: FileNode) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Largest Items")
+            Text("Largest items")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 6)
@@ -133,7 +137,7 @@ struct InspectorView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .buttonStyle(.interactive)
+                .buttonStyle(.interactive).focusEffectDisabled()
                 .contentShape(Rectangle())
                 .help(child.name)
             }
@@ -160,7 +164,7 @@ struct InspectorView: View {
                         Label("Add to Cleanup List", systemImage: "plus")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.flat)
+                    .buttonStyle(.flat).focusEffectDisabled()
                     .help("Add to Cleanup List (⌘⌫)")
                 }
                 HStack(spacing: 16) {
@@ -172,7 +176,7 @@ struct InspectorView: View {
                         NSWorkspace.shared.activateFileViewerSelecting([node.url])
                     }
                 }
-                .buttonStyle(.interactive)
+                .buttonStyle(.interactive).focusEffectDisabled()
                 .font(.callout)
                 .foregroundStyle(Theme.electricBlue)
             }
@@ -193,9 +197,11 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func sectionLabel(_ text: String) -> some View {
+        // One column-header style across Details and the browser.
         Text(text)
-            .font(.headline.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
     }
 
     /// The same colour as the node's wedge, at any depth. A folder with no

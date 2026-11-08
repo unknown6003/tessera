@@ -56,7 +56,7 @@ struct AppUninstallerView: View {
             Label("Scan installed apps", systemImage: "app.badge")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.flat)
+        .buttonStyle(.flat).focusEffectDisabled()
         .controlSize(.large)
     }
 
@@ -92,7 +92,7 @@ struct AppUninstallerView: View {
                 Button { Task { await load() } } label: {
                     Image(systemName: "arrow.clockwise").font(.caption)
                 }
-                .buttonStyle(.interactive).foregroundStyle(.tint)
+                .buttonStyle(.interactive).focusEffectDisabled().foregroundStyle(.tint)
                 .help("Rescan installed apps")
             }
 
@@ -124,7 +124,7 @@ struct AppUninstallerView: View {
                 } label: {
                     Text("Add all").font(.caption.weight(.medium))
                 }
-                .buttonStyle(.flat)
+                .buttonStyle(.flat).focusEffectDisabled()
                 .controlSize(.small)
                 .disabled(orphans.allSatisfy { vm.isOrphanGroupStaged($0) })
             }
@@ -166,7 +166,7 @@ struct AppUninstallerView: View {
                 } label: {
                     Image(systemName: "magnifyingglass").font(.caption)
                 }
-                .buttonStyle(.interactive).foregroundStyle(.tint)
+                .buttonStyle(.interactive).focusEffectDisabled().foregroundStyle(.tint)
                 .help("Reveal in Finder")
                 Button {
                     vm.stageOrphanGroup(group)
@@ -175,7 +175,7 @@ struct AppUninstallerView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(staged ? Theme.electricBlue : Color.accentColor)
                 }
-                .buttonStyle(.interactive)
+                .buttonStyle(.interactive).focusEffectDisabled()
                 .disabled(staged)
                 .help(staged ? "Added to Cleanup List" : "Add to Cleanup List")
             }
@@ -217,7 +217,7 @@ struct AppUninstallerView: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.interactive)
+        .buttonStyle(.interactive).focusEffectDisabled()
         .padding(.vertical, 2)
     }
 
@@ -232,7 +232,7 @@ struct AppUninstallerView: View {
                 Label("All apps", systemImage: "chevron.left")
                     .font(.caption.weight(.medium))
             }
-            .buttonStyle(.interactive).foregroundStyle(.tint)
+            .buttonStyle(.interactive).focusEffectDisabled().foregroundStyle(.tint)
 
             HStack(spacing: 8) {
                 appIcon(app.appURL, size: 26)
@@ -258,7 +258,7 @@ struct AppUninstallerView: View {
                       systemImage: staged ? "checkmark" : "trash")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.flatProminent)
+            .buttonStyle(.flatProminent).focusEffectDisabled()
             .controlSize(.large)
             .disabled(staged)
 
@@ -311,7 +311,7 @@ struct AppUninstallerView: View {
                 } label: {
                     Image(systemName: "magnifyingglass").font(.caption)
                 }
-                .buttonStyle(.interactive).foregroundStyle(.tint)
+                .buttonStyle(.interactive).focusEffectDisabled().foregroundStyle(.tint)
                 .help("Reveal in Finder")
             }
             HStack(spacing: 4) {

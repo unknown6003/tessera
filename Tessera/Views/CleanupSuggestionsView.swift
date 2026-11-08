@@ -11,8 +11,10 @@ struct CleanupSuggestionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            if let saved = vm.savedRescueCase {
-                savedCaseRow(saved)
+            // With a plan, the header comes first and the saved case sits
+            // under it as a banner (see planView).
+            if vm.rescuePlan == nil, let saved = vm.savedRescueCase {
+                savedCaseRow(saved, showsPath: true)
             }
 
             if let plan = vm.rescuePlan {
@@ -35,6 +37,11 @@ struct CleanupSuggestionsView: View {
     private func planView(_ plan: RescuePlan) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             planHeader(plan)
+            if let saved = vm.savedRescueCase {
+                // The header already shows this path; show it again only if
+                // the saved case is for a different source.
+                savedCaseRow(saved, showsPath: saved.sourcePath != plan.sourcePath)
+            }
             measurementCard(plan)
 
             if let verification = vm.rescueVerification {
@@ -103,7 +110,9 @@ struct CleanupSuggestionsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .truncationMode(.middle)
-                Text("Everything stays on this Mac. Review the paths before anything moves.")
+                // File analysis is local; anonymous usage data is not, so this
+                // line says only what is true.
+                Text("File analysis runs on this Mac. Review the paths before anything moves.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -131,11 +140,12 @@ struct CleanupSuggestionsView: View {
 
         return VStack(alignment: .leading, spacing: 14) {
             ViewThatFits(in: .horizontal) {
+                // Available and target share one size and one baseline.
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(primary.map(Theme.format) ?? "Unknown")
-                            .font(.largeTitle.weight(.semibold).monospacedDigit())
-                        Text("available now")
+                            .font(.title2.weight(.semibold).monospacedDigit())
+                        Text(primaryLabel(plan.measurement))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -144,7 +154,7 @@ struct CleanupSuggestionsView: View {
 
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(targetTitle(plan))
-                            .font(.title3.weight(.semibold).monospacedDigit())
+                            .font(.title2.weight(.semibold).monospacedDigit())
                             .foregroundStyle(targetColor(plan))
                         Text(targetLabel(plan))
                             .font(.subheadline)
@@ -157,14 +167,14 @@ struct CleanupSuggestionsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(primary.map(Theme.format) ?? "Unknown")
-                            .font(.largeTitle.weight(.semibold).monospacedDigit())
-                        Text("available now")
+                            .font(.title2.weight(.semibold).monospacedDigit())
+                        Text(primaryLabel(plan.measurement))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(targetTitle(plan))
-                            .font(.title3.weight(.semibold).monospacedDigit())
+                            .font(.title2.weight(.semibold).monospacedDigit())
                             .foregroundStyle(targetColor(plan))
                         Text(targetLabel(plan))
                             .font(.subheadline)
@@ -173,15 +183,17 @@ struct CleanupSuggestionsView: View {
                 }
             }
 
+            capacityNotes(plan)
+
             if let fraction {
                 ProgressView(value: fraction)
                     .tint(targetColor(plan))
-                    .accessibilityLabel("Free capacity")
+                    .accessibilityLabel(primaryLabel(plan.measurement))
                     .accessibilityValue(primary.map(Theme.format) ?? "Unknown")
                 HStack {
-                    Text("Free capacity")
+                    Text(primaryLabel(plan.measurement))
                     Spacer()
-                    Text("Goal: \(100 - capacityGoalPercent)% free")
+                    Text("Goal: under \(capacityGoalPercent)% used")
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -189,14 +201,14 @@ struct CleanupSuggestionsView: View {
 
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 20) {
-                    metric("Free", plan.measurement.freeBytes.map(Theme.format) ?? "Unknown")
+                    secondaryFreeMetric(plan.measurement)
                     metric("Logical", Theme.format(plan.measurement.logicalBytes))
                     metric("Physical", Theme.format(plan.measurement.physicalBytes))
                 }
                 .fixedSize(horizontal: true, vertical: false)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    metric("Free", plan.measurement.freeBytes.map(Theme.format) ?? "Unknown")
+                    secondaryFreeMetric(plan.measurement)
                     metric("Logical", Theme.format(plan.measurement.logicalBytes))
                     metric("Physical", Theme.format(plan.measurement.physicalBytes))
                 }
@@ -317,12 +329,12 @@ struct CleanupSuggestionsView: View {
             if let action, let actionTitle {
                 if prominent {
                     Button(actionTitle, action: action)
-                        .buttonStyle(.flatProminent)
+                        .buttonStyle(.flatProminent).focusEffectDisabled()
                         .controlSize(.small)
                         .disabled(actionDisabled)
                 } else {
                     Button(actionTitle, action: action)
-                        .buttonStyle(.flat)
+                        .buttonStyle(.flat).focusEffectDisabled()
                         .controlSize(.small)
                         .disabled(actionDisabled)
                 }
@@ -384,7 +396,7 @@ struct CleanupSuggestionsView: View {
                         Button(vm.isGroupStaged(group) ? "Added" : "Add") {
                             vm.toggleCleanupGroup(group)
                         }
-                        .buttonStyle(.flat)
+                        .buttonStyle(.flat).focusEffectDisabled()
                         .controlSize(.small)
                     } else {
                         Text("Owner handoff")
@@ -418,7 +430,7 @@ struct CleanupSuggestionsView: View {
                         .foregroundStyle(vm.isCollected(recommendation.node)
                                          ? Theme.electricBlue : Theme.mutedForeground)
                 }
-                .buttonStyle(.interactive)
+                .buttonStyle(.interactive).focusEffectDisabled()
                 .disabled(recommendation.risk == .protected || vm.isDeleting || vm.isScanning)
                 .help(vm.isCollected(recommendation.node)
                       ? "Remove from the Cleanup List" : "Add to the Cleanup List")
@@ -590,34 +602,28 @@ struct CleanupSuggestionsView: View {
             .overlay(alignment: .bottom) { Divider() }
     }
 
-    private func savedCaseRow(_ saved: SavedRescueCase) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 8) {
-                Image(systemName: "bookmark.fill")
-                    .foregroundStyle(.tint)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Saved rescue case")
-                        .font(.headline.weight(.semibold))
-                    Text("Kept on this Mac. A fresh scan is required before staging anything.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+    /// A compact banner: one line of status with its two actions, the path
+    /// only when the header does not already show it.
+    private func savedCaseRow(_ saved: SavedRescueCase, showsPath: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    savedCaseTitle
+                    Spacer(minLength: 8)
+                    savedCaseActions
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    savedCaseTitle
+                    savedCaseActions
                 }
             }
 
-            Text(saved.sourcePath)
-                .font(.caption.monospaced())
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                Button("Reopen and rescan") { vm.reopenSavedRescueCase() }
-                    .buttonStyle(.flatProminent)
-                    .controlSize(.small)
-                    .disabled(vm.isScanning)
-                Button("Forget") { vm.discardSavedRescueCase() }
-                    .buttonStyle(.flat)
-                    .controlSize(.small)
+            if showsPath {
+                Text(saved.sourcePath)
+                    .font(.caption.monospaced())
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.secondary)
             }
 
             if vm.restoredRescueCaseIsStale {
@@ -630,7 +636,7 @@ struct CleanupSuggestionsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Button("Stage for review") { vm.stageRestoredRescueCase() }
-                        .buttonStyle(.flat)
+                        .buttonStyle(.flat).focusEffectDisabled()
                         .controlSize(.small)
                 }
                 Text("Nothing is staged until you choose this action.")
@@ -638,9 +644,10 @@ struct CleanupSuggestionsView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var emptyPlan: some View {
@@ -709,13 +716,75 @@ struct CleanupSuggestionsView: View {
             } label: {
                 Label("Review Cleanup List…", systemImage: "checklist")
             }
-            .buttonStyle(.flatProminent)
+            .buttonStyle(.flatProminent).focusEffectDisabled()
             .controlSize(.regular)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    /// The headline figure is `primaryBytes`: macOS "available for important
+    /// usage" when known (it counts space macOS can reclaim from caches and
+    /// other purgeable files), else plain free space. The label follows the
+    /// value actually shown.
+    private func primaryLabel(_ measurement: RescueMeasurement) -> String {
+        measurement.availableBytes != nil ? "Available for use" : "Free now"
+    }
+
+    @ViewBuilder
+    private func capacityNotes(_ plan: RescuePlan) -> some View {
+        let notes = [
+            plan.measurement.availableBytes != nil
+                ? "Available for use counts space macOS can reclaim by removing caches and other purgeable files. Free now is the space macOS reports as free at this moment."
+                : nil,
+            plan.measurement.volumePath != plan.sourcePath
+                ? "These figures are for the whole volume, not only the selected folder."
+                : nil,
+        ].compactMap { $0 }
+        if !notes.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(notes, id: \.self) { note in
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    /// Plain free space, shown beside the headline only when the headline is
+    /// the larger "available for use" figure.
+    @ViewBuilder
+    private func secondaryFreeMetric(_ measurement: RescueMeasurement) -> some View {
+        if measurement.availableBytes != nil {
+            metric("Free now", measurement.freeBytes.map(Theme.format) ?? "Unknown")
+        }
+    }
+
+    private var savedCaseTitle: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bookmark.fill")
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            Text("Saved rescue case. Rescan before staging anything.")
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var savedCaseActions: some View {
+        HStack(spacing: 8) {
+            Button("Reopen and rescan") { vm.reopenSavedRescueCase() }
+                .buttonStyle(.flatProminent).focusEffectDisabled()
+                .controlSize(.small)
+                .disabled(vm.isScanning)
+            Button("Forget") { vm.discardSavedRescueCase() }
+                .buttonStyle(.flat).focusEffectDisabled()
+                .controlSize(.small)
+        }
     }
 
     private func metric(_ label: String, _ value: String) -> some View {
@@ -755,7 +824,7 @@ struct CleanupSuggestionsView: View {
             return "capacity target unavailable"
         }
         return target > available
-            ? "more free space to reach \(capacityGoalPercent)% used"
+            ? "more space needed to reach \(capacityGoalPercent)% used"
             : "\(capacityGoalPercent)% used limit met"
     }
 

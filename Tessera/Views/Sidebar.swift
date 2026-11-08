@@ -139,7 +139,7 @@ struct Sidebar: View {
                     .font(.headline.weight(.semibold))
                 Text("Sources")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.mutedForeground)
             }
             Spacer()
             Button {
@@ -148,7 +148,7 @@ struct Sidebar: View {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 12, weight: .semibold))
             }
-            .buttonStyle(.icon)
+            .buttonStyle(.icon).focusEffectDisabled()
             .help("Refresh sources")
             .disabled(isReloadingSources)
         }
@@ -174,21 +174,29 @@ struct Sidebar: View {
                                isCached: vm.scannedURL != info.url && vm.hasCachedScan(for: info.url))
                 }
                 .buttonStyle(.plain)
+                // The selection fill marks the row; a 1 pt ring marks keyboard
+                // focus. The system ring would use the user's system accent.
+                .focusEffectDisabled()
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Theme.electricBlue, lineWidth: 2)
+                        .strokeBorder(Theme.electricBlue, lineWidth: 1)
                         .opacity(sourcesFocused && selectedVolumeURL == info.url ? 1 : 0)
                         .allowsHitTesting(false)
                 )
                 .id(info.url)
-                .disabled(vm.isDeleting || vm.isScanning)
+                // Busy: the action is off, the text stays readable. `selectSource`
+                // and the key handler also refuse while scanning or removing.
+                .allowsHitTesting(!sourcesBusy)
                 .accessibilityAddTraits(selectedVolumeURL == info.url ? [.isSelected] : [])
                 .accessibilityLabel(Text(info.name))
                 .accessibilityValue(Text(sourceAccessibilityValue(info)))
-                .accessibilityHint("Select or display this storage source")
+                .accessibilityHint(sourcesBusy ? "Unavailable while a scan or cleanup runs"
+                                               : "Select or display this storage source")
             }
         }
     }
+
+    private var sourcesBusy: Bool { vm.isDeleting || vm.isScanning }
 
     private func selectSource(_ info: VolumeInfo) {
         guard !vm.isDeleting, !vm.isScanning else { return }
@@ -251,7 +259,10 @@ struct Sidebar: View {
 
     @ViewBuilder
     private func addRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button {
+            guard !sourcesBusy else { return }
+            action()
+        } label: {
             HStack(spacing: 9) {
                 Image(systemName: icon)
                     .foregroundStyle(.secondary)
@@ -265,8 +276,9 @@ struct Sidebar: View {
             .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .disabled(vm.isDeleting || vm.isScanning)
+        .buttonStyle(.interactive).focusEffectDisabled()
+        .allowsHitTesting(!sourcesBusy)
+        .accessibilityHint(sourcesBusy ? "Unavailable while a scan or cleanup runs" : "")
     }
 
     @ViewBuilder
@@ -298,12 +310,10 @@ struct Sidebar: View {
                     Image(systemName: updater.status.symbol)
                         .font(.caption.weight(.semibold))
 
-                    Text("Version \(updater.currentVersion)")
-                        .font(.caption)
-                    Text("·")
-                        .font(.caption)
-                        .foregroundStyle(.quaternary)
-                    Text(updater.status.shortTitle)
+                    // One short label that fits the 210 pt sidebar: the version
+                    // at rest, the update state while one is in progress. The
+                    // full action name is in the tooltip and the app menu.
+                    Text(updateRowTitle)
                         .font(.caption)
                         .lineLimit(1)
                     Spacer(minLength: 0)
@@ -313,7 +323,7 @@ struct Sidebar: View {
                 .padding(.vertical, 7)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.interactive)
+            .buttonStyle(.interactive).focusEffectDisabled()
             .disabled(!updater.canCheckForUpdates || updater.status.isBusy)
             .help(updateRowHelp)
             .accessibilityLabel(Text("Tessera version \(updater.currentVersion)"))
@@ -321,6 +331,14 @@ struct Sidebar: View {
             .accessibilityHint("Check for updates now")
         }
         .padding(.horizontal, 10)
+    }
+
+    private var updateRowTitle: String {
+        switch updater.status {
+        case .idle, .upToDate: return "Version \(updater.currentVersion)"
+        case .failed: return "Update check failed"
+        default: return updater.status.shortTitle
+        }
     }
 
     private var updateRowTint: Color {
@@ -363,7 +381,7 @@ struct Sidebar: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
             }
-            .buttonStyle(.icon(size: 18))
+            .buttonStyle(.icon(size: 18)).focusEffectDisabled()
             .help("Dismiss")
         }
         .padding(.horizontal, 10)
@@ -515,7 +533,8 @@ private struct VolumeCard: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(info.name)
                         .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .help(info.name)
                     if let subtitle = info.subtitle, info.totalBytes == nil {
                         Text(subtitle)
                             .font(.caption)
@@ -534,14 +553,12 @@ private struct VolumeCard: View {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.caption)
                         .foregroundStyle(.tint)
-                } else if let total = info.totalBytes {
-                    Text(Theme.format(total))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                } else if info.subtitle != nil {
+                } else if info.totalBytes == nil, info.subtitle != nil {
+                    // The capacity line below already shows the total.
                     Image(systemName: "chevron.right")
                         .font(.caption)
-                        .foregroundStyle(.quaternary)
+                        .foregroundStyle(Theme.mutedForeground)
+                        .accessibilityHidden(true)
                 }
             }
 
@@ -585,9 +602,10 @@ private struct VolumeCard: View {
             }
             .frame(height: 5)
 
+            // Muted, not tertiary: 7:1 on the sidebar surface (tertiary was 2.2:1).
             Text("\(usedStr) used of \(totalStr)")
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.mutedForeground)
         }
     }
 }

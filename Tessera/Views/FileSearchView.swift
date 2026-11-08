@@ -86,12 +86,12 @@ struct FileSearchView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                .buttonStyle(.interactive)
+                .buttonStyle(.interactive).focusEffectDisabled()
             }
             Button(action: run) {
                 Image(systemName: "arrow.right.circle.fill")
             }
-            .buttonStyle(.interactive)
+            .buttonStyle(.interactive).focusEffectDisabled()
             .foregroundStyle(Theme.electricBlue)
             .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty)
         }
@@ -120,7 +120,7 @@ struct FileSearchView: View {
                         .background(Capsule().fill(Theme.surface))
                         .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
                 }
-                .buttonStyle(.interactive)
+                .buttonStyle(.interactive).focusEffectDisabled()
                 .foregroundStyle(.secondary)
             }
         }
@@ -177,7 +177,7 @@ struct FileSearchView: View {
             } label: {
                 Label("Add all", systemImage: "tray.and.arrow.down.fill")
             }
-            .buttonStyle(.flatProminent)
+            .buttonStyle(.flatProminent).focusEffectDisabled()
             .controlSize(.small)
             .disabled(result.nodes.allSatisfy { vm.isCollected($0) })
         }
@@ -213,7 +213,7 @@ struct FileSearchView: View {
             } label: {
                 Image(systemName: "magnifyingglass").font(.caption)
             }
-            .buttonStyle(.interactive).foregroundStyle(.tint)
+            .buttonStyle(.interactive).focusEffectDisabled().foregroundStyle(.tint)
             .help("Reveal in Finder")
 
             Button {
@@ -222,7 +222,7 @@ struct FileSearchView: View {
                 Image(systemName: collected ? "checkmark.circle.fill" : "plus.circle")
                     .foregroundStyle(collected ? AnyShapeStyle(Theme.electricBlue) : AnyShapeStyle(.secondary))
             }
-            .buttonStyle(.interactive)
+            .buttonStyle(.interactive).focusEffectDisabled()
             .help(collected ? "Remove from the collector" : "Add to the collector")
         }
     }

@@ -269,7 +269,14 @@ private struct FlatButtonMetrics {
 // changed only on press and only slightly, and plain icon buttons did nothing at
 // all — so neither question was answered.
 //
-// The native focus ring stays enabled so Full Keyboard Access remains visible.
+// Focus: macOS draws its system focus ring in the user's system accent. An
+// app's AccentColor asset applies only when the user picks the Multicolor
+// accent, so the ring could be mauve or pink beside Tessera's cyan. Buttons
+// that use these styles therefore turn the system effect off at the call site
+// with `.focusEffectDisabled()` (public, macOS 14) and the styles draw their
+// own 2 pt cyan ring from `EnvironmentValues.isFocused`. Focus stays visible
+// for Full Keyboard Access; only its colour changes. Text fields and other
+// system controls keep the system ring.
 // Hover and press feedback add clarity without moving controls under the pointer.
 
 /// Timing shared by every interaction so the whole app feels like one surface.
@@ -292,6 +299,7 @@ private struct FlatButtonSurface<Label: View>: View {
     /// plain style must not repaint labels that style themselves.
     let foreground: Color?
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.isFocused) private var isFocused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
@@ -311,6 +319,12 @@ private struct FlatButtonSurface<Label: View>: View {
             .overlay {
                 if let border {
                     shape.strokeBorder(active ? (borderHovered ?? border) : border, lineWidth: 1)
+                }
+            }
+            .overlay {
+                if isFocused {
+                    shape.inset(by: -3).strokeBorder(Theme.electricBlue, lineWidth: 2)
+                        .allowsHitTesting(false)
                 }
             }
             .contentShape(shape)
@@ -402,20 +416,38 @@ struct IconButtonStyle: ButtonStyle {
 /// missing: the label brightens under the pointer and settles when clicked.
 /// Labels that colour themselves keep their colour.
 struct PlainInteractiveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        PlainInteractiveSurface(label: configuration.label, isPressed: configuration.isPressed)
+    }
+}
+
+/// The view behind `PlainInteractiveButtonStyle`. A view, not the style, reads
+/// `isFocused`, so the ring follows the button that owns this label.
+private struct PlainInteractiveSurface<Label: View>: View {
+    let label: Label
+    let isPressed: Bool
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.isFocused) private var isFocused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
-    func makeBody(configuration: Configuration) -> some View {
+    var body: some View {
         let active = isHovering && isEnabled
-        return configuration.label
+        return label
             .frame(minHeight: 22)
-            .brightness(active && !configuration.isPressed ? 0.12 : 0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .overlay {
+                if isFocused {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous).inset(by: -3)
+                        .strokeBorder(Theme.electricBlue, lineWidth: 2)
+                        .allowsHitTesting(false)
+                }
+            }
+            .brightness(active && !isPressed ? 0.12 : 0)
+            .opacity(isPressed ? 0.85 : 1.0)
             // Scale down only on press: a hover-grow would reflow full-width rows.
-            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.98 : 1.0))
+            .scaleEffect(reduceMotion ? 1.0 : (isPressed ? 0.98 : 1.0))
             .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
-            .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
+            .animation(reduceMotion ? nil : Motion.press, value: isPressed)
             .pointerStyle(isEnabled ? .link : nil)
             .onHover { isHovering = $0 }
     }

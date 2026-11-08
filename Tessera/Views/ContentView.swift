@@ -58,6 +58,8 @@ struct ContentView: View {
     /// Narrow windows share the right column between the browser and Details.
     @State private var compactPane: CompactPane = .items
     @FocusState private var browserFocused: Bool
+    /// Set by the first selection in this window; hides the selection hint.
+    @State private var hasSelectedOnce = false
     /// The folder on screen, shared by the map, the child browser and Details.
     @State private var map: MapSnapshot?
     @State private var mapTask: Task<Void, Never>?
@@ -176,6 +178,7 @@ struct ContentView: View {
         .onChange(of: vm.isDeleting) { _, _ in syncUpdaterBusy() }
         .onChange(of: vm.currentRoot?.id, initial: true) { _, _ in refreshMap() }
         .onChange(of: vm.treeRevision) { _, _ in refreshMap() }
+        .onChange(of: vm.selectedNode?.id) { _, id in if id != nil { hasSelectedOnce = true } }
         // A read refused during a removal runs again when the removal ends.
         .onChange(of: vm.isDeleting) { _, deleting in if !deleting { refreshMap() } }
         .quickLookPreview($quickLookURL)
@@ -253,21 +256,29 @@ struct ContentView: View {
         }
     }
 
+    /// One compact navigation row: where you are (breadcrumb, or the source
+    /// name), one short status, and the scan button. It replaces the old
+    /// title row plus a separate breadcrumb row, so the scan root's name
+    /// appears once, and content starts higher.
     private var sourceHeader: some View {
-        HStack(spacing: 12) {
-            // Name and status only. The full path of the selection lives in the
-            // inspector, so one state never repeats the same path.
-            VStack(alignment: .leading, spacing: 3) {
-                Text(vm.rootNode == nil ? sourceName : displayName(for: vm.scannedURL, fallback: vm.rootNode?.name))
-                    .font(.headline)
+        HStack(spacing: 10) {
+            if let current = vm.currentRoot, showsBreadcrumb {
+                breadcrumb(for: current)
+            } else {
+                Text(vm.rootNode == nil ? sourceName : rootDisplayName)
+                    .font(.title3.weight(.semibold))
                     .lineLimit(1)
                     .help(vm.scannedURL?.path ?? vm.selectedSourceURL?.path ?? "")
-                Text(headerSubtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
             Spacer(minLength: 8)
+            if let notice = headerNotice {
+                Text(notice)
+                    .font(.caption)
+                    .foregroundStyle(Theme.mutedForeground)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .layoutPriority(-1)
+            }
             if removalBusy {
                 ProgressView().controlSize(.small)
                 Text("Removing \(vm.deletionProgress) of \(vm.deletionTotal)")
@@ -278,11 +289,11 @@ struct ContentView: View {
                     if let source = vm.selectedSourceURL { vm.startScan(volumeURL: source) }
                 } label: {
                     // Short, fixed labels. The source name is in the title,
-                    // the subtitle and the sidebar, not in the button.
+                    // the status and the sidebar, not in the button.
                     Label(scanButtonTitle, systemImage: "arrow.clockwise")
                 }
                 .disabled(vm.selectedSourceURL == nil)
-                .buttonStyle(.flat)
+                .buttonStyle(.flat).focusEffectDisabled()
                 .controlSize(.small)
                 .keyboardShortcut("r", modifiers: .command)
                 .help(showsOtherSource ? "Scan \(sourceName) (⌘R)" : "Scan this source again (⌘R)")
@@ -290,22 +301,34 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
+    }
+
+    /// The breadcrumb takes the title's place while Explore shows a map.
+    private var showsBreadcrumb: Bool {
+        appMode == .explore && !vm.isScanning && vm.errorMessage == nil && !vm.needsFullDiskAccess
+    }
+
+    /// The scan root by its source-list name ("iCloud Drive"), not its
+    /// on-disk folder name.
+    private var rootDisplayName: String {
+        displayName(for: vm.scannedURL, fallback: vm.rootNode?.name)
+    }
+
+    /// At most one short status beside the scan button. "Scanning" while a
+    /// scan runs; the scanning view shows the phase.
+    private var headerNotice: String? {
+        if vm.isScanning { return "Scanning" }
+        if vm.rootNode == nil {
+            return vm.selectedSourceURL == nil ? "Choose a source to begin" : "Not scanned yet"
+        }
+        if showsOtherSource { return "\(sourceName) is selected and not scanned yet." }
+        return vm.scanStatus.isEmpty ? nil : vm.scanStatus
     }
 
     /// The sidebar selection differs from the scan on screen.
     private var showsOtherSource: Bool {
         vm.rootNode != nil && vm.scannedURL != nil && vm.selectedSourceURL != vm.scannedURL
-    }
-
-    private var headerSubtitle: String {
-        if vm.rootNode == nil {
-            return vm.selectedSourceURL == nil ? "Choose a source to begin" : "Not scanned yet"
-        }
-        if showsOtherSource {
-            return "\(sourceName) is selected and not scanned yet."
-        }
-        return vm.scanStatus.isEmpty ? "Scan complete" : vm.scanStatus
     }
 
     private var scanButtonTitle: String {
@@ -353,7 +376,6 @@ struct ContentView: View {
 
     private var chartContent: some View {
         VStack(spacing: 0) {
-            if let current = vm.currentRoot { breadcrumb(for: current) }
             GeometryReader { geometry in
                 if geometry.size.width >= 580 {
                     let column = min(320, max(230, geometry.size.width * 0.36))
@@ -372,9 +394,21 @@ struct ContentView: View {
                     }
                 }
             }
-            if !showInspector { selectedItemBar }
+            // Matches the Details column's top inset, so both column
+            // headers sit on one line.
+            .padding(.top, 12)
+            if showsSelectionBar { selectedItemBar }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The selection bar repeats Details' actions, so it shows only while
+    /// Details is not on screen (including the Items side of the narrow
+    /// switch). Its hint shows only until the first selection.
+    private var showsSelectionBar: Bool {
+        let detailsVisible = showInspector && (detailsBeside || compactPane == .details)
+        guard !detailsVisible else { return false }
+        return vm.selectedNode != nil || !hasSelectedOnce
     }
 
     /// Details gets its own column only when the map keeps its size.
@@ -531,21 +565,22 @@ struct ContentView: View {
                         .foregroundStyle(Theme.mutedForeground)
                 }
             }
+            // Focus shows on a row, not on the panel: the selected row (or the
+            // first row, where ↓ starts, when nothing is selected) gets a
+            // stronger fill and a 1 pt ring.
+            let cursorID = selectedIndex == nil ? children.first?.id : selectedID
             WindowedRows(children: children, pitch: pitch, folderID: map?.folder.id,
                          selectedIndex: selectedIndex) { node in
                 browserRow(node, total: total, twoLine: twoLine,
-                           selected: node.id == selectedID, height: pitch)
+                           selected: node.id == selectedID,
+                           focused: browserFocused && node.id == cursorID, height: pitch)
                     .contentShape(Rectangle())
                     .onTapGesture { browserClick(node) }
                     .contextMenu { browserMenu(node) }
             }
+            // The panel ends with its rows; it never fills empty height.
+            .frame(maxHeight: CGFloat(children.count) * pitch + 8)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Theme.electricBlue, lineWidth: 2)
-                    .opacity(browserFocused ? 1 : 0)
-                    .allowsHitTesting(false)
-            )
             .focusable(!removalBusy)
             .focused($browserFocused)
             .focusEffectDisabled()
@@ -559,6 +594,7 @@ struct ContentView: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Items in \(map?.folder.name ?? "this folder")")
             .accessibilityHint("\(Theme.itemCount(children.count)). Use the arrow keys, Home and End to move through all of them.")
+            Spacer(minLength: 0)
         }
         .disabled(removalBusy)
     }
@@ -601,10 +637,13 @@ struct ContentView: View {
     }
 
     private func browserRow(_ node: FileNode, total: Double, twoLine: Bool, selected: Bool,
-                            height: CGFloat) -> some View {
+                            focused: Bool, height: CGFloat) -> some View {
         let share = Double(node.size) / total * 100
         let percent = share > 0 && share < 1 ? "<1%" : "\(Int(share.rounded()))%"
         let opens = node.isDirectory && !node.isSynthetic
+        // Muted text is 3.57:1 on the focused fill, so selected rows use the
+        // foreground colour for size and percent (9.06:1 or more).
+        let secondary = selected ? Theme.foreground : Theme.mutedForeground
         let color = map?.color(for: node, highContrast: highContrast)
             ?? Theme.wedgeColor(palette: nil, depth: 0, highContrast: highContrast)
         let dot = Circle().fill(color).frame(width: 8, height: 8)
@@ -620,7 +659,7 @@ struct ContentView: View {
                         Text(node.name).lineLimit(2).truncationMode(.middle)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("\(Theme.format(node.size)) · \(percent)").font(.caption.monospacedDigit())
-                            .foregroundStyle(Theme.mutedForeground)
+                            .foregroundStyle(secondary)
                     }
                     Spacer(minLength: 0)
                     chevron
@@ -630,7 +669,7 @@ struct ContentView: View {
                     dot
                     Text(node.name).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 4)
-                    Text(percent).monospacedDigit().foregroundStyle(Theme.mutedForeground)
+                    Text(percent).monospacedDigit().foregroundStyle(secondary)
                     Text(Theme.format(node.size)).monospacedDigit().fixedSize()
                     chevron
                 }
@@ -642,7 +681,14 @@ struct ContentView: View {
         // Exact height: the window and the scroll offsets depend on it. Two
         // lines of callout plus one caption line fit in the two-line pitch.
         .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .leading)
-        .background(selected ? Theme.selectionTint : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .background(selected ? (focused ? Theme.electricBlue.opacity(0.26) : Theme.selectionTint) : .clear,
+                    in: RoundedRectangle(cornerRadius: 6))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Theme.electricBlue, lineWidth: 1)
+                .opacity(focused ? 1 : 0)
+                .allowsHitTesting(false)
+        )
         .help(node.name)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(node.name), \(Theme.format(node.size)), \(percent) of this folder\(opens ? ", folder" : "")")
@@ -693,7 +739,7 @@ struct ContentView: View {
             }
         }
         .controlSize(.small)
-        .buttonStyle(.flat)
+        .buttonStyle(.flat).focusEffectDisabled()
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
         .disabled(removalBusy)
@@ -720,7 +766,7 @@ struct ContentView: View {
                         Label("Scan", systemImage: "magnifyingglass")
                     }
                     .accessibilityHint("Scans \(sourceName)")
-                    .buttonStyle(.flatProminent).controlSize(.large)
+                    .buttonStyle(.flatProminent).focusEffectDisabled().controlSize(.large)
                     .disabled(removalBusy)
                 }
             }
@@ -732,7 +778,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             Label("Full Disk Access needed", systemImage: "lock.shield").font(.title2)
             Text("Grant access in System Settings, then scan again.").foregroundStyle(.secondary)
-            Button("Open System Settings") { vm.openFullDiskAccessSettings() }.buttonStyle(.flatProminent)
+            Button("Open System Settings") { vm.openFullDiskAccessSettings() }.buttonStyle(.flatProminent).focusEffectDisabled()
         }
     }
 
@@ -742,7 +788,7 @@ struct ContentView: View {
             Text(message).foregroundStyle(.secondary).textSelection(.enabled)
             if vm.canRetryLastScan {
                 Button("Try again") { vm.errorMessage = nil; vm.retryLastScan() }
-                    .buttonStyle(.flatProminent).disabled(removalBusy)
+                    .buttonStyle(.flatProminent).focusEffectDisabled().disabled(removalBusy)
             }
             Button("Dismiss") { vm.errorMessage = nil }
         }
@@ -839,9 +885,10 @@ struct ContentView: View {
                 breadcrumbHome
                 ForEach(ancestors) { ancestor in
                     chevron
-                    Button(ancestor.name) { selectBreadcrumbNode(ancestor) }
-                        .buttonStyle(.interactive)
+                    Button(crumbName(ancestor)) { selectBreadcrumbNode(ancestor) }
+                        .buttonStyle(.interactive).focusEffectDisabled()
                         .font(.subheadline)
+                        .foregroundStyle(Theme.mutedForeground)
                         .lineLimit(1)
                 }
                 if !ancestors.isEmpty { chevron }
@@ -855,7 +902,7 @@ struct ContentView: View {
                     chevron
                     Menu {
                         ForEach(ancestors) { ancestor in
-                            Button(ancestor.name) { selectBreadcrumbNode(ancestor) }
+                            Button(crumbName(ancestor)) { selectBreadcrumbNode(ancestor) }
                         }
                     } label: {
                         Label("Path", systemImage: "ellipsis.circle")
@@ -870,9 +917,11 @@ struct ContentView: View {
                 breadcrumbCurrent(node)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The scan root shows its source-list name; other folders their own.
+    private func crumbName(_ node: FileNode) -> String {
+        node.parent == nil ? rootDisplayName : node.name
     }
 
     private var breadcrumbHome: some View {
@@ -882,21 +931,23 @@ struct ContentView: View {
             Image(systemName: "house.fill")
                 .font(.caption.weight(.semibold))
         }
-        .buttonStyle(.interactive)
+        .buttonStyle(.interactive).focusEffectDisabled()
         .help("Go to the top of this scan")
         .accessibilityLabel("Top of scan")
     }
 
+    /// The folder on screen: the window's title, then its size.
     private func breadcrumbCurrent(_ node: FileNode) -> some View {
-        HStack(spacing: 6) {
-            Text(node.name)
-                .font(.subheadline.weight(.semibold))
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(crumbName(node))
+                .font(.title3.weight(.semibold))
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Spacer(minLength: 0)
+                .help(vm.scannedURL?.path ?? "")
+                .accessibilityAddTraits(.isHeader)
             Text(Theme.format(node.size))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(Theme.mutedForeground)
                 .fixedSize()
         }
     }
@@ -908,7 +959,8 @@ struct ContentView: View {
     private var chevron: some View {
         Image(systemName: "chevron.right")
             .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Theme.mutedForeground)
+            .accessibilityHidden(true)
     }
 
     private func ancestorChain(of node: FileNode) -> [FileNode] {
@@ -1091,15 +1143,17 @@ private struct ScanningView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text(vm.scanStatus.isEmpty ? "Scanning source" : vm.scanStatus)
+            // The phase only; the header says "Scanning".
+            Text(vm.scanStatus.isEmpty ? "Reading files" : vm.scanStatus)
                 .font(.title2.weight(.semibold))
             Text("Tessera is reading this source. Your files stay in place.")
                 .foregroundStyle(.secondary)
             ProgressView().progressViewStyle(.linear)
                 .accessibilityLabel("Scan in progress")
             HStack(spacing: 24) {
-                metric("Files read", "\(vm.progress.filesScanned)")
-                metric("Folders read", "\(vm.progress.dirsScanned)")
+                // Locale grouping: 100,000, not 100000.
+                metric("Files read", vm.progress.filesScanned.formatted())
+                metric("Folders read", vm.progress.dirsScanned.formatted())
                 metric("Mapped", Theme.format(vm.progress.bytesFound))
             }
             if let start = vm.scanStartedAt {
@@ -1114,7 +1168,7 @@ private struct ScanningView: View {
                 .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Cancel scan", role: .cancel) { vm.cancelScan() }
-                .buttonStyle(.bordered).keyboardShortcut(".", modifiers: .command)
+                .buttonStyle(.flat).focusEffectDisabled().keyboardShortcut(".", modifiers: .command)
         }
         .padding(32)
         .frame(maxWidth: 560, alignment: .leading)
@@ -1228,7 +1282,7 @@ private struct FullDiskAccessOnboarding: View {
                     Label("Open System Settings", systemImage: "gearshape.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.flatProminent)
+                .buttonStyle(.flatProminent).focusEffectDisabled()
                 .controlSize(.large)
 
                 Button("Not Now") {
@@ -1236,7 +1290,7 @@ private struct FullDiskAccessOnboarding: View {
                     vm.dismissFDAOnboarding()
                 }
                 .keyboardShortcut(.cancelAction)
-                .buttonStyle(.flat)
+                .buttonStyle(.flat).focusEffectDisabled()
                 .controlSize(.large)
             }
         }

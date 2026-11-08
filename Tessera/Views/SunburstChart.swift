@@ -201,6 +201,17 @@ struct SunburstChart: View {
 
                     hub(radius: geometry.hubRadius)
 
+                    // Keyboard focus: a 1 pt cyan circle just outside the
+                    // rings. The system ring would use the system accent.
+                    if mapFocused {
+                        Circle()
+                            .strokeBorder(Theme.electricBlue, lineWidth: 1)
+                            .frame(width: geometry.chartRadius * 2 + 8, height: geometry.chartRadius * 2 + 8)
+                            .position(geometry.center)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+
                     if hovering, let node = hoveredNode {
                         tooltip(for: node, in: geo.size)
                     }
@@ -233,6 +244,7 @@ struct SunburstChart: View {
         // Return opens a folder, Escape clears the selection.
         .focusable(isEnabled)
         .focused($mapFocused)
+        .focusEffectDisabled()
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .return, .space]) { press in
             guard isEnabled, press.modifiers.isDisjoint(with: [.command, .option, .control]) else {
                 return .ignored
@@ -407,16 +419,11 @@ struct SunburstChart: View {
                     .font(.system(size: max(9, radius * 0.18), weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            // The total is the largest number on screen; the name sits below it.
+            // Size only: the folder's name is already the window's title.
             Text(Theme.format(node?.size ?? 0))
                 .font(.system(size: max(15, radius * 0.30), weight: .semibold).monospacedDigit())
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-            Text(node?.name ?? "—")
-                .font(.system(size: max(10, radius * 0.15), weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
         }
         .padding(radius * 0.18)
         .frame(width: radius * 2, height: radius * 2)

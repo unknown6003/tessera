@@ -80,34 +80,59 @@ struct CollectorDock: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let notice = vm.collectorNotice { noticeRow(notice) }
-            if let summary = shownSummary { resultBar(summary) }
-            dockRow
-        }
-        .background(drag.isOverCollector ? Theme.selectionTint : Theme.surface)
-        .onChange(of: vm.scannedURL) { _, _ in hiddenSummaryID = vm.lastRemovalSummary?.id }
-        .onChange(of: vm.lastRemovalSummary?.id) { _, id in
-            guard id != nil, let summary = vm.lastRemovalSummary else { return }
-            AccessibilityNotification.Announcement(Self.resultText(summary)).post()
-        }
-        .onChange(of: vm.collectorNotice) { _, notice in
-            if let notice { AccessibilityNotification.Announcement(notice).post() }
-        }
+        // One row. A refusal notice or the last removal's result replaces
+        // the hint line inside it, so the bottom of the window never stacks
+        // three bars.
+        dockRow
+            .background(drag.isOverCollector ? Theme.selectionTint : Theme.surface)
+            .onChange(of: vm.scannedURL) { _, _ in hiddenSummaryID = vm.lastRemovalSummary?.id }
+            .onChange(of: vm.lastRemovalSummary?.id) { _, id in
+                guard id != nil, let summary = vm.lastRemovalSummary else { return }
+                AccessibilityNotification.Announcement(Self.resultText(summary)).post()
+            }
+            .onChange(of: vm.collectorNotice) { _, notice in
+                if let notice { AccessibilityNotification.Announcement(notice).post() }
+            }
     }
 
     private var dockRow: some View {
         HStack(spacing: 12) {
-            Image(systemName: drag.isOverCollector ? "plus.circle.fill" : "checklist")
-                .font(.title3).foregroundStyle(Theme.electricBlue)
+            Image(systemName: dockSymbol)
+                .font(.title3).foregroundStyle(dockSymbolColor)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Cleanup List").font(.subheadline.weight(.semibold))
-                Text(vm.collector.isEmpty ? "Drop a map item here, or press ⌘⌫ on a selected item." :
-                     "\(Theme.itemCount(vm.collector.count)) · \(Theme.format(vm.collectorTotalSize)) allocated")
-                    .font(.caption.monospacedDigit()).foregroundStyle(Theme.mutedForeground)
+                Text(vm.collector.isEmpty ? "Cleanup List" :
+                     "Cleanup List · \(Theme.itemCount(vm.collector.count)) · \(Theme.format(vm.collectorTotalSize)) allocated")
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .lineLimit(1)
+                if let notice = vm.collectorNotice {
+                    Text(notice)
+                        .font(.caption).foregroundStyle(Theme.foreground)
+                        .lineLimit(2)
+                } else if let summary = shownSummary {
+                    Text(Self.resultText(summary))
+                        .font(.caption.monospacedDigit()).foregroundStyle(Theme.foreground)
+                        .lineLimit(2)
+                        .accessibilityLabel("Removal result. \(Self.resultText(summary))")
+                } else if vm.collector.isEmpty {
+                    Text("Drop a map item here, or press ⌘⌫ on a selected item.")
+                        .font(.caption).foregroundStyle(Theme.mutedForeground)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 8)
+            if vm.collectorNotice == nil, let summary = shownSummary {
+                // Finder can put items back from Trash. Tessera offers no Undo
+                // of its own; it does not restore files itself.
+                if !summary.permanently && summary.moved > 0,
+                   let trash = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first {
+                    Button("Show Trash") { NSWorkspace.shared.open(trash) }
+                        .buttonStyle(.flat).focusEffectDisabled().controlSize(.small)
+                }
+                Button("Dismiss") { hiddenSummaryID = summary.id }
+                    .buttonStyle(.flat).focusEffectDisabled().controlSize(.small)
+                    .accessibilityLabel("Dismiss removal result")
+            }
             if vm.isDeleting {
                 ProgressView(value: Double(vm.deletionProgress), total: Double(max(1, vm.deletionTotal)))
                     .frame(width: 120)
@@ -117,11 +142,11 @@ struct CollectorDock: View {
                 // One filled accent control per view: the review CTA fills only
                 // when there is something to review.
                 Button("Review List…", action: onReview)
-                    .buttonStyle(.flat)
+                    .buttonStyle(.flat).focusEffectDisabled()
                     .disabled(true)
             } else {
                 Button("Review List…", action: onReview)
-                    .buttonStyle(.flatProminent)
+                    .buttonStyle(.flatProminent).focusEffectDisabled()
                     .disabled(vm.isScanning)
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                     .help("Review every path before anything moves (⇧⌘L)")
@@ -141,18 +166,18 @@ struct CollectorDock: View {
         .accessibilityLabel("Cleanup List")
     }
 
-    private func noticeRow(_ notice: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "info.circle").accessibilityHidden(true)
-            Text(notice).lineLimit(2)
-            Spacer(minLength: 0)
+    private var dockSymbol: String {
+        if drag.isOverCollector { return "plus.circle.fill" }
+        if vm.collectorNotice != nil { return "info.circle" }
+        if let summary = shownSummary {
+            return summary.failed > 0 || summary.held > 0 ? "exclamationmark.triangle" : "checkmark.circle"
         }
-        .font(.callout)
-        .foregroundStyle(Theme.foreground)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
-        .background(Theme.elevated)
-        .accessibilityElement(children: .combine)
+        return "checklist"
+    }
+
+    private var dockSymbolColor: Color {
+        if vm.collectorNotice == nil, let summary = shownSummary, summary.failed > 0 { return Theme.danger }
+        return Theme.electricBlue
     }
 
     /// "Moved 1 item (16.8 MB allocated) to Trash." Held and failed counts
@@ -168,34 +193,6 @@ struct CollectorDock: View {
         return text
     }
 
-    private func resultBar(_ summary: ScanViewModel.RemovalSummary) -> some View {
-        let permanent = summary.permanently
-        let moved = summary.moved
-        let failed = summary.failed
-        let held = summary.held
-        return HStack(spacing: 10) {
-            Image(systemName: failed > 0 || held > 0 ? "exclamationmark.triangle" : "checkmark.circle")
-                .foregroundStyle(failed > 0 ? Theme.danger : Theme.electricBlue)
-                .accessibilityHidden(true)
-            Text(Self.resultText(summary))
-                .font(.callout.monospacedDigit())
-                .lineLimit(2)
-            Spacer(minLength: 8)
-            // Finder can put items back from Trash. Tessera offers no Undo of
-            // its own; it does not restore files itself.
-            if !permanent && moved > 0, let trash = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first {
-                Button("Show Trash") { NSWorkspace.shared.open(trash) }
-                    .buttonStyle(.flat).controlSize(.small)
-            }
-            Button("Dismiss") { hiddenSummaryID = summary.id }
-                .buttonStyle(.flat).controlSize(.small)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
-        .background(Theme.elevated)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Removal result")
-    }
 }
 
 /// The review uses one source and one scan. A rescan cannot silently replace
@@ -318,6 +315,7 @@ struct CleanupReviewSheet: View {
                 Text("Review Cleanup List").font(.title2.weight(.semibold))
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                    .buttonStyle(.flat).focusEffectDisabled()
             }
             Text("Check every path. Removing a row keeps its file in place.")
                 .font(.callout).foregroundStyle(Theme.mutedForeground)
@@ -352,7 +350,7 @@ struct CleanupReviewSheet: View {
                     items.removeAll { $0.id == item.id }
                     reviewedCollectorIDs.remove(item.id)
                 } label: { Image(systemName: "minus.circle") }
-                .buttonStyle(.icon(size: 24))
+                .buttonStyle(.icon(size: 24)).focusEffectDisabled()
                 .help("Remove from Cleanup List. The file stays in place.")
                 .accessibilityLabel("Remove \(item.node.name) from Cleanup List")
                 .disabled(!isCurrent)
@@ -408,7 +406,7 @@ struct CleanupReviewSheet: View {
                 .fixedSize()
                 Spacer()
                 Button("Move to Trash…") { requestTrash() }
-                    .buttonStyle(.flatProminent)
+                    .buttonStyle(.flatProminent).focusEffectDisabled()
             }
             .disabled(!isCurrent || items.isEmpty)
         }
