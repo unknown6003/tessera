@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "host": {
+    "cpu": "Apple M1 Max",
+    "cores": 10,
+    "memoryGiB": 32,
+    "os": "macOS 27.0.1 (26A434)",
+    "xcode": "27.2 (27B52)",
+    "swift": "6.4.2"
+  },
+  "limits": [
+    "Live root scans are not controlled datasets.",
+    "Root coverage is partial; protected paths remain unreadable.",
+    "Fresh-process probes do not control the kernel metadata cache or other host load.",
+    "sampled RSS and getrusage max RSS are distinct measures."
+  ],
+  "rootEngineRuns": [
+    {
+      "revision": "f28bc079043dcfeb77e92fda4ac0958723bada39",
+      "seconds": 64.85850725,
+      "files": 4522312,
+      "directoriesIncludingRoot": 1297265,
+      "coverageGaps": 303,
+      "sampledPeakRssBytes": 2084716544,
+      "getrusagePeakRssBytes": 1968816128
+    },
+    {
+      "revision": "301cb2506118442f9f2b28f774fb38252dd5295c",
+      "seconds": 50.843039584,
+      "files": 4522337,
+      "directoriesIncludingRoot": 1297266,
+      "coverageGaps": 303,
+      "sampledPeakRssBytes": 2143223808,
+      "getrusagePeakRssBytes": 2143223808
+    },
+    {
+      "revision": "2a9c99f33a22f94d06c29b81e7562e2836e6bb67",
+      "seconds": 186.115229417,
+      "files": 4508017,
+      "directoriesIncludingRoot": 1295899,
+      "coverageGaps": 303,
+      "sampledPeakRssBytes": 1456357376,
+      "getrusagePeakRssBytes": 1349042176
+    }
+  ],
+  "nativeQualification": [
+    {
+      "revision": "f28bc079043dcfeb77e92fda4ac0958723bada39",
+      "debugTestsPassed": 54,
+      "releaseBuild": "passed"
+    },
+    {
+      "revision": "c9a64360acf1f2183c1f7ddd440bfdc50d81b562",
+      "debugTestsPassed": 59,
+      "releaseBuild": "passed"
+    },
+    {
+      "revision": "301cb2506118442f9f2b28f774fb38252dd5295c",
+      "debugTests": "compile failed: optional-return inference",
+      "releaseBuild": "compile failed: optional-return inference",
+      "fixedBy": "4bfe423"
+    },
+    {
+      "revision": "2a9c99f33a22f94d06c29b81e7562e2836e6bb67",
+      "debugTestsPassed": 67,
+      "debugTestsFailed": 1,
+      "debugFailure": "Stale result string expectation, fixed by f80598c",
+      "releaseBuild": "passed",
+      "rootApp": {
+        "configuration": "Debug",
+        "stopReason": "300 second deadline",
+        "completed": false,
+        "sampledPeakRssBytes": 546045952
+      },
+      "fixture": {
+        "files": 124581,
+        "directoriesIncludingRoot": 455,
+        "uniqueUrls": 125036,
+        "missingIdentity": 0,
+        "unstableIdentity": 0,
+        "coverageGaps": 0
+      },
+      "visualLimits": [
+        "Selected details were empty; fixture selection added in f80598c.",
+        "Confirmation cacheDisplay bitmap unreadable; real-window proof pending.",
+        "No keyboard or drag input proof."
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at301cb250",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at2a9c99f",
+      "report": "REPORT.md"
+    }
+  ]
+}
