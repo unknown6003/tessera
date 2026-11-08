@@ -116,7 +116,8 @@ int br_directory_read(BRDirectory *directory, BREntry *out, int maxEntries,
                 if (nameoff < 0 || nameoff > recordEnd - field || namelen < 2 ||
                     namelen > sizeof(e.name) || namelen > (uint32_t)(recordEnd - field - nameoff)) return -1;
                 const char *namedata = field + nameoff;
-                if (namedata[namelen - 1] != '\0' || memchr(namedata, '/', namelen - 1)) return -1;
+                if (namedata[namelen - 1] != '\0' || memchr(namedata, '\0', namelen - 1) ||
+                    memchr(namedata, '/', namelen - 1)) return -1;
                 memcpy(e.name, namedata, namelen);
                 field += 8;
             }

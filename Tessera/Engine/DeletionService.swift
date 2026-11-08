@@ -47,20 +47,43 @@ enum DeletionService {
         }
     }
 
-    /// Validate and move scanned nodes one by one. A stale, missing, synthetic,
-    /// or unreadable node is reported as a failed item and is never passed to
-    /// FileManager. This is the last-step identity gate. The caller receives
-    /// all failures, including an all-failed batch, so it can preserve a result.
-    @discardableResult
-    static func trash(_ nodes: [FileNode]) throws -> [DeletionError] {
-        try execute(nodes) { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+    struct PreparedRemoval: Sendable {
+        let url: URL
+        let identity: ScanIdentity?
+        let check: DeletionPreflight
     }
 
-    /// Permanent deletion has the same identity gate as the recoverable path.
-    /// The caller still owns the separate explicit confirmation for this action.
+    static func prepare(_ node: FileNode) -> PreparedRemoval {
+        PreparedRemoval(url: node.url, identity: node.scanIdentity, check: preflight(node))
+    }
+
+    /// The immutable target crosses back from validation before the final action.
+    /// Callers can check owner state between these two steps.
+    static func perform(_ target: PreparedRemoval, permanently: Bool) -> DeletionError? {
+        guard target.check == .ready else {
+            return DeletionError(url: target.url, underlying: PreflightError(result: target.check))
+        }
+        guard let expected = target.identity,
+              let current = ScanIdentity.current(at: target.url), expected.matches(current) else {
+            return DeletionError(url: target.url, underlying: PreflightError(result: .identityChanged))
+        }
+        do {
+            if permanently { try FileManager.default.removeItem(at: target.url) }
+            else { try FileManager.default.trashItem(at: target.url, resultingItemURL: nil) }
+            return nil
+        } catch {
+            return DeletionError(url: target.url, underlying: error)
+        }
+    }
+
+    @discardableResult
+    static func trash(_ nodes: [FileNode]) throws -> [DeletionError] {
+        nodes.compactMap { perform(prepare($0), permanently: false) }
+    }
+
     @discardableResult
     static func delete(_ nodes: [FileNode]) throws -> [DeletionError] {
-        try execute(nodes) { try FileManager.default.removeItem(at: $0) }
+        nodes.compactMap { perform(prepare($0), permanently: true) }
     }
 
     static func preflight(_ node: FileNode) -> DeletionPreflight {
@@ -73,7 +96,9 @@ enum DeletionService {
         guard !CleanupClassifier.hasOpaqueDescendant(node) else { return .incompleteScan }
         var ancestor: FileNode? = node
         while let current = ancestor {
-            guard current.scanCoverageGaps.isEmpty else { return .incompleteScan }
+            guard !current.scanCoverageGaps.contains(where: { gap in
+                pathsOverlap(gap, url.path)
+            }) else { return .incompleteScan }
             ancestor = current.parent
         }
         guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
@@ -82,28 +107,38 @@ enum DeletionService {
         guard FileManager.default.isWritableFile(atPath: url.deletingLastPathComponent().path) else {
             return .permissionDenied
         }
+        if node.isDirectory, let issue = inspectLiveDescendants(at: url, device: identity.device) { return issue }
         return .ready
     }
 
-    private static func execute(_ nodes: [FileNode], operation: (URL) throws -> Void) throws -> [DeletionError] {
-        var failures: [DeletionError] = []
-        for node in nodes {
-            let url = node.url
-            let check = preflight(node)
-            guard check == .ready else {
-                failures.append(DeletionError(url: url, underlying: PreflightError(result: check)))
-                continue
-            }
-            // FileManager's Trash API is path-based. Keep the identity check
-            // immediately adjacent to the operation; a descriptor-backed Trash
-            // API would be needed to remove the remaining OS-level TOCTOU window.
-            // ponytail: keep this path API until macOS exposes descriptor-backed Trash.
-            do {
-                try operation(url)
-            } catch {
-                failures.append(DeletionError(url: url, underlying: error))
+    private static func pathsOverlap(_ first: String, _ second: String) -> Bool {
+        first == second || first.hasPrefix(second == "/" ? "/" : second + "/")
+            || second.hasPrefix(first == "/" ? "/" : first + "/")
+    }
+
+    /// Recheck actual descendants, including data created below an unchanged
+    /// ancestor since scanning. Never follow symlinks or enter another device.
+    private static func inspectLiveDescendants(at url: URL, device: UInt32?) -> DeletionPreflight? {
+        let scratch = BulkScratch()
+        var stack = [url.path]
+        let deadline = ContinuousClock.now + .seconds(30)
+        while let path = stack.popLast() {
+            guard ContinuousClock.now < deadline else { return .incompleteScan }
+            var stat = Darwin.stat()
+            guard Darwin.lstat(path, &stat) == 0 else { return .unreadable }
+            guard stat.st_mode & S_IFMT == S_IFDIR else { return .identityChanged }
+            if let device, UInt32(bitPattern: stat.st_dev) != device { return .incompleteScan }
+            guard let listing = BulkDirScanner.workerListing(atPath: path, scratch: scratch),
+                  listing.unreadablePaths.isEmpty else { return .incompleteScan }
+            for entry in listing.entries {
+                let child = path == "/" ? "/" + entry.name : path + "/" + entry.name
+                if CleanupClassifier.protectedCategory(atNormalizedPath: child.lowercased()) != nil {
+                    return .protected
+                }
+                if entry.isDataless { return .incompleteScan }
+                if entry.type == .directory { stack.append(child) }
             }
         }
-        return failures
+        return nil
     }
 }

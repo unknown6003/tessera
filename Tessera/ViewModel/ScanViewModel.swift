@@ -18,6 +18,11 @@ final class ScanViewModel: ObservableObject {
     @Published var didRunDuplicates = false
     @Published var duplicateProgress = DuplicateProgress()
     @Published var isScanning = false
+    @Published private(set) var isDeleting = false
+    @Published private(set) var deletionProgress = 0
+    @Published private(set) var deletionTotal = 0
+    @Published private(set) var scanStartedAt: Date?
+    var scanStatus: String { rescuePhase == .diagnosing ? "Preparing results" : "Reading files" }
     @Published var progress = ScanProgress()
     /// Changes when an already-published tree is mutated in place (for example,
     /// after cleanup). The chart uses this to invalidate angular layout without
@@ -50,6 +55,7 @@ final class ScanViewModel: ObservableObject {
     @Published private(set) var scannedURL: URL?
 
     private var scanTask: Task<Void, Never>?
+    private var diagnosisTask: Task<(RescueCoverage, CleanupReport, RescueMeasurement), Never>?
     /// Monotonically identifies the scan allowed to publish into this view model.
     /// Cancelling a task is cooperative: an older scanner may still deliver a
     /// progress callback or finish while its replacement is already running.
@@ -114,6 +120,7 @@ final class ScanViewModel: ObservableObject {
     // MARK: - Scan
 
     func startScan(volumeURL: URL) {
+        guard !isDeleting else { return }
         selectedSourceURL = volumeURL
         if let pendingRescueCase,
            pendingRescueCase.sourcePath != volumeURL.standardizedFileURL.path {
@@ -122,17 +129,10 @@ final class ScanViewModel: ObservableObject {
         scanGeneration &+= 1
         let generation = scanGeneration
         scanTask?.cancel()
+        diagnosisTask?.cancel()
         // Preserve the scan currently on screen so switching back to it is instant.
         saveCurrentToCache()
-        // Incremental re-scan: reuse a prior tree for this volume (from the cache, or
-        // the one already displayed) as a baseline. Unchanged subtrees (by directory
-        // modtime) are skipped, and any directory whose contents changed — including
-        // via deletions the user just made — has a new modtime, so it's re-scanned
-        // for fresh sizes.
-        let cache = scanCache[volumeURL]?.rootNode ?? (volumeURL == scannedURL ? rootNode : nil)
-        // The local reference above is all the incremental scanner needs. Do not
-        // retain a second root for the same source in the LRU while rebuilding it;
-        // reused subtrees already stay alive through `cache`.
+        // A rescan reads fresh metadata. Cached trees are only for source switching.
         scanCache.removeValue(forKey: volumeURL)
         cacheLRU.removeAll { $0 == volumeURL }
         lastScannedURL = volumeURL
@@ -157,21 +157,20 @@ final class ScanViewModel: ObservableObject {
         errorMessage = nil
         needsFullDiskAccess = false
         isScanning = true
+        scanStartedAt = Date()
         progress = ScanProgress(currentPath: volumeURL.path)
 
         scanTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let node = try await FileScanner.scan(url: volumeURL, cache: cache) { [weak self] prog in
+                let node = try await FileScanner.scan(url: volumeURL) { [weak self] prog in
                     Task { @MainActor [weak self] in
                         guard let self, self.scanGeneration == generation else { return }
                         // Monotonicity guard: discard stale ticks that arrive out of
                         // order (the @MainActor hop can reorder them). Accept the
                         // final tick, or any tick that advances a monotonic counter.
-                        if prog.isComplete
-                            || prog.bytesFound >= self.progress.bytesFound
-                            || prog.dirsScanned >= self.progress.dirsScanned
-                            || prog.dirsDiscovered > self.progress.dirsDiscovered {
+                        if prog.dirsScanned > self.progress.dirsScanned
+                            || (prog.isComplete && !self.progress.isComplete) {
                             self.progress = prog
                         }
                     }
@@ -181,6 +180,7 @@ final class ScanViewModel: ObservableObject {
                 // A superseded scan returns here and skips trailing cleanup safely:
                 // that cleanup is guarded by the same generation comparison.
                 guard self.scanGeneration == generation else { return }
+                try Task.checkCancellation()
                 let treeIsEmpty = node.children.isEmpty
                 let volumePath = volumeURL.path
                 let isVolumeRoot = volumePath == "/"
@@ -195,17 +195,22 @@ final class ScanViewModel: ObservableObject {
                 // same arrays on the main actor.
                 let ownerState = CleanupOwnerState.current()
                 self.rescuePhase = .diagnosing
-                let diagnosis = await Task.detached(priority: .utility) {
+                let diagnosisTask = Task.detached(priority: .utility) {
                     let coverage = RescueCoverage.inspect(root: node, sourceIsReadable: !isUnreadable)
                     let report = CleanupClassifier.classify(root: node, ownerState: ownerState,
-                                                            coverageComplete: coverage.state == .complete)
+                                                            coverageComplete: coverage.state == .complete,
+                                                            shouldStop: { Task.isCancelled })
                     let measurement = RescueMeasurement.capture(volumeURL: volumeURL, root: node)
                     return (coverage, report, measurement)
-                }.value
+                }
+                self.diagnosisTask = diagnosisTask
+                let diagnosis = await diagnosisTask.value
 
                 // A newer scan may have started while classifying — it owns the UI
                 // state now, so this one publishes nothing.
                 guard self.scanGeneration == generation else { return }
+                self.diagnosisTask = nil
+                try Task.checkCancellation()
                 if treeIsEmpty && (isVolumeRoot || isUnreadable) {
                     self.needsFullDiskAccess = true
                 }
@@ -250,7 +255,15 @@ final class ScanViewModel: ObservableObject {
     }
 
     func cancelScan() {
+        guard isScanning else { return }
+        scanGeneration &+= 1
         scanTask?.cancel()
+        diagnosisTask?.cancel()
+        scanTask = nil
+        diagnosisTask = nil
+        isScanning = false
+        scanTaskWasCancelled = true
+        rescuePhase = .needsRescue
     }
 
     /// Whether the most recently requested source can be scanned again after a
@@ -297,6 +310,7 @@ final class ScanViewModel: ObservableObject {
     /// true if it switched. Used when the user taps a previously-scanned source.
     @discardableResult
     func showCachedScanIfAvailable(for url: URL) -> Bool {
+        guard !isDeleting else { return false }
         guard url != scannedURL, let cached = scanCache[url] else { return false }
         if isScanning {
             // Invalidate every callback/result from the in-flight scan before
@@ -368,7 +382,7 @@ final class ScanViewModel: ObservableObject {
     // MARK: - Collector
 
     func addToCollector(_ node: FileNode) {
-        guard !node.isSynthetic else { return }
+        guard !isDeleting, !node.isSynthetic else { return }
         // The app-uninstaller can mint nodes outside the scanned tree. Apply the
         // path gate before consulting the current plan, so protected roots cannot
         // enter the collector just because they have no recommendation row.
@@ -410,11 +424,13 @@ final class ScanViewModel: ObservableObject {
     }
 
     func removeFromCollector(_ node: FileNode) {
+        guard !isDeleting else { return }
         collector.removeAll { $0.id == node.id }
         if rescuePlan != nil, collector.isEmpty { rescuePhase = .reviewing }
     }
 
     func clearCollector() {
+        guard !isDeleting else { return }
         collector = []
         if rescuePlan != nil { rescuePhase = .reviewing }
     }
@@ -655,7 +671,7 @@ final class ScanViewModel: ObservableObject {
     /// Scan the current tree for exact-content duplicate files. Detection runs on a
     /// GCD worker pool (off the cooperative pool, since it does blocking reads).
     func findDuplicates() {
-        guard let root = rootNode, !isFindingDuplicates else { return }
+        guard let root = rootNode, !isFindingDuplicates, !isDeleting else { return }
         stopDuplicateSearch()
         let generation = duplicateGeneration
         let token = DuplicateCancelToken()
@@ -805,17 +821,32 @@ final class ScanViewModel: ObservableObject {
 
     /// Move every collected item to the Trash (recoverable), then prune them from
     /// the tree. The default, recommended action — restore from Finder if needed.
-    func moveCollectorToTrash() throws {
-        try moveToTrash(collector)
+    func moveCollectorToTrash() async throws {
+        try await moveToTrash(collector)
     }
 
-    /// Move `nodes` to the Trash (recoverable — restore from Finder) and prune the
-    /// successfully-trashed ones from both the tree and the collector. Synthetic
-    /// nodes are ignored. Throws if every move failed.
-    func moveToTrash(_ nodes: [FileNode]) throws {
+    /// Freeze tree mutation while a worker validates and removes exact targets.
+    /// Reads and navigation stay available; successful nodes are pruned in one batch.
+    func moveToTrash(_ nodes: [FileNode]) async throws {
+        try await remove(nodes, permanently: false)
+    }
+
+    private func remove(_ nodes: [FileNode], permanently: Bool) async throws {
+        guard !isDeleting, !isScanning else { throw RemovalStateError.busy }
         let targets = topLevelTargets(nodes.filter { !$0.isSynthetic })
         guard !targets.isEmpty else { return }
-        let before = currentRescueMeasurement()
+        isDeleting = true
+        deletionProgress = 0
+        deletionTotal = targets.count
+        stopDuplicateSearch()
+        defer { isDeleting = false }
+
+        let root = rootNode
+        let source = scannedURL
+        let before = try await Self.offMain {
+            if let root, let source { return RescueMeasurement.capture(volumeURL: source, root: root) }
+            return nil as RescueMeasurement?
+        }
         if rescuePlan != nil {
             rescueVerification = nil
             lastRescueError = nil
@@ -824,65 +855,62 @@ final class ScanViewModel: ObservableObject {
 
         var attemptedTargets: [FileNode] = []
         var failures: [DeletionService.DeletionError] = []
-        var measurementMismatchPaths: [String] = []
-        do {
-            try holdIfRescueOwnerIsActive(targets)
-            for target in targets {
+        var heldTargets: [FileNode] = []
+        var heldError: String?
+        for (index, target) in targets.enumerated() {
+            let prepared = try await Self.offMain { DeletionService.prepare(target) }
+            do {
                 try holdIfRescueOwnerIsActive([target])
-                attemptedTargets.append(target)
-                let itemBefore = currentRescueCapacity()
-                let itemFailures = try DeletionService.trash([target])
-                if let failure = itemFailures.first {
-                    failures.append(failure)
-                    if rescuePlan != nil {
-                        persistRescueCase(candidateIDs: stagedRescueCandidateIDs())
-                    }
-                    continue
-                }
+            } catch {
+                heldTargets = Array(targets[index...])
+                heldError = error.localizedDescription
+                break
+            }
+            attemptedTargets.append(target)
+            let failure = try await Self.offMain {
+                DeletionService.perform(prepared, permanently: permanently)
+            }
+            if let failure { failures.append(failure) }
+            deletionProgress = index + 1
+        }
+        // The background pass is done. It cannot read the arrays as they are pruned.
+        try? prune(attemptedTargets, failures: failures)
+        let after = try await Self.offMain {
+            if let root, let source { return RescueMeasurement.capture(volumeURL: source, root: root) }
+            return nil as RescueMeasurement?
+        }
+        recordRescueResult(before: before, after: after, targets: attemptedTargets, failures: failures,
+                           measurementMismatchPaths: [], heldNodes: heldTargets,
+                           errorMessage: heldError)
+        if let heldError { throw RescueActionError.ownerActive(heldError) }
+        if let first = failures.first { throw first }
+    }
 
-                // Prune each successful item before sampling the next one. This
-                // keeps the tree and the remaining collector aligned if capacity
-                // accounting changes between items.
-                try prune([target], failures: [])
-                if let itemBefore,
-                   let itemAfter = currentRescueCapacity(),
-                   let beforeBytes = itemBefore.primaryBytes,
-                   let afterBytes = itemAfter.primaryBytes,
-                   max(0, afterBytes - beforeBytes) != target.physicalSize {
-                    measurementMismatchPaths.append(target.url.standardizedFileURL.path)
-                }
-                if rescuePlan != nil {
-                    persistRescueCase(candidateIDs: stagedRescueCandidateIDs())
-                }
+    private enum RemovalStateError: LocalizedError {
+        case busy
+        var errorDescription: String? { "Wait for the current scan or cleanup to finish." }
+    }
+
+    nonisolated private static func offMain<Value: Sendable>(
+        _ operation: @escaping @Sendable () throws -> Value
+    ) async throws -> Value {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                do { continuation.resume(returning: try operation()) }
+                catch { continuation.resume(throwing: error) }
             }
-            recordRescueResult(before: before, targets: attemptedTargets, failures: failures,
-                               measurementMismatchPaths: measurementMismatchPaths)
-            if let firstFailure = failures.first { throw firstFailure }
-        } catch {
-            if rescuePlan != nil {
-                if error is RescueActionError {
-                    let attemptedIDs = Set(attemptedTargets.map(\.id))
-                    let heldTargets = targets.filter { !attemptedIDs.contains($0.id) }
-                    recordRescueResult(before: before, targets: attemptedTargets, failures: failures,
-                                       measurementMismatchPaths: measurementMismatchPaths,
-                                       heldNodes: heldTargets,
-                                       errorMessage: error.localizedDescription)
-                } else {
-                    lastRescueError = error.localizedDescription
-                    rescuePhase = .result
-                    persistRescueCase(candidateIDs: stagedRescueCandidateIDs())
-                }
-            }
-            throw error
         }
     }
 
     private func holdIfRescueOwnerIsActive(_ targets: [FileNode]) throws {
         guard let plan = rescuePlan,
               CleanupOwnerState.current() == .active else { return }
-        let targetIDs = Set(targets.map(\.id))
-        guard plan.recommendations.contains(where: {
-            targetIDs.contains($0.node.id) && $0.category.confidence == .safeRegenerable
+        let paths = targets.map { $0.url.standardizedFileURL.path }
+        guard plan.recommendations.contains(where: { recommendation in
+            recommendation.category.confidence == .safeRegenerable && paths.contains { path in
+                recommendation.path == path || recommendation.path.hasPrefix(path + "/")
+                    || path.hasPrefix(recommendation.path + "/")
+            }
         }) else { return }
         throw RescueActionError.ownerActive("Xcode is active. Close it, then review the rescue plan again before moving generated files.")
     }
@@ -895,19 +923,12 @@ final class ScanViewModel: ObservableObject {
     }
 
     /// Permanently delete every collected item, then prune them from the tree.
-    func deleteCollector() throws {
-        try deletePermanently(collector)
+    func deleteCollector() async throws {
+        try await deletePermanently(collector)
     }
 
-    /// Permanently delete `nodes` from disk (NOT the Trash — see `DeletionService`)
-    /// and prune the successfully-deleted ones from both the tree and the
-    /// collector. Synthetic nodes are ignored. Throws if every deletion failed.
-    func deletePermanently(_ nodes: [FileNode]) throws {
-        let targets = topLevelTargets(nodes.filter { !$0.isSynthetic })
-        guard !targets.isEmpty else { return }
-        try holdIfRescueOwnerIsActive(targets)
-        let failures = try DeletionService.delete(targets)
-        try prune(targets, failures: failures)
+    func deletePermanently(_ nodes: [FileNode]) async throws {
+        try await remove(nodes, permanently: true)
     }
 
     private func topLevelTargets(_ nodes: [FileNode]) -> [FileNode] {
@@ -922,17 +943,7 @@ final class ScanViewModel: ObservableObject {
         }
     }
 
-    private func currentRescueMeasurement() -> RescueMeasurement? {
-        guard let rootNode, let scannedURL else { return nil }
-        return RescueMeasurement.capture(volumeURL: scannedURL, root: rootNode)
-    }
-
-    private func currentRescueCapacity() -> RescueMeasurement? {
-        guard let scannedURL else { return nil }
-        return RescueMeasurement.captureCapacity(volumeURL: scannedURL)
-    }
-
-    private func recordRescueResult(before: RescueMeasurement?, targets: [FileNode],
+    private func recordRescueResult(before: RescueMeasurement?, after: RescueMeasurement?, targets: [FileNode],
                                     failures: [DeletionService.DeletionError],
                                     measurementMismatchPaths: [String],
                                     heldNodes: [FileNode] = [],
@@ -969,7 +980,7 @@ final class ScanViewModel: ObservableObject {
                 + unplannedHeldNodes.map { $0.url.standardizedFileURL.path },
             measurementMismatchPaths: measurementMismatchPaths.isEmpty ? nil : measurementMismatchPaths,
             before: before,
-            after: currentRescueMeasurement()
+            after: after
         )
         lastRescueError = errorMessage ?? failures.first?.localizedDescription
         rescuePhase = .result
@@ -1001,8 +1012,9 @@ final class ScanViewModel: ObservableObject {
 
         let removed = topLevel.filter { !failedURLs.contains($0.url.standardizedFileURL) }
         let removedIDs = Set(removed.map(\.id))
-        for node in removed {
-            node.parent?.remove(node)
+        let byParent = Dictionary(grouping: removed.filter { $0.parent != nil }, by: { $0.parent!.id })
+        for siblings in byParent.values {
+            siblings.first?.parent?.removeChildren(withIDs: Set(siblings.map(\.id)))
         }
         // Clear from the collector everything that actually went away: the removed
         // nodes themselves and any staged descendant detached along with a removed
@@ -1027,6 +1039,7 @@ final class ScanViewModel: ObservableObject {
         func isReachable(_ node: FileNode, from root: FileNode) -> Bool {
             var cursor: FileNode? = node
             while let c = cursor {
+                if removedIDs.contains(c.id) { return false }
                 if c.id == root.id { return true }
                 cursor = c.parent
             }

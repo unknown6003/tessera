@@ -239,6 +239,19 @@ final class FileNode: Identifiable, @unchecked Sendable {
     /// Children sorted largest-first.
     var sortedChildren: [FileNode] { children.sorted { $0.size > $1.size } }
 
+    /// Keep only the requested largest rows, without sorting a wide directory.
+    func largestChildren(limit: Int) -> [FileNode] {
+        guard limit > 0 else { return [] }
+        var largest: [FileNode] = []
+        for child in children {
+            if largest.count == limit, let last = largest.last, child.size <= last.size { continue }
+            let index = largest.firstIndex { $0.size < child.size } ?? largest.endIndex
+            largest.insert(child, at: index)
+            if largest.count > limit { largest.removeLast() }
+        }
+        return largest
+    }
+
     /// Allocated size shown by the scan. Directory sizes are aggregated from
     /// children and are therefore not taken from the identity record.
     var physicalSize: Int64 { size }

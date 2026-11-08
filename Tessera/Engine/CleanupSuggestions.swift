@@ -487,17 +487,15 @@ enum CleanupClassifier {
     static func protectedCategory(for path: String) -> CleanupCategory? {
         var candidate = URL(fileURLWithPath: path).standardizedFileURL.path.lowercased()
         while true {
-            let name = URL(fileURLWithPath: candidate).lastPathComponent.lowercased()
-            if let rule = rules.first(where: {
-                $0.category.confidence == .protected && $0.matches(name, candidate)
-            }) {
-                return rule.category
-            }
-            if candidate == "/" { return nil }
-            let parent = URL(fileURLWithPath: candidate).deletingLastPathComponent().path
-            if parent == candidate { return nil }
-            candidate = parent
+            if let category = protectedCategory(atNormalizedPath: candidate) { return category }
+            guard candidate != "/", let slash = candidate.lastIndex(of: "/") else { return nil }
+            candidate = slash == candidate.startIndex ? "/" : String(candidate[..<slash])
         }
+    }
+
+    static func protectedCategory(atNormalizedPath path: String) -> CleanupCategory? {
+        let name = path.split(separator: "/").last.map(String.init) ?? "/"
+        return rules.first { $0.category.confidence == .protected && $0.matches(name, path) }?.category
     }
 
     /// Check only when a directory is about to be proposed as one unit. Walking
@@ -510,7 +508,7 @@ enum CleanupClassifier {
         }
         while let (child, path) = stack.popLast() {
             guard !child.isSynthetic else { continue }
-            if protectedCategory(for: path) != nil { return true }
+            if protectedCategory(atNormalizedPath: path.lowercased()) != nil { return true }
             if child.isDirectory {
                 stack.append(contentsOf: child.children.map { nested in
                     (nested, path == "/" ? "/\(nested.name)" : path + "/" + nested.name)
@@ -537,7 +535,8 @@ enum CleanupClassifier {
     /// directory is kept as one explainable unit and its children are subsumed.
     static func classify(root: FileNode,
                          ownerState: CleanupOwnerState = .stopped,
-                         coverageComplete: Bool? = nil) -> CleanupReport {
+                         coverageComplete: Bool? = nil,
+                         shouldStop: @Sendable () -> Bool = { false }) -> CleanupReport {
         var recommendations: [CleanupRecommendation] = []
         var stack: [(node: FileNode, lowerPath: String)] = []
 
@@ -555,6 +554,7 @@ enum CleanupClassifier {
 
         func consider(_ children: [FileNode], parentLowerPath: String) {
             for child in children where !child.isSynthetic {
+                if shouldStop() { return }
                 let lowerName = child.name.lowercased()
                 let childPath = parentLowerPath == "/"
                     ? "/" + lowerName : parentLowerPath + "/" + lowerName
@@ -569,6 +569,7 @@ enum CleanupClassifier {
 
         consider(root.children, parentLowerPath: root.url.path.lowercased())
         while let (node, lowerPath) = stack.popLast() {
+            if shouldStop() { break }
             if let category = rules.first(where: {
                 $0.matches(node.name.lowercased(), lowerPath)
             })?.category {

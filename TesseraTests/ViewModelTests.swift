@@ -378,7 +378,7 @@ struct ViewModelTests {
         }
 
         let revision = vm.chartRevision
-        try vm.deletePermanently([file])
+        try await vm.deletePermanently([file])
 
         #expect(vm.chartRevision == (revision &+ 1))
         #expect(vm.rootNode?.children.contains(where: { $0.id == file.id }) == false)

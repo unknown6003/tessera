@@ -26,6 +26,44 @@ struct ScanRegressionTests {
         #expect(entries.allSatisfy { $0.type == .file })
     }
 
+    @Test("Tiny output batches preserve leftover kernel records")
+    func tinyBatches() throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        for index in 0..<107 {
+            try Data().write(to: url.appendingPathComponent("item-\(index)"))
+        }
+        let scratch = BulkScratch(entryCapacity: 3)
+        let entries = BulkDirScanner.entries(atPath: url.path, scratch: scratch)
+        #expect(Set(entries.map(\.name)) == Set((0..<107).map { "item-\($0)" }))
+    }
+
+    @Test("A cancelled directory session stops before opening the source")
+    func cancelledSession() throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let session = DirectoryReadSession()
+        session.cancel()
+        #expect(BulkDirScanner.workerListing(atPath: url.path, scratch: BulkScratch(session: session)) == nil)
+    }
+
+    @Test("A held provider does not affect a readable sibling provider or a later scan")
+    func providerScope() throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let first = url.appendingPathComponent("Library/CloudStorage/provider-a")
+        let second = url.appendingPathComponent("Library/CloudStorage/provider-b")
+        for provider in [first, second] {
+            try FileManager.default.createDirectory(at: provider, withIntermediateDirectories: true)
+            try Data([1]).write(to: provider.appendingPathComponent("local"))
+        }
+        let session = DirectoryReadSession()
+        session.hold(first.path)
+        #expect(BulkDirScanner.workerListing(atPath: first.path, scratch: BulkScratch(session: session)) == nil)
+        #expect(BulkDirScanner.workerListing(atPath: second.path, scratch: BulkScratch(session: session))?.entries.count == 1)
+        #expect(BulkDirScanner.workerListing(atPath: first.path, scratch: BulkScratch())?.entries.count == 1)
+    }
+
     @Test("Bulk enumeration retains long UTF-8 directory names and their children")
     func unicodeDirectory() async throws {
         let url = try fixture()
