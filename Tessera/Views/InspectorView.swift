@@ -73,13 +73,13 @@ struct InspectorView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(Theme.format(node.size))
-                    .font(.system(.title3, design: .monospaced).weight(.semibold))
+                    .font(.title2.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.primary)
 
                 if node.isDirectory {
-                    Text("\(node.children.count) item\(node.children.count == 1 ? "" : "s")")
+                    Text(Theme.itemCount(node.children.count))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.mutedForeground)
                 }
             }
         }
@@ -88,8 +88,8 @@ struct InspectorView: View {
     @ViewBuilder
     private func pathRow(_ node: FileNode) -> some View {
         Text(node.url.path)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.caption.monospaced())
+            .foregroundStyle(Theme.mutedForeground)
             .lineLimit(3)
             .truncationMode(.middle)
             .textSelection(.enabled)
@@ -114,12 +114,13 @@ struct InspectorView: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 14)
                         Text(child.name)
-                            .font(.caption)
+                            .font(.callout)
                             .lineLimit(1)
+                            .truncationMode(.middle)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text(Theme.format(child.size))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(Theme.mutedForeground)
                     }
                     .padding(.vertical, 4)
                 }
@@ -130,39 +131,49 @@ struct InspectorView: View {
         .padding(.top, 4)
     }
 
+    /// The one place for selection actions while Details is open. Primary
+    /// action on top at full width; Finder actions below it.
     @ViewBuilder
     private func actionButtons(_ node: FileNode) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([node.url])
-            } label: {
-                Label("Reveal", systemImage: "arrow.right.circle")
-                    .font(.subheadline)
-            }
-            .buttonStyle(.flat)
-            .disabled(node.isSynthetic)
-
-            Spacer()
-
-            if !node.isSynthetic {
-                let alreadyCollected = vm.collector.contains(where: { $0.id == node.id })
-                Button {
-                    vm.addToCollector(node)
-                } label: {
-                    Label("Add to list", systemImage: alreadyCollected ? "checkmark.circle" : "plus.circle")
-                        .font(.subheadline)
+        if !node.isSynthetic {
+            VStack(alignment: .leading, spacing: 8) {
+                if vm.isCollected(node) {
+                    Label("In Cleanup List", systemImage: "checkmark")
+                        .font(.callout)
+                        .foregroundStyle(Theme.mutedForeground)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                } else {
+                    Button {
+                        vm.addToCollector(node)
+                    } label: {
+                        Label("Add to Cleanup List", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.flat)
+                    .help("Add to Cleanup List (⌘⌫)")
                 }
-                .buttonStyle(.flat)
-                .disabled(alreadyCollected)
+                HStack(spacing: 16) {
+                    if node.isDirectory && node.id != vm.currentRoot?.id {
+                        Button("Open on Map") { vm.zoomIn(to: node) }
+                            .help("Open this folder on the map (⌘↓)")
+                    }
+                    Button("Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([node.url])
+                    }
+                }
+                .buttonStyle(.interactive)
+                .font(.callout)
+                .foregroundStyle(Theme.electricBlue)
             }
+            .padding(.top, 4)
         }
-        .padding(.top, 4)
     }
 
     private var emptyDetailsPlaceholder: some View {
         Text("Nothing selected yet")
             .font(.subheadline)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Theme.mutedForeground)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
             .multilineTextAlignment(.center)
@@ -184,8 +195,9 @@ struct InspectorView: View {
         case .cloudOnlyStorage: return Theme.cloudColor
         case .crossVolume: return Theme.crossVolumeColor
         default:
-            let hue = Theme.topHues[abs(node.name.hashValue) % Theme.topHues.count]
-            return Theme.wedgeColor(hue: hue, depth: 0)
+            // A stable neutral. A per-name colour cannot match the map, because
+            // map colours follow rank inside the folder on screen.
+            return Theme.elevated
         }
     }
 }

@@ -67,31 +67,49 @@ enum Theme {
 
     /// Categorical chart palette for the top ring — the site's sunburst family
     /// (cyan · teal · blue · violet · green · pink · amber), interleaved so
-    /// neighbours separate. Solid fills; the chart no longer uses glassy radial
-    /// shading.
-    static let sunburstColors: [Color] = [
-        Color(hex: 0x1BE6FF), Color(hex: 0x37E0C8), Color(hex: 0x5B8CFF),
-        Color(hex: 0x9E6BFF), Color(hex: 0x5BE36B), Color(hex: 0xFF5CC8),
-        Color(hex: 0xFFB13C),
+    /// neighbours separate. Each top-level branch keeps its hue at every depth.
+    private static let sunburstHex: [UInt32] = [
+        0x1BE6FF, 0x37E0C8, 0x5B8CFF, 0x9E6BFF, 0x5BE36B, 0xFF5CC8, 0xFFB13C,
     ]
+    static let sunburstColors: [Color] = sunburstHex.map { Color(hex: $0) }
 
-    /// Hues retained for any HSB-based swatch use; the chart itself now pulls
-    /// solid colors from `sunburstColors` via `wedgeColor`.
-    static let topHues: [Double] = [
-        0.510, 0.575, 0.480, 0.620, 0.540, 0.500,
-        0.600, 0.490, 0.560, 0.530, 0.470, 0.590,
-    ]
+    /// Fixed share of `bg` mixed into each ring, by depth. Opaque sRGB mixes, not
+    /// opacity, so hover washes and hairline gaps stay clean and child rings
+    /// read as a deeper step of the same branch.
+    private static let depthMix: [Double] = [0, 0.12, 0.22, 0.30, 0.36]
 
-    /// Solid categorical wedge color. `hue` selects into the flat palette (its
-    /// index derived from the hue) and `depth` deepens slightly with nesting so
-    /// child rings read as a shade of their parent.
-    static func wedgeColor(hue: Double, depth: Int) -> Color {
-        // Map the legacy hue into a stable palette index.
-        let idx = Int((hue * 1000).rounded()) % sunburstColors.count
-        let base = sunburstColors[(idx + sunburstColors.count) % sunburstColors.count]
-        guard depth > 0 else { return base }
-        // Deepen by compositing toward the void for nested rings.
-        return base.opacity(max(0.55, 1.0 - Double(depth) * 0.12))
+    /// Precomputed [palette][depth] table. Drawing reads it per wedge; no colour
+    /// math runs per frame.
+    private static let wedgeShades: [[Color]] = sunburstHex.map { hex in
+        depthMix.map { mix(hex, toward: 0x0A0B0D, amount: $0) }
+    }
+
+    /// Solid wedge colour for a top-level branch `palette` at ring `depth`.
+    /// `nil` palette marks a wedge too small to tell apart; it uses the
+    /// aggregate neutral, like DaisyDisk's grey "small items".
+    static func wedgeColor(palette: Int?, depth: Int) -> Color {
+        guard let palette else { return aggregateColor }
+        let row = wedgeShades[((palette % wedgeShades.count) + wedgeShades.count) % wedgeShades.count]
+        return row[min(max(0, depth), row.count - 1)]
+    }
+
+    /// Fixed colour for synthetic node kinds. `nil` for real files and folders.
+    static func syntheticColor(for kind: FileNode.Kind) -> Color? {
+        switch kind {
+        case .hiddenSpace:      return hiddenSpaceColor
+        case .aggregate:        return aggregateColor
+        case .cloudOnlyStorage: return cloudColor
+        case .crossVolume:      return crossVolumeColor
+        case .regular, .package: return nil
+        }
+    }
+
+    private static func mix(_ hex: UInt32, toward other: UInt32, amount t: Double) -> Color {
+        func channel(_ v: UInt32, _ shift: UInt32) -> Double { Double((v >> shift) & 0xFF) / 255.0 }
+        func lerp(_ shift: UInt32) -> Double {
+            channel(hex, shift) * (1 - t) + channel(other, shift) * t
+        }
+        return Color(.sRGB, red: lerp(16), green: lerp(8), blue: lerp(0), opacity: 1)
     }
 
     // MARK: - Synthetic node colours (solid)

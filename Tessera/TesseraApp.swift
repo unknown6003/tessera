@@ -28,5 +28,13 @@ struct TesseraApp: App {
                     .disabled(!updater.canCheckForUpdates || updater.status.isBusy)
             }
         }
+
+        // Settings… (⌘,). The analytics view and its storage belong to
+        // Tessera/Analytics; this scene only hosts it.
+        Settings {
+            AnalyticsSettingsView()
+                .tint(Theme.electricBlue)
+                .preferredColorScheme(.dark)
+        }
     }
 }

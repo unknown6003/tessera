@@ -423,61 +423,77 @@ struct CleanupSuggestionsView: View {
                 .help(vm.isCollected(recommendation.node)
                       ? "Remove from the Cleanup List" : "Add to the Cleanup List")
                 .accessibilityLabel(vm.isCollected(recommendation.node)
-                                    ? "Remove from Cleanup List" : "Add to Cleanup List")
+                                    ? "Remove \(recommendation.node.name) from Cleanup List"
+                                    : "Add \(recommendation.node.name) to Cleanup List")
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(recommendation.node.name)
-                        .font(.subheadline.weight(.semibold))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(Theme.format(recommendation.physicalBytes))
-                        .font(.subheadline.monospacedDigit().weight(.semibold))
-
-                    Text(recommendation.path)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-
-                    Text(sizeSummary(for: recommendation))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                // Row: name, size, one reason line and a risk tag. Path, owner,
+                // side effect and proof sit in one disclosure.
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(recommendation.node.name)
+                            .font(.callout.weight(.semibold))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(recommendation.risk.title)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(riskTint(recommendation.risk))
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .overlay(Capsule().strokeBorder(riskTint(recommendation.risk).opacity(0.5), lineWidth: 1))
+                            .fixedSize()
+                        Spacer(minLength: 8)
+                        Text(Theme.format(recommendation.physicalBytes))
+                            .font(.callout.monospacedDigit().weight(.semibold))
+                            .fixedSize()
+                    }
 
                     Text(recommendation.reason)
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .font(.callout)
+                        .foregroundStyle(Theme.mutedForeground)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(recommendation.reason)
 
-                    Text([recommendation.owner, recommendation.confidence.title,
-                          recommendation.action.title].joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("May change: \(recommendation.sideEffect)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    DisclosureGroup("Proof") {
-                        ForEach(recommendation.proof, id: \.self) { item in
-                            Text(item)
+                    DisclosureGroup("Details") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(recommendation.path)
                                 .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
+                            Text(sizeSummary(for: recommendation))
+                                .font(.caption.monospacedDigit())
+                            Text([recommendation.owner, recommendation.confidence.title,
+                                  recommendation.action.title].joined(separator: " · "))
+                                .font(.caption)
+                            Text("May change: \(recommendation.sideEffect)")
+                                .font(.caption)
+                            ForEach(recommendation.proof, id: \.self) { item in
+                                Text(item)
+                                    .font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                            }
                         }
+                        .foregroundStyle(Theme.mutedForeground)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .font(.caption)
                 }
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 6)
         .contextMenu {
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([recommendation.node.url])
             } label: {
                 Label("Reveal in Finder", systemImage: "magnifyingglass")
             }
+        }
+    }
+
+    private func riskTint(_ risk: CleanupRisk) -> Color {
+        switch risk {
+        case .safe: return Theme.electricBlue
+        case .review: return Theme.crossVolumeColor
+        case .protected: return Theme.danger
         }
     }
 

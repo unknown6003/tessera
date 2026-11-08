@@ -30,7 +30,10 @@ struct SunburstChart: View {
     private static let maxRings = 5
     private static let hubFraction: CGFloat = 0.17
     private static let minWedgeDegrees: Double = 0.7
-    private static let aggregateFraction: Double = 0.004   // 0.4 %
+    static let aggregateFraction: Double = 0.004   // 0.4 %
+    /// Wedges narrower than this keep their place but draw in the aggregate
+    /// neutral, so slivers do not add noise to the branch colours.
+    static let smallWedgeDegrees: Double = 1.0
     private static let gapDegrees: Double = 1.2
     private static let maxWedgesPerRing = 60
     private static let ringInset: CGFloat = 1.5            // hairline separation
@@ -81,6 +84,7 @@ struct SunburstChart: View {
     @State private var tooltipSize: CGSize = .zero
     /// Local NSEvent monitor for right-clicks; removed on disappear.
     @State private var rightClickMonitor: Any?
+    @FocusState private var mapFocused: Bool
 
     var body: some View {
         GeometryReader { geo in
@@ -166,10 +170,82 @@ struct SunburstChart: View {
                 Color.clear
             }
         }
-        .accessibilityElement(children: .ignore)
+        // Keyboard: Tab reaches the map. Left and Right move between
+        // siblings, Down moves to the first child ring, Up to the parent,
+        // Return opens a folder, Escape clears the selection.
+        .focusable(isEnabled)
+        .focused($mapFocused)
+        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .return]) { press in
+            guard isEnabled, press.modifiers.isDisjoint(with: [.command, .option, .control]) else {
+                return .ignored
+            }
+            return handleKey(press.key) ? .handled : .ignored
+        }
+        .onExitCommand { if isEnabled { onSelect(nil) } }
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityValue(accessibilityValue)
-        .accessibilityHint("Select items with a click or the Largest items list. Double-click a folder to open it. Drag an item to the Cleanup List.")
+        .accessibilityHint("Use the arrow keys to move between items. Return opens a folder. Command-Delete adds the selection to the Cleanup List.")
+        .accessibilityChildren { accessibleWedges }
+    }
+
+    // MARK: - Keyboard
+
+    /// Moves the selection through the cached layout. No tree walk: siblings
+    /// and children come from `layout`, which is already in angular order.
+    private func handleKey(_ key: KeyEquivalent) -> Bool {
+        let wedges = layout
+        guard !wedges.isEmpty else { return false }
+        guard let current = selectedNode,
+              let index = wedges.firstIndex(where: { $0.node.id == current.id }) else {
+            if key == .return, let selectedNode, selectedNode.isDirectory, !selectedNode.isSynthetic,
+               selectedNode.id != root?.id {
+                onZoomIn(selectedNode)
+                return true
+            }
+            onSelect(wedges[0].node)
+            return true
+        }
+        let wedge = wedges[index]
+        switch key {
+        case .leftArrow, .rightArrow:
+            let siblings = wedges.filter { $0.depth == wedge.depth && $0.node.parent?.id == wedge.node.parent?.id }
+            guard let at = siblings.firstIndex(where: { $0.node.id == current.id }), siblings.count > 1 else { return true }
+            let step = key == .rightArrow ? 1 : siblings.count - 1
+            onSelect(siblings[(at + step) % siblings.count].node)
+        case .downArrow:
+            if let child = wedges[(index + 1)...].first(where: { $0.depth == wedge.depth + 1 && $0.node.parent?.id == current.id }) {
+                onSelect(child.node)
+            }
+        case .upArrow:
+            if wedge.depth > 0, let parent = current.parent { onSelect(parent) }
+            else if isZoomed { onZoomOut() }
+        case .return:
+            if current.isDirectory && !current.isSynthetic { onZoomIn(current) }
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// One VoiceOver element per wedge in the two inner rings (bounded by the
+    /// per-ring cap), labeled with name, size and share of its parent.
+    @ViewBuilder private var accessibleWedges: some View {
+        let total = Double(max(1, root?.size ?? 1))
+        ForEach(layout.filter { $0.depth < 2 }) { wedge in
+            let node = wedge.node
+            let parentSize = Double(max(1, node.parent?.size ?? Int64(total)))
+            let percent = Int((Double(node.size) / parentSize * 100).rounded())
+            Text("\(node.name), \(Theme.format(node.size)), \(percent)% of \(node.parent?.name ?? root?.name ?? "total")")
+                .accessibilityAddTraits(node.id == selectedNode?.id ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction { onSelect(node) }
+                .accessibilityAction(named: "Open") {
+                    if node.isDirectory && !node.isSynthetic { onZoomIn(node) }
+                }
+        }
+        if isZoomed {
+            Button("Go up one level") { onZoomOut() }
+        }
     }
 
     private var accessibilityValue: String {
@@ -189,6 +265,8 @@ struct SunburstChart: View {
         let wedges = cachePrimed ? layout : root.map { Self.buildLayout(root: $0) } ?? []
         let progress = cachePrimed ? appearProgress : 1.0
         return Canvas { ctx, _ in
+            // Drawn after every fill, so neighbours never cover the outline.
+            var selectedPath: Path?
             for wedge in wedges {
                 let inner = hubRadius + CGFloat(wedge.depth) * ringSpan + Self.ringInset
                 let outer = hubRadius + CGFloat(wedge.depth + 1) * ringSpan - Self.ringInset
@@ -221,11 +299,15 @@ struct SunburstChart: View {
                     // Flat hover: a plain white wash, no blur/glow.
                     ctx.fill(path, with: .color(.white.opacity(0.14)))
                 }
-                if isSelected {
-                    // Flat selection: a crisp accent outline.
-                    ctx.stroke(path, with: .color(Theme.electricBlue),
-                               style: StrokeStyle(lineWidth: 2, lineJoin: .round))
-                }
+                if isSelected { selectedPath = path }
+            }
+            if let selectedPath {
+                // A dark halo under a white line stays visible on every branch
+                // hue, including the cyan one.
+                ctx.stroke(selectedPath, with: .color(Theme.bg),
+                           style: StrokeStyle(lineWidth: 5, lineJoin: .round))
+                ctx.stroke(selectedPath, with: .color(.white),
+                           style: StrokeStyle(lineWidth: 2.5, lineJoin: .round))
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: hoveredNode?.id)
@@ -233,19 +315,12 @@ struct SunburstChart: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: layoutRootID)
     }
 
-    /// Shading for a wedge. Flat design: every wedge is a single solid color from
-    /// the categorical palette, deepening slightly with nesting depth. No radial
-    /// lighting, no specular rim.
+    /// Shading for a wedge. Every wedge keeps its top-level branch hue and steps
+    /// toward the background with depth. Synthetic kinds keep fixed neutrals.
     private func wedgeShading(for wedge: Wedge, center: CGPoint,
                               chartRadius: CGFloat, hubRadius: CGFloat) -> GraphicsContext.Shading {
-        switch wedge.node.kind {
-        case .hiddenSpace:      return .color(Theme.hiddenSpaceColor)
-        case .aggregate:        return .color(Theme.aggregateColor)
-        case .cloudOnlyStorage: return .color(Theme.cloudColor)
-        case .crossVolume:      return .color(Theme.crossVolumeColor)
-        case .regular, .package:
-            return .color(Theme.wedgeColor(hue: wedge.hue, depth: wedge.depth))
-        }
+        .color(Theme.syntheticColor(for: wedge.node.kind)
+               ?? Theme.wedgeColor(palette: wedge.palette, depth: wedge.depth))
     }
 
     /// Build an annular sector path (rounded line caps via stroked arcs not used;
@@ -276,13 +351,16 @@ struct SunburstChart: View {
                     .font(.system(size: max(9, radius * 0.18), weight: .semibold))
                     .foregroundStyle(.secondary)
             }
+            // The total is the largest number on screen; the name sits below it.
+            Text(Theme.format(node?.size ?? 0))
+                .font(.system(size: max(15, radius * 0.30), weight: .semibold).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             Text(node?.name ?? "—")
-                .font(.system(size: max(10, radius * 0.20), weight: .semibold))
+                .font(.system(size: max(10, radius * 0.15), weight: .medium))
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Text(Theme.format(node?.size ?? 0))
-                .font(.system(size: max(9, radius * 0.17), weight: .medium).monospacedDigit())
-                .foregroundStyle(.secondary)
         }
         .padding(radius * 0.18)
         .frame(width: radius * 2, height: radius * 2)
@@ -553,7 +631,7 @@ struct SunburstChart: View {
         var out: [Wedge] = []
 
         func recurse(parent: FileNode, depth: Int, start: Double, sweep: Double,
-                     hue: Double, inheritHue: Bool) {
+                     palette: Int?) {
             guard depth < maxRings else { return }
             let kids = parent.sortedChildren
             guard !kids.isEmpty else { return }
@@ -600,20 +678,18 @@ struct SunburstChart: View {
                 let frac = Double(entry.size) / parentSize
                 let span = usable * frac
                 if span >= minWedgeDegrees {
-                    let childHue: Double
-                    if depth == 0 {
-                        childHue = Theme.topHues[i % Theme.topHues.count]
-                    } else {
-                        // inherit with a small per-sibling drift
-                        let drift = (Double(i) - Double(n - 1) / 2) * 0.012
-                        childHue = (hue + drift).truncatingRemainder(dividingBy: 1).magnitude
-                    }
+                    // Top ring: the rank picks the branch colour (it matches the
+                    // Largest items legend). Deeper rings inherit it unchanged.
+                    // Slivers turn neutral; their children stay neutral too.
+                    let branch = depth == 0 ? i : palette
+                    let childPalette = sweep * frac < smallWedgeDegrees ? nil : branch
                     let wedge = Wedge(node: entry.node, depth: depth,
-                                      startAngle: cursor, endAngle: cursor + span, hue: childHue)
+                                      startAngle: cursor, endAngle: cursor + span,
+                                      palette: childPalette)
                     out.append(wedge)
                     if entry.node.isDirectory && !entry.node.isSynthetic {
                         recurse(parent: entry.node, depth: depth + 1,
-                                start: cursor, sweep: span, hue: childHue, inheritHue: true)
+                                start: cursor, sweep: span, palette: childPalette)
                     }
                 }
                 cursor += span + gap
@@ -621,8 +697,7 @@ struct SunburstChart: View {
         }
 
         // Start at -90° so the first wedge begins at the top.
-        recurse(parent: root, depth: 0, start: -90, sweep: 360,
-                hue: 0, inheritHue: false)
+        recurse(parent: root, depth: 0, start: -90, sweep: 360, palette: nil)
         return out
     }
 
@@ -639,6 +714,7 @@ struct SunburstChart: View {
         let depth: Int
         let startAngle: Double   // degrees
         let endAngle: Double
-        let hue: Double
+        /// Top-level branch index into `Theme.sunburstColors`; nil for slivers.
+        let palette: Int?
     }
 }

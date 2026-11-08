@@ -64,16 +64,37 @@ struct CollectorDock: View {
     @ObservedObject var vm: ScanViewModel
     @ObservedObject var drag: CollectorDragController
     var onReview: () -> Void
+    /// Set when a removal finishes in this window; cleared by Dismiss. The
+    /// counts come from `vm.rescueVerification`, which every removal writes.
+    @State private var showResult = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            if let notice = vm.collectorNotice { noticeRow(notice) }
+            if showResult, !vm.isDeleting, let result = vm.rescueVerification { resultRow(result) }
+            dockRow
+        }
+        .background(drag.isOverCollector ? Theme.selectionTint : Theme.surface)
+        .onChange(of: vm.isDeleting) { wasDeleting, deleting in
+            if wasDeleting && !deleting { showResult = vm.rescueVerification != nil }
+            if deleting { showResult = false }
+        }
+        .onChange(of: vm.scannedURL) { _, _ in showResult = false }
+        .onChange(of: vm.collectorNotice) { _, notice in
+            if let notice { AccessibilityNotification.Announcement(notice).post() }
+        }
+    }
+
+    private var dockRow: some View {
         HStack(spacing: 12) {
             Image(systemName: drag.isOverCollector ? "plus.circle.fill" : "checklist")
                 .font(.title3).foregroundStyle(Theme.electricBlue)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Cleanup List").font(.subheadline.weight(.semibold))
-                Text(vm.collector.isEmpty ? "Drop a map item here to review it." :
+                Text(vm.collector.isEmpty ? "Drop a map item here, or press ⌘⌫ on a selected item." :
                      "\(Theme.itemCount(vm.collector.count)) · \(Theme.format(vm.collectorTotalSize)) allocated")
-                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .font(.caption.monospacedDigit()).foregroundStyle(Theme.mutedForeground)
             }
             Spacer(minLength: 8)
             if vm.isDeleting {
@@ -81,17 +102,23 @@ struct CollectorDock: View {
                     .frame(width: 120)
                     .accessibilityLabel("Removing items")
                     .accessibilityValue("\(vm.deletionProgress) of \(vm.deletionTotal)")
+            } else if vm.collector.isEmpty {
+                // One filled accent control per view: the review CTA fills only
+                // when there is something to review.
+                Button("Review List…", action: onReview)
+                    .buttonStyle(.flat)
+                    .disabled(true)
             } else {
-                Button("Review list…", action: onReview)
+                Button("Review List…", action: onReview)
                     .buttonStyle(.flatProminent)
-                    .disabled(vm.collector.isEmpty || vm.isScanning)
+                    .disabled(vm.isScanning)
                     .keyboardShortcut("l", modifiers: [.command, .shift])
+                    .help("Review every path before anything moves (⇧⌘L)")
             }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .background(drag.isOverCollector ? Theme.selectionTint : Theme.surface)
         .overlay(alignment: .top) {
             if drag.isOverCollector { Rectangle().fill(Theme.electricBlue).frame(height: 2) }
         }
@@ -100,17 +127,65 @@ struct CollectorDock: View {
         } action: { drag.setCollectorFrame($0) }
         .onDisappear { drag.setCollectorFrame(.zero) }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Cleanup List drop target")
+        .accessibilityLabel("Cleanup List")
+    }
+
+    private func noticeRow(_ notice: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "info.circle").accessibilityHidden(true)
+            Text(notice).lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .font(.callout)
+        .foregroundStyle(Theme.foreground)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(Theme.elevated)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func resultRow(_ result: RescueVerification) -> some View {
+        let permanent = result.removalMethod == .permanent
+        let moved = result.movedPaths?.count ?? 0
+        let held = result.heldPaths?.count ?? 0
+        let failed = result.failedPaths.count
+        let verb = permanent ? "Deleted" : "Moved"
+        let target = permanent ? "" : " to Trash"
+        return HStack(spacing: 10) {
+            Image(systemName: failed > 0 ? "exclamationmark.triangle" : "checkmark.circle")
+                .foregroundStyle(failed > 0 ? Theme.danger : Theme.electricBlue)
+                .accessibilityHidden(true)
+            Text("\(verb) \(Theme.itemCount(moved)) (\(Theme.format(result.movedBytes)))\(target). \(held) held, \(failed) failed.")
+                .font(.callout.monospacedDigit())
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            // Finder can put items back from Trash. Tessera offers no Undo of
+            // its own; it does not restore files itself.
+            if !permanent && moved > 0, let trash = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first {
+                Button("Show Trash") { NSWorkspace.shared.open(trash) }
+                    .buttonStyle(.flat).controlSize(.small)
+            }
+            Button("Dismiss") { showResult = false }
+                .buttonStyle(.flat).controlSize(.small)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(Theme.elevated)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Removal result")
     }
 }
 
 /// The review uses one source and one scan. A rescan cannot silently replace
 /// paths in the open sheet. Removals update both the review and staged list.
+/// Confirmation dialogs attach to this sheet, so Cancel returns to the same
+/// rows and total.
 struct CleanupReviewSheet: View {
     private struct Item: Identifiable {
         let node: FileNode
         let path: String
         let bytes: Int64
+        let recommendation: CleanupRecommendation?
         var id: ObjectIdentifier { node.id }
     }
 
@@ -118,23 +193,40 @@ struct CleanupReviewSheet: View {
     let sourcePath: String
     let rootID: ObjectIdentifier?
     let revision: UInt64
+    /// Rescue shows the risk mix and capacity goal in the confirmation.
+    let startedInRescue: Bool
     var onTrash: ([FileNode]) -> Void
     var onDelete: ([FileNode]) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var items: [Item]
     @State private var reviewedCollectorIDs: Set<ObjectIdentifier>
+    @State private var showTrashConfirm: Bool
+    @State private var showDeleteConfirm = false
+    @State private var listHeight: CGFloat = 0
+
+    /// Keeps header, footer and list inside the 820x600 minimum window.
+    private static let maxListHeight: CGFloat = 300
 
     init(vm: ScanViewModel, nodes: [FileNode], sourcePath: String,
-         rootID: ObjectIdentifier?, revision: UInt64, onTrash: @escaping ([FileNode]) -> Void,
+         rootID: ObjectIdentifier?, revision: UInt64, startedInRescue: Bool = false,
+         confirmOnOpen: Bool = false,
+         onTrash: @escaping ([FileNode]) -> Void,
          onDelete: @escaping ([FileNode]) -> Void) {
         self.vm = vm
         self.sourcePath = sourcePath
         self.rootID = rootID
         self.revision = revision
+        self.startedInRescue = startedInRescue
         self.onTrash = onTrash
         self.onDelete = onDelete
-        _items = State(initialValue: nodes.map { Item(node: $0, path: $0.url.path, bytes: $0.physicalSize) })
+        // One lookup table per sheet, not one linear search per row per render.
+        let plan = Dictionary((vm.rescuePlan?.recommendations ?? []).map { ($0.node.id, $0) },
+                              uniquingKeysWith: { first, _ in first })
+        _items = State(initialValue: nodes.map {
+            Item(node: $0, path: $0.url.path, bytes: $0.physicalSize, recommendation: plan[$0.id])
+        })
         _reviewedCollectorIDs = State(initialValue: Set(nodes.map(\.id)))
+        _showTrashConfirm = State(initialValue: confirmOnOpen && !nodes.isEmpty)
     }
 
     private var isCurrent: Bool {
@@ -149,96 +241,186 @@ struct CleanupReviewSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Review Cleanup List").font(.title2.weight(.semibold))
-                    Spacer()
-                    Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
-                }
-                Text(sourcePath).font(.caption.monospaced()).foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                Text("Check every path. Removing an item from this list keeps its file in place.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            }
-            .padding(24)
+            header
             Divider()
             if !isCurrent {
                 Label("The scan or list changed. Close this sheet and review the current list.",
                       systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange).font(.subheadline).padding(20)
+                    .foregroundStyle(.orange).font(.subheadline)
+                    .padding(.horizontal, 24).padding(.vertical, 10)
             }
             ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(items) { item in
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: Theme.icon(for: item.node)).foregroundStyle(.secondary)
-                                .frame(width: 20)
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(item.node.name).font(.body.weight(.medium))
-                                Text(item.path).font(.caption.monospaced()).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-                                if let recommendation = vm.rescuePlan?.recommendations.first(where: { $0.node.id == item.id }) {
-                                    Text("\(recommendation.risk.title) · \(recommendation.reason)")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            Text(Theme.format(item.bytes)).font(.subheadline.monospacedDigit())
-                                .fixedSize()
-                            Button {
-                                vm.removeFromCollector(item.node)
-                                items.removeAll { $0.id == item.id }
-                                reviewedCollectorIDs.remove(item.id)
-                            } label: { Image(systemName: "minus.circle") }
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("Remove \(item.node.name) from Cleanup List")
-                            .disabled(!isCurrent)
-                        }
-                        .padding(.vertical, 16)
-                        .contextMenu {
-                            Button("Reveal in Finder") {
-                                NSWorkspace.shared.activateFileViewerSelecting([item.node.url])
-                            }
-                        }
-                        Divider()
-                    }
+                VStack(spacing: 0) {
+                    ForEach(items) { item in row(item) }
                     if items.isEmpty {
-                        Text("The Cleanup List is empty.").foregroundStyle(.secondary).padding(32)
+                        Text("The Cleanup List is empty.").foregroundStyle(Theme.mutedForeground).padding(24)
                     }
                 }
                 .padding(.horizontal, 24)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
+            }
+            // Grows with its rows, then scrolls; the footer total stays pinned.
+            .frame(height: min(max(listHeight, 44), Self.maxListHeight))
+            Divider()
+            footer
+        }
+        .frame(width: 640)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Theme.bg)
+        .confirmationDialog(trashTitle, isPresented: $showTrashConfirm, titleVisibility: .visible) {
+            Button("Move to Trash") { onTrash(items.map(\.node)) }
+            // Cancel is the Return and Escape action; the sheet stays open.
+            Button("Cancel", role: .cancel) { vm.cancelTrashConfirmation() }
+                .keyboardShortcut(.defaultAction)
+        } message: {
+            Text(trashMessage)
+        }
+        .confirmationDialog("Permanently delete \(Theme.itemCount(items.count)) (\(Theme.format(total)))?",
+                            isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Move to Trash Instead") { requestTrash() }
+            Button("Delete Permanently", role: .destructive) { onDelete(items.map(\.node)) }
+            Button("Cancel", role: .cancel) {}
+                .keyboardShortcut(.defaultAction)
+        } message: {
+            Text("This cannot be undone. Check every path first.")
+        }
+        .onAppear { if showTrashConfirm { vm.beginTrashConfirmation() } }
+        .onChange(of: vm.isScanning) { _, scanning in
+            if scanning { showTrashConfirm = false; showDeleteConfirm = false }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Review Cleanup List").font(.title2.weight(.semibold))
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+            Text("Check every path. Removing a row keeps its file in place.")
+                .font(.callout).foregroundStyle(Theme.mutedForeground)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 18)
+    }
+
+    private func row(_ item: Item) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: Theme.icon(for: item.node)).foregroundStyle(Theme.mutedForeground)
+                    .frame(width: 20).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(item.node.name).font(.body.weight(.medium)).lineLimit(1)
+                        if let recommendation = item.recommendation {
+                            tag(recommendation.risk.title, color: riskColor(recommendation.risk))
+                            tag(recommendation.owner, color: Theme.mutedForeground)
+                        }
+                    }
+                    Text(item.path).font(.caption.monospaced()).foregroundStyle(Theme.mutedForeground)
+                        .lineLimit(1).truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .help(item.path)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(Theme.format(item.bytes)).font(.callout.monospacedDigit())
+                    .fixedSize()
+                Button {
+                    vm.removeFromCollector(item.node)
+                    items.removeAll { $0.id == item.id }
+                    reviewedCollectorIDs.remove(item.id)
+                } label: { Image(systemName: "minus.circle") }
+                .buttonStyle(.icon(size: 24))
+                .help("Remove from Cleanup List. The file stays in place.")
+                .accessibilityLabel("Remove \(item.node.name) from Cleanup List")
+                .disabled(!isCurrent)
+            }
+            .padding(.vertical, 10)
+            .accessibilityElement(children: .contain)
+            .contextMenu {
+                Button("Reveal in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([item.node.url])
+                }
             }
             Divider()
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(Theme.itemCount(items.count)).foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(Theme.format(total)) allocated").font(.headline.monospacedDigit())
-                }
-                Text("Finder Trash is recoverable. Moving files to Trash does not free disk space until Trash is emptied.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Menu("More") {
-                        Button("Empty list") {
-                            vm.clearCollector()
-                            items = []
-                            reviewedCollectorIDs = []
-                        }
-                        Divider()
-                        Button("Delete Permanently…", role: .destructive) { onDelete(items.map(\.node)) }
-                    }
-                    .fixedSize()
-                    Spacer()
-                    Button("Move to Trash…") { onTrash(items.map(\.node)) }
-                        .buttonStyle(.flatProminent)
-                }
-                .disabled(!isCurrent || items.isEmpty)
-            }
-            .padding(24)
         }
-        .frame(width: 700, height: 620)
-        .background(Theme.bg)
+    }
+
+    private func tag(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .overlay(Capsule().strokeBorder(color.opacity(0.5), lineWidth: 1))
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    private func riskColor(_ risk: CleanupRisk) -> Color {
+        switch risk {
+        case .safe: return Theme.electricBlue
+        case .protected: return Theme.danger
+        default: return Theme.crossVolumeColor
+        }
+    }
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(Theme.itemCount(items.count)).foregroundStyle(Theme.mutedForeground)
+                Spacer()
+                Text("\(Theme.format(total)) allocated").font(.headline.monospacedDigit())
+            }
+            Text("Trash is recoverable. Space returns when you empty Trash.")
+                .font(.caption).foregroundStyle(Theme.mutedForeground)
+            HStack {
+                Menu("More") {
+                    Button("Empty List") {
+                        vm.clearCollector()
+                        items = []
+                        reviewedCollectorIDs = []
+                    }
+                    Divider()
+                    Button("Delete Permanently…", role: .destructive) { showDeleteConfirm = true }
+                }
+                .fixedSize()
+                Spacer()
+                Button("Move to Trash…") { requestTrash() }
+                    .buttonStyle(.flatProminent)
+            }
+            .disabled(!isCurrent || items.isEmpty)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+    }
+
+    private func requestTrash() {
+        guard isCurrent, !items.isEmpty else { return }
+        vm.beginTrashConfirmation()
+        showTrashConfirm = true
+    }
+
+    private var trashTitle: String {
+        "Move \(Theme.itemCount(items.count)) (\(Theme.format(total))) to Trash?"
+    }
+
+    /// Two sentences in Explore. Rescue adds the risk mix and the capacity goal,
+    /// because only Rescue sets that goal.
+    private var trashMessage: String {
+        let base = "You can restore items from Trash. Space returns when you empty Trash."
+        guard startedInRescue, let plan = vm.rescuePlan else { return base }
+        let ids = Set(items.map(\.id))
+        let parts = [(CleanupRisk.safe, "safe"), (.review, "review"), (.protected, "protected")]
+            .compactMap { risk, title -> String? in
+                let count = plan.recommendations.filter { ids.contains($0.node.id) && $0.risk == risk }.count
+                return count > 0 ? "\(count) \(title)" : nil
+            }
+        var message = base
+        if !parts.isEmpty { message += " " + parts.joined(separator: ", ") + "." }
+        if let target = plan.targetSpace {
+            message += " Goal: under \(Int((plan.capacityGoal * 100).rounded()))% used, \(Theme.format(target)) free."
+        }
+        return message
     }
 }
 

@@ -29,6 +29,27 @@ struct Sidebar: View {
 
     private var allSources: [VolumeInfo] { volumes + customFolders }
 
+    /// Chosen folders survive relaunch. Local preferences only (the app is not
+    /// sandboxed, so a plain path is enough); never sent anywhere.
+    private static let customFoldersKey = "Tessera.customFolderPaths"
+    private static let customFoldersLimit = 12
+
+    private func loadCustomFolders() {
+        guard customFolders.isEmpty else { return }
+        let paths = DebugAutomation.defaults.stringArray(forKey: Self.customFoldersKey) ?? []
+        customFolders = paths.prefix(Self.customFoldersLimit).compactMap { path in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else { return nil }
+            return VolumeInfo(folderURL: URL(fileURLWithPath: path, isDirectory: true))
+        }
+    }
+
+    private func saveCustomFolders() {
+        let paths = customFolders.prefix(Self.customFoldersLimit).map(\.url.path)
+        DebugAutomation.defaults.set(Array(paths), forKey: Self.customFoldersKey)
+    }
+
     /// Sources grouped into ordered sections for display.
     private var sections: [(kind: StorageSourceKind, items: [VolumeInfo])] {
         let groups = Dictionary(grouping: allSources, by: \.kind)
@@ -64,7 +85,11 @@ struct Sidebar: View {
             updateRow.padding(.vertical, 10)
         }
         .background(Theme.surface)
-        .onAppear { reloadVolumes() }
+        .onAppear {
+            loadCustomFolders()
+            reloadVolumes()
+        }
+        .onChange(of: customFolders.map(\.url)) { _, _ in saveCustomFolders() }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didMountNotification)) { _ in reloadVolumes() }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didUnmountNotification)) { _ in reloadVolumes() }
         .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in

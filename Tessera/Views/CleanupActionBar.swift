@@ -46,7 +46,24 @@ struct CleanupActionBar: View {
 
     @State private var presentedTool: Tool?
 
+    private var unavailable: Bool { vm.isScanning || vm.isDeleting || vm.rootNode == nil }
+
     var body: some View {
+        HStack(spacing: 6) {
+            Button { presentedTool = .search } label: {
+                Label("Search", systemImage: "magnifyingglass")
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .help("Search this scan (⌘F)")
+            .disabled(unavailable)
+            toolsMenu
+        }
+        .sheet(item: $presentedTool) { tool in
+            toolSheet(tool)
+        }
+    }
+
+    private var toolsMenu: some View {
         Menu {
             Section("Explore this scan") {
                 ForEach(Tool.allCases) { tool in
@@ -59,12 +76,10 @@ struct CleanupActionBar: View {
             Button("Open Rescue", action: onRescue)
         } label: {
             Label("Tools", systemImage: "wrench.and.screwdriver")
+                .labelStyle(.titleAndIcon)
         }
         .help("Search, duplicates, apps, file types and old files")
-        .disabled(vm.isScanning || vm.isDeleting || vm.rootNode == nil)
-        .sheet(item: $presentedTool) { tool in
-            toolSheet(tool)
-        }
+        .disabled(unavailable)
     }
 
     @ViewBuilder
@@ -110,7 +125,8 @@ struct CleanupActionBar: View {
                 .disabled(vm.isDeleting || vm.isScanning)
             }
         }
-        .frame(width: tool.sheetWidth, height: 680)
+        // 500 pt keeps the header, content and Done inside the 820x600 window.
+        .frame(width: tool.sheetWidth, height: 500)
         .background(Theme.bg)
     }
 }
