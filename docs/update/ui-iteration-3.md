@@ -24,7 +24,7 @@ rubric is unchanged.
 | P6 2 pt cyan border around the whole list and the selected source | Panel-level focus rings | No panel border. The focused row (the selection, or row 0 when nothing is selected) gets a stronger fill and a 1 pt cyan ring. The focused source gets a 1 pt ring. The map's system ring is replaced by a 1 pt cyan circle outside the rings. | `ContentView.swift`, `Sidebar.swift`, `SunburstChart.swift` |
 | P8 "Details" and "In this folder" headers differ | `headline` vs `caption` | Both use caption semibold secondary with the header trait, on the same top inset. "Largest Items" is now "Largest items". | `InspectorView.swift`, `ContentView.swift` |
 | P9 Large empty filled panels (152 pt list, 307 pt Details) | The list background filled the column; Details painted `bg` to full height | The list panel's height is `rows × pitch + 8` at most, so its fill ends with its rows. A spacer takes the rest. Details has no panel fill. | `ContentView.swift`, `InspectorView.swift` |
-| P10 Capacity labels, header order, analytics claim | "available now" and "Free" did not say which macOS value they show; the saved case sat above the header; "Everything stays on this Mac" is false with always-on analytics | The headline shows `primaryBytes` as before. Its label is "Available for use" when `availableBytes` (macOS "available for important usage") exists, else "Free now". A note says macOS can reclaim caches and other purgeable files for "Available for use", and that "Free now" is the free space macOS reports. "Free now" shows as a second figure only when the headline is the larger value. A second note, shown always, says capacity figures cover the whole drive that holds the source, while logical and physical totals cover only the scanned source. (It needs no path test: `RescueMeasurement.volumePath` is the selected source path, not the mount point, so it always equals `RescuePlan.sourcePath`.) Measurements, goal and target maths are unchanged. Header first; the saved case is a compact banner under it; its path shows only when it differs from the header's. The available and target figures share `title2` semibold on one baseline. The line now reads "File analysis runs on this Mac." | `CleanupSuggestionsView.swift` |
+| P10 Capacity labels, header order, analytics claim | "available now" and "Free" did not say which macOS value they show; the saved case sat above the header; "Everything stays on this Mac" is false with always-on analytics | The headline shows `primaryBytes` as before. Its label is "Available for use" when `availableBytes` (macOS "available for important usage") exists, else "Free now". A note says macOS can reclaim caches and other purgeable files for "Available for use", and that "Free now" is the free space macOS reports. "Free now" shows as a second figure whenever `availableBytes` exists, that is, whenever the headline is the "available for use" figure. The two values can be equal; the view does not compare them. A second note, shown always, says capacity figures cover the whole drive that holds the source, while logical and physical totals cover only the scanned source. (It needs no path test: `RescueMeasurement.volumePath` is the selected source path, not the mount point, so it always equals `RescuePlan.sourcePath`.) Measurements, goal and target maths are unchanged. Header first; the saved case is a compact banner under it; its path shows only when it differs from the header's. The available and target figures share `title2` semibold on one baseline. The line now reads "File analysis runs on this Mac." | `CleanupSuggestionsView.swift` |
 | P11 "Preparing results" in the header and the body; raw counts | Both showed `scanStatus`; counts used `\(Int)` | The header says "Scanning"; the body shows the phase. Counts use `Int.formatted()` (locale grouping, 100,000). | `ContentView.swift` |
 
 Measured on the sRGB values in `Theme.swift` (WCAG formula):
@@ -234,3 +234,33 @@ apparent difference is `.onDisappear { }` becoming
 
 Native check: the CI build and the full test suite must pass with Xcode
 26.6. If another expression times out, the log names its line.
+
+## Spec review fixes: one primary action, focus intent, window identity
+
+Base: `f4cc139`. Scope: `ContentView.swift`, `CleanupSuggestionsView.swift`,
+`Sidebar.swift`, `SunburstChart.swift`, `GlassSurfaces.swift` and this
+note. Status: source changed, not compiled, not run. No score.
+
+An independent Opus spec review found three functional faults; each was
+checked in source before the fix.
+
+| Finding | Cause | Fix |
+|---|---|---|
+| Rescue could show up to four filled cyan buttons: saved case "Reopen and rescan", "Add all safe", the page's "Review Cleanup List…" and the dock's "Review List…" | Each was `.flatProminent` on its own terms | "Reopen and rescan" is flat. "Add all safe" is filled only while the Cleanup List is empty. The page's review footer shows only when the dock is not on screen: `ContentView` passes `onMoveToTrash` only when `dockIsVisible` (no scan root and no removal) is false. `onMoveToTrash` has no other use, and `CleanupSuggestionsView` has one caller. So with items in the list there is one filled review button, the dock's. |
+| After Details replaced a focused browser, the user could move focus to the map or the sources; returning to Items still pulled focus back to the browser | `browserFocusBeforeDetails` was cleared only by the browser itself or by leaving Explore | `SunburstChart` and `Sidebar` take an `onKeyboardFocus` callback, called from `onChange` of their own `@FocusState` when it becomes true. `ContentView` passes `dropBrowserFocusIntent`, which clears both stored requests. Focus inside Details does not clear them, so returning to Items from Details still restores the browser as intended. |
+| `restoreBrowserFocusIfNeeded` said "Tessera's main window is key" but accepted any key window that was not a panel or sheet, such as Settings or a second Tessera window | No window identity | `TransparentWindowConfigurator` reports its window from `viewDidMoveToWindow` (public `NSView` callback). `ContentView` keeps it weakly in a reference box. The restore now requires `NSApp.keyWindow === ownWindow`, no attached sheet and no `NSText` first responder. No title match, no `NSApp.mainWindow`, no timers. |
+
+Not changed: the bottom bars' 90 pt target stays a native measurement
+(checklist item 5 above). No speculative layout rework.
+
+Native checks:
+
+1. Rescue with a saved case and an empty list: one filled button ("Add all
+   safe"). After adding items: one filled button, the dock's "Review
+   List…"; "Add all safe" is flat; no page review footer.
+2. Narrow window, browser focused, ⌃⌘I (Details shows), click a wedge or a
+   source, then switch to Items: focus stays on the map or the source list.
+3. Same, but stay in Details and switch to Items: the browser has focus.
+4. Open Settings (⌘,) and leave it key, then resize the main window across
+   a breakpoint: Settings keeps focus; the main window's browser does not
+   take it.

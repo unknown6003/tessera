@@ -5,6 +5,9 @@ import AppKit
 /// ranked review list in one readable path.
 struct CleanupSuggestionsView: View {
     @ObservedObject var vm: ScanViewModel
+    /// Shows the in-page review button. The caller passes it only when the
+    /// window's Cleanup List dock, which has its own filled review button, is
+    /// not on screen, so the window never shows two filled review buttons.
     var onMoveToTrash: (() -> Void)? = nil
 
     @State private var expandedGroups = Set<String>()
@@ -67,7 +70,9 @@ struct CleanupSuggestionsView: View {
                             ? "Added to review"
                             : "Add all safe · \(Theme.format(report.safeTotalBytes))",
                         actionDisabled: vm.safeGroupsAllStaged,
-                        prominent: true
+                        // The one filled button only while the list is empty;
+                        // after that the dock's review button is the primary.
+                        prominent: vm.collector.isEmpty
                     )
                 }
 
@@ -779,8 +784,10 @@ struct CleanupSuggestionsView: View {
 
     private var savedCaseActions: some View {
         HStack(spacing: 8) {
+            // Flat: a saved case is a secondary path; the page keeps one
+            // filled primary action.
             Button("Reopen and rescan") { vm.reopenSavedRescueCase() }
-                .buttonStyle(.flatProminent).focusEffectDisabled()
+                .buttonStyle(.flat).focusEffectDisabled()
                 .controlSize(.small)
                 .disabled(vm.isScanning)
             Button("Forget") { vm.discardSavedRescueCase() }

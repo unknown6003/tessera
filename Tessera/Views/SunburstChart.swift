@@ -90,6 +90,8 @@ struct SunburstChart: View {
     @ObservedObject var drag: CollectorDragController
     /// Called when a wedge is dropped onto a dock zone (collector or trash).
     let onDrop: (FileNode) -> Void
+    /// Called when the map gains keyboard focus (click or Tab).
+    var onKeyboardFocus: () -> Void = {}
 
     // Tuning constants
     nonisolated static let maxRings = 5
@@ -249,6 +251,7 @@ struct SunburstChart: View {
         .focusable(isEnabled)
         .focused($mapFocused)
         .focusEffectDisabled()
+        .onChange(of: mapFocused) { _, focused in if focused { onKeyboardFocus() } }
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow, .return, .space]) { press in
             guard isEnabled, press.modifiers.isDisjoint(with: [.command, .option, .control]) else {
                 return .ignored

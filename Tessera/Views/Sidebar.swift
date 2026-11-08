@@ -8,6 +8,8 @@ struct Sidebar: View {
     @ObservedObject var vm: ScanViewModel
     /// Display names for the window header, keyed by source URL.
     @Binding var sourceNames: [URL: String]
+    /// Called when the source list gains keyboard focus (click or Tab).
+    var onKeyboardFocus: () -> Void = {}
     /// Injected by TesseraApp; drives the version/update row in the footer.
     @EnvironmentObject private var updater: UpdaterController
 
@@ -114,6 +116,7 @@ struct Sidebar: View {
         .onChange(of: customFolders.map(\.url)) { _, _ in saveCustomFolders() }
         // Observe names as well as URLs: a source can be renamed in place.
         .onChange(of: sourceNameLookup, initial: true) { _, names in sourceNames = names }
+        .onChange(of: sourcesFocused) { _, focused in if focused { onKeyboardFocus() } }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didMountNotification)) { _ in reloadVolumes() }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didUnmountNotification)) { _ in reloadVolumes() }
         .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in

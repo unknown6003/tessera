@@ -67,6 +67,13 @@ struct ContentView: View {
     /// Set when Details replaced a focused browser in the narrow switch.
     /// Returning to Items, or hiding Details, gives the browser focus back.
     @State private var browserFocusBeforeDetails = false
+    /// This view's own window, reported by `TransparentWindowConfigurator`.
+    /// A reference box, so setting it never re-renders the view.
+    @State private var ownWindow = WindowReference()
+
+    private final class WindowReference {
+        weak var window: NSWindow?
+    }
     /// The folder on screen, shared by the map, the child browser and Details.
     @State private var map: MapSnapshot?
     @State private var mapTask: Task<Void, Never>?
@@ -85,6 +92,8 @@ struct ContentView: View {
     @State private var deleteError: String?
 
     private var removalBusy: Bool { vm.isDeleting || removalRequested }
+    /// The Cleanup List dock is on screen.
+    private var dockIsVisible: Bool { vm.rootNode != nil || removalBusy }
 
     // The body is split into stages so each modifier chain type-checks on
     // its own (Swift 6 timed out on one long chain). The stages nest in the
@@ -96,7 +105,7 @@ struct ContentView: View {
     private var windowLayout: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
-                Sidebar(vm: vm, sourceNames: $sourceNames)
+                Sidebar(vm: vm, sourceNames: $sourceNames, onKeyboardFocus: dropBrowserFocusIntent)
                     .frame(width: showSidebar ? 210 : 0)
                     .clipped()
                     .opacity(showSidebar ? 1 : 0)
@@ -122,7 +131,7 @@ struct ContentView: View {
                             }
                         }
                     }
-                    if vm.rootNode != nil || removalBusy {
+                    if dockIsVisible {
                         Divider()
                         CollectorDock(vm: vm, drag: drag, onReview: openReview)
                             .disabled(removalBusy)
@@ -144,7 +153,7 @@ struct ContentView: View {
                 changeBrowserHost { windowWidth = width }
             }
             .background(Theme.bg.ignoresSafeArea())
-            .background(TransparentWindowConfigurator())
+            .background(TransparentWindowConfigurator(onWindow: { ownWindow.window = $0 }))
             .background(KeyboardShortcuts(vm: vm, onQuickLook: quickLook)
                 .disabled(removalBusy || vm.isScanning || vm.showFDAOnboarding))
             .tint(Theme.electricBlue)
@@ -403,7 +412,10 @@ struct ContentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 if vm.rootNode == nil { emptyContent }
-                CleanupSuggestionsView(vm: vm, onMoveToTrash: openReview)
+                // The dock shows whenever a scan or removal is on screen and has
+                // the filled review button; the page's own button covers only
+                // the case without a dock.
+                CleanupSuggestionsView(vm: vm, onMoveToTrash: dockIsVisible ? nil : openReview)
             }
             .padding(24)
             .frame(maxWidth: 1000, alignment: .leading)
@@ -513,16 +525,25 @@ struct ContentView: View {
         }
     }
 
+    /// The user moved keyboard focus to the map or the source list. A
+    /// stored request to refocus the browser is now stale; drop it.
+    private func dropBrowserFocusIntent() {
+        refocusBrowserOnAppear = false
+        browserFocusBeforeDetails = false
+    }
+
     /// Gives focus back to a rebuilt browser only when nothing else should
-    /// keep it: Tessera's main window is key, with no sheet, no Quick Look
-    /// panel and no active text editor, and no removal or onboarding runs.
+    /// keep it: this view's own window is the key window (not Settings,
+    /// another Tessera window, a sheet or the Quick Look panel), it has no
+    /// sheet attached and no text editor active, and no removal or
+    /// onboarding runs.
     private func restoreBrowserFocusIfNeeded() {
         guard refocusBrowserOnAppear else { return }
         refocusBrowserOnAppear = false
         guard !removalBusy, reviewSnapshot == nil, quickLookURL == nil, !vm.showFDAOnboarding,
               appMode == .explore,
-              let key = NSApp.keyWindow, key.sheetParent == nil, key.attachedSheet == nil,
-              !(key is NSPanel), !(key.firstResponder is NSText) else { return }
+              let window = ownWindow.window, NSApp.keyWindow === window,
+              window.attachedSheet == nil, !(window.firstResponder is NSText) else { return }
         browserFocused = true
     }
 
@@ -567,7 +588,8 @@ struct ContentView: View {
                       onAddToCollector: { if !removalBusy { vm.addToCollector($0) } },
                       onRevealInFinder: { NSWorkspace.shared.activateFileViewerSelecting([$0.url]) },
                       onQuickLook: quickLook,
-                      drag: drag, onDrop: { if !removalBusy { vm.addToCollector($0) } })
+                      drag: drag, onDrop: { if !removalBusy { vm.addToCollector($0) } },
+                      onKeyboardFocus: dropBrowserFocusIntent)
             .disabled(removalBusy)
     }
 
