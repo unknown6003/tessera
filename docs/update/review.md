@@ -46,6 +46,18 @@ correct stale comments. No deletion policy changed in this delta.
 These were separate Codex contexts using the same model family. They can share
 failure modes. Source review does not replace native execution or visual checks.
 
+A focused completion audit at `3d68f81` found no source-proved fresh-scan deadlock.
+It found that a cached-source switch cancelled the awaiting scan task but left
+its detached diagnosis running. Commit `5438a72` cancels that task as well.
+The generation guard already rejected its stale result. The fix stops its
+cooperative classification loop sooner. Coverage and measurement still need
+their native duration checked.
+
+Native execution of `2a9c99f` found one stale assertion after the result wording
+change. Commit `f80598c` updates it to the neutral "Removed" wording, disables
+Sparkle during environment-driven automation, and selects an actual fixture
+child for the details capture. The primary agent reviewed those small changes.
+
 ## Qualification
 
 Native build, test, performance and screenshot evidence is recorded separately.
