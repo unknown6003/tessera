@@ -8,6 +8,20 @@ import AppKit
 /// Inert in normal launches.
 @MainActor
 enum DebugAutomation {
+    private static let preferenceDomain: String? = {
+        let env = ProcessInfo.processInfo.environment
+        return env["SO_AUTOSCAN"] != nil || env["SO_BENCH"] != nil || env["SO_BENCH_RESCAN"] != nil
+            ? "TesseraAutomation." + UUID().uuidString : nil
+    }()
+
+    static var defaults: UserDefaults {
+        preferenceDomain.flatMap(UserDefaults.init(suiteName:)) ?? .standard
+    }
+
+    static func cleanPreferences() {
+        if let preferenceDomain { defaults.removePersistentDomain(forName: preferenceDomain) }
+    }
+
     static func runIfRequested(vm: ScanViewModel) {
         let env = ProcessInfo.processInfo.environment
 
@@ -40,9 +54,22 @@ enum DebugAutomation {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(800))
             log("starting scan; windows=\(NSApp.windows.map { "\($0.title):num=\($0.windowNumber):visible=\($0.isVisible):opaque=\($0.isOpaque):bgAlpha=\(String(format: "%.2f", $0.backgroundColor.alphaComponent)):fullSizeContent=\($0.styleMask.contains(.fullSizeContentView))" })")
+            vm.dismissFDAOnboarding()
             let scanStart = Date()
             vm.startScan(volumeURL: URL(fileURLWithPath: scanPath))
 
+            Task { @MainActor in
+                var longest = 0.0
+                while vm.isScanning {
+                    let start = ContinuousClock.now
+                    try? await Task.sleep(for: .milliseconds(50))
+                    let duration = start.duration(to: .now)
+                    let milliseconds = Double(duration.components.seconds) * 1000
+                        + Double(duration.components.attoseconds) / 1e15
+                    longest = max(longest, milliseconds)
+                }
+                log(String(format: "UI heartbeat longest interval: %.1f ms", longest))
+            }
             try? await Task.sleep(for: .milliseconds(700))
             if let dir = snapshotDir, vm.isScanning {
                 snapshotKeyWindow(to: dir + "/scanning.png")
@@ -54,7 +81,8 @@ enum DebugAutomation {
                 ticks += 1
                 if ticks % 150 == 0 {  // every ~30s
                     let p = vm.progress
-                    log("progress: dirs \(p.dirsScanned)/\(p.dirsDiscovered) files \(p.filesScanned) at \(p.currentPath)")
+                    let path = env["SO_PRIVATE_SUMMARY"] == "1" ? "hidden" : p.currentPath
+                    log("progress: dirs \(p.dirsScanned)/\(p.dirsDiscovered) files \(p.filesScanned) at \(path)")
                 }
             }
             let p = vm.progress
@@ -100,12 +128,40 @@ enum DebugAutomation {
                 renderSunburst(root: vm.currentRoot, to: dir + "/sunburst.png")
                 dumpLayout(root: vm.currentRoot, to: dir + "/layout.csv")
             }
+            if let dir = snapshotDir, env["SO_CAPTURE_VARIANTS"] == "1" {
+                await captureVariants(vm: vm, directory: dir)
+            }
             if autoQuit {
+                cleanPreferences()
                 NSApp.terminate(nil)
             } else {
                 prepareForCapture()
             }
         }
+    }
+
+    /// Finite rendering proof. These states only stage disposable fixture data;
+    /// no command here executes Trash or permanent removal.
+    private static func captureVariants(vm: ScanViewModel, directory: String) async {
+        guard let source = vm.scannedURL,
+              source.resolvingSymlinksInPath().path.contains("/tmp/tessera-"),
+              let window = NSApp.windows.first(where: { $0.isVisible }) else {
+            log("UI proof requires an agent-owned temporary fixture")
+            return
+        }
+        let variants: [(Int, String)] = [(820, "explore"), (1100, "explore"),
+            (1440, "explore"), (1920, "explore"), (1100, "details"),
+            (1100, "rescue"), (1100, "review"), (1100, "confirm")]
+        for (width, state) in variants {
+            window.setContentSize(NSSize(width: CGFloat(width), height: 780))
+            NotificationCenter.default.post(name: .init("Tessera.captureState"), object: nil,
+                                              userInfo: ["state": state])
+            try? await Task.sleep(for: .milliseconds(500))
+            snapshotKeyWindow(to: directory + "/\(state)-\(width).png")
+            log("UI proof state=\(state) content=\(NSStringFromRect(window.contentView?.bounds ?? .zero))")
+        }
+        NotificationCenter.default.post(name: .init("Tessera.captureState"), object: nil,
+                                          userInfo: ["state": "explore"])
     }
 
     /// Single-threaded scan benchmark. Warms the metadata cache once, then times
@@ -226,7 +282,8 @@ enum DebugAutomation {
         guard let window = NSApp.windows.first(where: { $0.isVisible }) ?? NSApp.windows.first else {
             log("snapshot \(path): no window"); return
         }
-        guard let view = window.contentView else { log("snapshot \(path): no contentView"); return }
+        let captureWindow = window.attachedSheet ?? NSApp.keyWindow ?? window
+        guard let view = captureWindow.contentView else { log("snapshot \(path): no contentView"); return }
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
             log("snapshot \(path): no bitmap rep (bounds=\(view.bounds))"); return
         }

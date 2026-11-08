@@ -16,7 +16,7 @@ struct ContentView: View {
         let collectorIDs: Set<ObjectIdentifier>
     }
 
-    @StateObject private var vm = ScanViewModel()
+    @StateObject private var vm = ScanViewModel(defaults: DebugAutomation.defaults)
     @StateObject private var drag = CollectorDragController()
     @EnvironmentObject private var updater: UpdaterController
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -174,6 +174,25 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             vm.refreshFullDiskAccessStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("Tessera.captureState"))) { note in
+            guard ProcessInfo.processInfo.environment["SO_CAPTURE_VARIANTS"] == "1",
+                  let source = vm.scannedURL,
+                  source.resolvingSymlinksInPath().path.contains("/tmp/tessera-"),
+                  let state = note.userInfo?["state"] as? String else { return }
+            showReview = false
+            showTrashConfirm = false
+            showDeleteAllConfirm = false
+            showInspector = state == "details"
+            appMode = state == "rescue" ? .rescue : .explore
+            if state == "review" || state == "confirm" {
+                for node in vm.rootNode?.largestChildren(limit: 3) ?? [] { vm.addToCollector(node) }
+                if state == "review" { openReview() }
+                else if let snapshot = self.snapshot(vm.collector) { requestTrash(snapshot) }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            DebugAutomation.cleanPreferences()
         }
         .onChange(of: showTrashConfirm) { _, presented in
             if !presented {

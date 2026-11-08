@@ -112,6 +112,26 @@ struct ScanRegressionTests {
         #expect(progress.fraction == 1)
     }
 
+    @Test("Identity storage keeps optional metadata distinct from zero and retains located records")
+    func identityStorage() {
+        let identities = [ScanIdentity(resourceType: .file),
+            ScanIdentity(device: 0, inode: 0, resourceType: .directory,
+                         logicalSize: 0, allocatedSize: 0, modificationTime: 0),
+            ScanIdentity(device: 7, inode: UInt64.max, resourceType: .package,
+                         logicalSize: 8192, allocatedSize: 4096, modificationTime: 12345),
+            ScanIdentity(path: "/fixture/item", volumeIdentifier: "volume", resourceIdentifier: "object",
+                         device: 1, inode: 2, resourceType: .file, logicalSize: 8192,
+                         allocatedSize: 4096, modificationTime: 12345)]
+        for identity in identities {
+            let node = FileNode(name: "item", isDirectory: identity.resourceType.isDirectory,
+                                size: 4096, identity: identity)
+            #expect(node.scanIdentity == identity)
+            node.overrideSize(0)
+            #expect(node.scanIdentity == identity)
+        }
+        #expect(FileNode(name: "missing", isDirectory: false, size: 0).scanIdentity == nil)
+    }
+
     @Test("Deep tree URL assembly and batch size changes avoid recursive calls")
     func deepTree() {
         let root = FileNode(url: URL(fileURLWithPath: "/fixture"), name: "fixture", isDirectory: true, size: 0)

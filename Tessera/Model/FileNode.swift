@@ -160,7 +160,71 @@ final class FileNode: Identifiable, @unchecked Sendable {
     weak var parent: FileNode?
     /// Identity captured at scan time. Hand-built presentation fixtures may leave
     /// this nil; action paths must then fail closed.
-    private(set) var scanIdentity: ScanIdentity?
+    private let storedIdentity: StoredIdentity
+    var scanIdentity: ScanIdentity? { storedIdentity.value }
+
+    /// Scanned entries have no path strings. Keep their numeric metadata inline;
+    /// only roots and hand-built action records need the full identity record.
+    private enum StoredIdentity {
+        case absent
+        case scanned(CompactIdentity)
+        case located(LocatedIdentity)
+
+        init(_ value: ScanIdentity?) {
+            guard let value else { self = .absent; return }
+            if value.path != nil || value.volumeIdentifier != nil || value.resourceIdentifier != nil {
+                self = .located(LocatedIdentity(value))
+            } else {
+                self = .scanned(CompactIdentity(value))
+            }
+        }
+
+        var value: ScanIdentity? {
+            switch self {
+            case .absent: return nil
+            case .scanned(let value): return value.expanded
+            case .located(let value): return value.identity
+            }
+        }
+    }
+
+    private final class LocatedIdentity {
+        let identity: ScanIdentity
+        init(_ identity: ScanIdentity) { self.identity = identity }
+    }
+
+    private struct CompactIdentity {
+        let inode: UInt64
+        let logicalSize: Int64
+        let allocatedSize: Int64
+        let modificationTime: Int64
+        let device: UInt32
+        let present: UInt8
+        let resourceType: ScanIdentity.ResourceType
+
+        init(_ identity: ScanIdentity) {
+            inode = identity.inode ?? 0
+            logicalSize = identity.logicalSize ?? 0
+            allocatedSize = identity.allocatedSize ?? 0
+            modificationTime = identity.modificationTime ?? 0
+            device = identity.device ?? 0
+            resourceType = identity.resourceType
+            present = (identity.device == nil ? 0 : 1)
+                | (identity.inode == nil ? 0 : 2)
+                | (identity.logicalSize == nil ? 0 : 4)
+                | (identity.allocatedSize == nil ? 0 : 8)
+                | (identity.modificationTime == nil ? 0 : 16)
+        }
+
+        var expanded: ScanIdentity {
+            ScanIdentity(device: present & 1 == 0 ? nil : device,
+                         inode: present & 2 == 0 ? nil : inode,
+                         resourceType: resourceType,
+                         logicalSize: present & 4 == 0 ? nil : logicalSize,
+                         allocatedSize: present & 8 == 0 ? nil : allocatedSize,
+                         modificationTime: present & 16 == 0 ? nil : modificationTime)
+        }
+    }
     /// Directories the scanner could not enumerate. Stored on the root so a
     /// partial scan remains visible without inventing a zero-byte file node.
     private(set) var scanCoverageGaps: [String] = []
@@ -211,7 +275,7 @@ final class FileNode: Identifiable, @unchecked Sendable {
         self.children = []
         self.explicitURL = nil
         self.modTime = modTime
-        self.scanIdentity = identity
+        self.storedIdentity = StoredIdentity(identity)
         self.logicalSize = identity?.logicalSize
     }
 
@@ -228,7 +292,7 @@ final class FileNode: Identifiable, @unchecked Sendable {
         self.size = size
         self.children = children
         self.modTime = modTime
-        self.scanIdentity = identity
+        self.storedIdentity = StoredIdentity(identity)
         self.logicalSize = identity?.logicalSize
         for child in children { child.parent = self }
     }
