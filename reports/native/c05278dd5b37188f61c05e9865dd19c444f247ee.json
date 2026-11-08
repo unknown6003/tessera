@@ -1,0 +1,35 @@
+{
+  "report": {
+    "revision": "c05278dd5b37188f61c05e9865dd19c444f247ee",
+    "lane": "native",
+    "policy": "a381cc8cc38957e93247813263a81220cc6f73c69dd60d21def1747db2f06780",
+    "startedAt": 1794181810.0927858,
+    "host": "macOS-27.0.1-arm64-arm-64bit",
+    "steps": [
+      {
+        "name": "release-policy",
+        "result": "success",
+        "durationSeconds": 0.203
+      },
+      {
+        "name": "tool-regressions",
+        "result": "success",
+        "durationSeconds": 6.056
+      },
+      {
+        "name": "xcodegen",
+        "result": "success",
+        "durationSeconds": 0.327
+      },
+      {
+        "name": "debug-tests",
+        "result": "failure",
+        "durationSeconds": 499.942
+      }
+    ],
+    "result": "failure",
+    "failure": "RuntimeError",
+    "finishedAt": 1794182316.6841972
+  },
+  "signature": "cd9c87bb9c28980ef5b93a99c368944f27a754c96304e1e718262cc8feeeda58"
+}
