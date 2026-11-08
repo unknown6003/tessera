@@ -45,10 +45,26 @@ counted as passed verification.
 
 ## Remaining proof
 
-- Native configured SDK wire test and automatic collection migration.
+- Automatic collection migration in a normal configured run. The real SDK
+  wire test passed in process on macOS; its URLProtocol answered all requests,
+  so it does not prove live ingestion.
 - Live ingestion without test or benchmark events in production analytics.
 - Exact-release dSYM upload and a resolved native stack.
 - Survey submission and presentation experiment qualification.
+
+At `17d2a4d`, the experiment changes only the stacked browser height. That
+branch requires less than 580 points, but the minimum normal window leaves
+at least 609 points after the sidebar. The draft variant has no reachable
+normal-window effect. It must be corrected and tested before launch; the
+server experiment remains inactive.
+
+On 9 November, the dedicated production project again returned IP
+anonymization on, generic autocapture off and session recording off. An
+attempt to list this organization's projects through the existing
+project-scoped key returned HTTP 403. No qualification project was created
+and no event was captured. Isolated live ingestion still needs an authorized
+owner-session route; do not weaken the key restriction or seed production
+analytics to bypass it.
 
 A later empty batch handshake returned HTTP 400 because it was not a valid
 nonempty capture. It recorded no test events and does not prove live ingestion.
