@@ -45,3 +45,10 @@ seconds at `5836a68`. That run did not expose its coverage-gap count and the liv
 filesystem changed between trials. The [qualification record](qualification.md)
 keeps those limits beside the native results. It supports improving the existing
 implementation, not a cross-language performance claim.
+
+
+Final source `cbdeeb9` completed the actual root app pipeline in 56.37 seconds,
+with 4,478,551 files and explicit partial coverage of 303 gaps. Its longest
+heartbeat was 113.9 ms. The controlled classifier trial reduced median CPU time
+by 11.331-fold with matching result fields. These results justify the Swift and
+C repairs. They do not compare languages or guarantee every whole-drive time.

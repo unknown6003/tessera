@@ -124,3 +124,20 @@ NUL handling, Unicode fallback and protection order were checked. Its suggested
 empty-needle fallback was added. The primary checked all literal rule predicates
 against the old diff. No rule changed. Native measurements still decide whether
 this optimization helps.
+
+
+## Final release delta
+
+Three fresh same-model contexts reviewed all ten committed paths in
+`7fb8386..cbdeeb9`, including the classifier, source worker, phase logs and tests.
+Standards retained zero documented or judgement findings. Spec retained zero
+findings. Risk retained zero findings. The primary checked each report against
+the fixed diff. The parent reviewed the later evidence-only documents separately.
+These separate contexts do not establish independent model-family failure modes.
+
+Exact `cbdeeb9` then passed 72 native tests, Release and a 56.37-second actual root
+pipeline with a 113.9 ms longest heartbeat. Coverage remained partial with 303
+gaps. Actual source refresh ran off the main thread and retained the selected
+custom fixture after completion and Sources toggles. The one-millisecond busy
+interval and broader keyboard matrix remain unobserved. No source change is
+required for those observation limits. See qualification.md for the full scope.

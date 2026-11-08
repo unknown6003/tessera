@@ -12,9 +12,13 @@ on-device. No user data ever leaves your Mac.**
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-000)
 ![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
 
+![Explore with a selected folder and its details](docs/update/screenshots/explore-details.webp)
+
+[Tessera 1.0 native results and limits](docs/update/qualification.md)
+
 ## Features
 
-- **Visual scan** — a parallel `getattrlistbulk` engine renders a live sunburst of
+- **Visual scan** — a parallel `getattrlistbulk` engine renders an interactive sunburst of
   your disk; multi-disk/cloud/network sources with an in-memory scan cache for
   instant switching.
 - **Explore and Rescue** — a resizable workspace with a hideable source sidebar,

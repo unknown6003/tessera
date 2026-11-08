@@ -157,6 +157,32 @@
       "fixtureIdentityMismatches": 0,
       "fixtureCoverageGaps": 0,
       "fixtureHashesUnchanged": true
+    },
+    {
+      "revision": "7319f83bee28f3446eddc4b2420b8c2b8b0cda28",
+      "debugTestsPassed": 72,
+      "releaseBuild": "passed",
+      "literalPathMatching": "passed, all37productioncontainsneedles covered",
+      "protectedDescendantPaths": "passed, all6typesunderASCIIandUnicodehomes",
+      "controlledClassifierEquivalence": "passed",
+      "fixtureHashesUnchanged": true
+    },
+    {
+      "revision": "cbdeeb964f09b0e3827999d6498db7b76eb93e98",
+      "debugTestsPassed": 72,
+      "releaseBuild": "passed",
+      "releaseExecutableSha256": "c076a63448a7af1cd0956185aa6cb174800c1db967df0862cc225d94f3c65562",
+      "sourceRefreshMainThread": false,
+      "sourceRefreshSeconds": 0.001,
+      "sourceRefreshSelectionRetained": true,
+      "sourcesHideShow": "passed",
+      "fixtureHashesUnchanged": true,
+      "sourceFilesMatched": 55,
+      "limits": [
+        "AX did not capture the one-millisecond in-flight refresh state.",
+        "Concurrent custom additions and refresh saturation not forced.",
+        "Full keyboard focus, Escape and native Finder-driven Search reset remain unproved."
+      ]
     }
   ],
   "evidence": [
@@ -190,6 +216,14 @@
     },
     {
       "root": "/tmp/tessera-native-verification.1GZiGk/at0fcd162-1794154444",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-7319-qualify-1794155368",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-cbdeeb9-qualify",
       "report": "REPORT.md"
     }
   ],
@@ -256,6 +290,50 @@
         "No final summary, coverage or heartbeat emitted before termination.",
         "Staging and chart causes remain unproved."
       ]
+    },
+    {
+      "revision": "7319f83bee28f3446eddc4b2420b8c2b8b0cda28",
+      "configuration": "Release",
+      "completed": true,
+      "profiled": false,
+      "seconds": 140.13,
+      "filesLastObserved": 4478944,
+      "directoriesIncludingRoot": 1285701,
+      "sampledPeakRssBytes": 1655701504,
+      "heartbeatMilliseconds": 1717.0,
+      "coverageState": "partial",
+      "coverageGaps": 303,
+      "limits": [
+        "No exact internal phase durations.",
+        "No sample at heartbeat gap.",
+        "Live filesystem and host load varied."
+      ]
+    },
+    {
+      "revision": "cbdeeb964f09b0e3827999d6498db7b76eb93e98",
+      "configuration": "Release",
+      "completed": true,
+      "profiled": false,
+      "seconds": 56.37,
+      "phaseElapsedSeconds": {
+        "enumerationFinished": 51.512,
+        "diagnosisFinished": 56.219,
+        "resultsPublished": 56.227
+      },
+      "files": 4478551,
+      "directoriesIncludingRoot": 1285046,
+      "sampledPeakRssBytes": 1655422976,
+      "heartbeatMilliseconds": 113.9,
+      "heartbeatDelaysOver500ms": 0,
+      "coverageState": "partial",
+      "coverageGaps": 303,
+      "appExit": 0,
+      "limits": [
+        "One live root run; filesystem warmth and host load vary.",
+        "303 gaps prevent a full-access completeness claim.",
+        "RSS sampled every five seconds; not kernel high-water mark.",
+        "Two Sources UI operations occurred during enumeration."
+      ]
     }
   ],
   "controlledFixtureComparison": {
@@ -306,5 +384,44 @@
         "Macroscope"
       ]
     }
-  ]
+  ],
+  "classifierComparison": {
+    "baseline": "0fcd1629c9b1c04d3d8a3c82736b9b42050e4afd",
+    "candidate": "7319f83bee28f3446eddc4b2420b8c2b8b0cda28",
+    "fixture": "Deterministic in-memory tree with100000 unmatched dirs,100000 ordinary DerivedData files,Unicodeand protected branches.",
+    "baselineCpuSeconds": [
+      5.984602,
+      5.995127,
+      5.984132
+    ],
+    "candidateCpuSeconds": [
+      0.531498,
+      0.525049,
+      0.528163
+    ],
+    "baselineWallSeconds": [
+      6.086471,
+      6.044618,
+      6.06071
+    ],
+    "candidateWallSeconds": [
+      0.535806,
+      0.527112,
+      0.531248
+    ],
+    "recommendations": 7,
+    "resultSha256": "34d4a21d04a94b1896aa0dd1b017e945f30bbea81fe79b625c3e815d67411e71",
+    "resultFields": [
+      "category ID",
+      "path",
+      "risk",
+      "logical bytes",
+      "physical bytes"
+    ],
+    "limits": [
+      "One deterministic synthetic workload.",
+      "Excludes fixture creation, aggregation, hashing and filesystem enumeration.",
+      "Does not predict root pipeline time."
+    ]
+  }
 }
