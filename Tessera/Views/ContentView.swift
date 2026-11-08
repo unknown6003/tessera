@@ -3,6 +3,12 @@ import AppKit
 import QuickLook
 
 struct ContentView: View {
+    private enum CompactPane: String, CaseIterable, Identifiable {
+        case items, details
+        var id: String { rawValue }
+        var title: String { self == .items ? "Items" : "Details" }
+    }
+
     private enum AppMode: String, CaseIterable, Identifiable {
         case explore, rescue
         var id: String { rawValue }
@@ -26,6 +32,12 @@ struct ContentView: View {
     /// Wider folders sort off the main actor through `vm.readTree`.
     private static let syncMapChildLimit = 5_000
     private static let browserRowHeight: CGFloat = 28
+    /// Content width needed to show Details as its own column beside the map
+    /// and the browser without shrinking the map.
+    private static let detailsColumnMinimumContent: CGFloat = 980
+    /// Browser columns narrower than this use two-line rows, so names wrap
+    /// instead of truncating.
+    private static let twoLineColumnWidth: CGFloat = 290
 
     @StateObject private var vm = ScanViewModel(defaults: DebugAutomation.defaults)
     @StateObject private var drag = CollectorDragController()
@@ -37,6 +49,9 @@ struct ContentView: View {
     @State private var showSidebar = true
     @State private var showInspector = false
     @State private var windowWidth: CGFloat = 1240
+    /// Narrow windows share the right column between the browser and Details.
+    @State private var compactPane: CompactPane = .items
+    @FocusState private var browserFocused: Bool
     /// The folder on screen, shared by the map, the child browser and Details.
     @State private var map: MapSnapshot?
     @State private var mapTask: Task<Void, Never>?
@@ -72,7 +87,7 @@ struct ContentView: View {
                     } else {
                         HStack(spacing: 0) {
                             centerArea
-                            if showInspector && geometry.size.width >= 1100 {
+                            if detailsBeside {
                                 Divider()
                                 InspectorView(vm: vm, mapColor: mapColor)
                                     .frame(width: min(300, max(240, geometry.size.width * 0.22)))
@@ -125,7 +140,10 @@ struct ContentView: View {
             ToolbarItem(placement: .primaryAction) {
                 // Wide windows show Details beside the map; narrow windows
                 // show it inline below the map. No popover.
-                Button { showInspector.toggle() } label: {
+                Button {
+                    showInspector.toggle()
+                    if showInspector { compactPane = .details }
+                } label: {
                     Label("Details", systemImage: "sidebar.right")
                 }
                 .keyboardShortcut("i", modifiers: [.command, .control])
@@ -151,14 +169,14 @@ struct ContentView: View {
         .quickLookPreview($quickLookURL)
         // Analytics: fixed screen names and counts only. No names or paths.
         .onChange(of: appMode, initial: true) { _, _ in
-            if reviewSnapshot == nil { analytics.screen(modeScreen) }
+            if reviewSnapshot == nil { recordScreen(modeScreen) }
         }
         .onChange(of: reviewSnapshot?.id) { _, id in
             if let id, let snapshot = reviewSnapshot, snapshot.id == id {
-                analytics.screen(.review)
+                recordScreen(.review)
                 analytics.capture(.cleanupReviewOpened, values: ["items": .integer(snapshot.nodes.count)])
             } else if id == nil {
-                analytics.screen(modeScreen)
+                recordScreen(modeScreen)
             }
         }
         .onChange(of: vm.showFDAOnboarding, initial: true) { _, shown in
@@ -195,6 +213,7 @@ struct ContentView: View {
                   let state = note.userInfo?["state"] as? String else { return }
             reviewSnapshot = nil
             showInspector = state == "details"
+            if state == "details" { compactPane = .details }
             if state == "details" { vm.selectedNode = vm.rootNode?.largestChildren(limit: 1).first }
             appMode = state == "rescue" ? .rescue : .explore
             if state == "review" || state == "confirm" {
@@ -305,36 +324,60 @@ struct ContentView: View {
             if let current = vm.currentRoot { breadcrumb(for: current) }
             GeometryReader { geometry in
                 if geometry.size.width >= 580 {
+                    let column = min(320, max(230, geometry.size.width * 0.36))
                     HStack(spacing: 16) {
                         chart
-                        childBrowser.frame(width: min(300, geometry.size.width * 0.34))
+                        rightColumn(twoLine: column < Self.twoLineColumnWidth)
+                            .frame(width: column)
                     }
                     .padding(.horizontal, 20)
                 } else {
-                    VStack(spacing: 0) {
+                    VStack(spacing: 8) {
                         chart
-                        childBrowser
-                            .frame(height: stackedBrowserHeight)
+                        rightColumn(twoLine: false)
+                            .frame(height: stackedBrowserHeight(available: geometry.size.height))
                             .padding(.horizontal, 20)
                     }
                 }
             }
-            if showInspector && windowWidth < 1100 {
-                // Compact Details: inline, in the same focus order, never a popover.
-                Divider()
-                InspectorView(vm: vm, mapColor: mapColor)
-                    .frame(height: 230)
-            } else if !showInspector {
-                selectedItemBar
-            }
+            if !showInspector { selectedItemBar }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Details gets its own column only when the map keeps its size.
+    private var detailsBeside: Bool {
+        showInspector && windowWidth - (showSidebar ? 211 : 0) >= Self.detailsColumnMinimumContent
+    }
+
+    /// The browser, or in narrow windows the browser and Details behind one
+    /// switch. Details never takes height from the map.
+    @ViewBuilder private func rightColumn(twoLine: Bool) -> some View {
+        if showInspector && !detailsBeside {
+            VStack(spacing: 8) {
+                Picker("Show", selection: $compactPane) {
+                    ForEach(CompactPane.allCases) { pane in Text(pane.title).tag(pane) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel("Right column")
+                if compactPane == .details {
+                    InspectorView(vm: vm, mapColor: mapColor)
+                } else {
+                    childBrowser(twoLine: twoLine)
+                }
+            }
+        } else {
+            childBrowser(twoLine: twoLine)
+        }
+    }
+
     /// Presentation-only flag: the stacked browser shows 4 or 8 rows before it
-    /// scrolls. It never changes scanning, order or cleanup protection.
-    private var stackedBrowserHeight: CGFloat {
-        CGFloat(analytics.compactLegend ? 4 : 8) * Self.browserRowHeight + 28
+    /// scrolls, and never more than 40 % of the height. It never changes
+    /// scanning, order or cleanup protection.
+    private func stackedBrowserHeight(available: CGFloat) -> CGFloat {
+        let rows = CGFloat(analytics.compactLegend ? 4 : 8) * Self.browserRowHeight + 28
+        return min(rows, max(120, available * 0.4))
     }
 
     private var chart: some View {
@@ -350,6 +393,13 @@ struct ContentView: View {
     }
 
     private var modeScreen: AnalyticsScreen { appMode == .rescue ? .rescue : .explore }
+
+    /// `start` is idempotent. Calling it here keeps the first screen event
+    /// even when the window appears before the app delegate starts analytics.
+    private func recordScreen(_ screen: AnalyticsScreen) {
+        analytics.start()
+        analytics.screen(screen)
+    }
 
     private var highContrast: Bool { contrast == .increased }
 
@@ -399,20 +449,15 @@ struct ContentView: View {
 
     // MARK: - Child browser
 
-    private var browserSelection: Binding<ObjectIdentifier?> {
-        Binding(get: { vm.selectedNode?.id }, set: { id in
-            guard !removalBusy else { return }
-            if let id { if let node = map?.child(id) { vm.selectedNode = node } }
-            else { vm.selectedNode = nil }
-        })
-    }
-
-    /// Every child of the folder on screen, in map order, in a virtualised
-    /// list. Arrow keys move, Return or double-click opens a folder, Space
-    /// shows Quick Look, Escape clears the selection.
-    private var childBrowser: some View {
+    /// Every child of the folder on screen, in map order. A lazy SwiftUI
+    /// stack, not an AppKit table: it takes keyboard focus on click, draws
+    /// its own focus ring, and stays below sheets. ↑↓ move, Home and End jump,
+    /// Page Up and Down move 10 rows, Return or double-click opens a folder,
+    /// Space shows Quick Look, Escape clears the selection.
+    private func childBrowser(twoLine: Bool) -> some View {
         let children = map?.children ?? []
         let total = Double(max(1, map?.folder.size ?? 1))
+        let selectedID = vm.selectedNode?.id
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text("In this folder").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -426,50 +471,134 @@ struct ContentView: View {
                         .foregroundStyle(Theme.mutedForeground)
                 }
             }
-            List(selection: browserSelection) {
-                ForEach(children) { node in browserRow(node, total: total) }
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(children) { node in
+                            browserRow(node, total: total, twoLine: twoLine,
+                                       selected: node.id == selectedID)
+                                .id(node.id)
+                                .contentShape(Rectangle())
+                                .onTapGesture { browserClick(node) }
+                                .contextMenu { browserMenu(node) }
+                        }
+                    }
+                    .padding(4)
+                }
+                // Keep the selection visible, whether it came from the map,
+                // the keyboard or Details.
+                .onChange(of: vm.selectedNode?.id) { _, id in
+                    guard let id, map?.child(id) != nil else { return }
+                    proxy.scrollTo(id)
+                }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .environment(\.defaultMinListRowHeight, Self.browserRowHeight)
-            .contextMenu(forSelectionType: ObjectIdentifier.self) { ids in
-                if let id = ids.first, let node = map?.child(id) { browserMenu(node) }
-            } primaryAction: { ids in
-                guard !removalBusy, let id = ids.first, let node = map?.child(id),
-                      node.isDirectory, !node.isSynthetic else { return }
-                vm.zoomIn(to: node)
-            }
-            .onKeyPress(.space) {
-                guard let node = vm.selectedNode, map?.child(node.id) != nil else { return .ignored }
-                quickLook(node)
-                return .handled
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Theme.electricBlue, lineWidth: 2)
+                    .opacity(browserFocused ? 1 : 0)
+                    .allowsHitTesting(false)
+            )
+            .focusable(!removalBusy)
+            .focused($browserFocused)
+            .focusEffectDisabled()
+            .onKeyPress(keys: [.upArrow, .downArrow, .home, .end, .pageUp, .pageDown, .return, .space]) { press in
+                guard !removalBusy, press.modifiers.isDisjoint(with: [.command, .option, .control]) else {
+                    return .ignored
+                }
+                return handleBrowserKey(press.key) ? .handled : .ignored
             }
             .onExitCommand { if !removalBusy { vm.selectedNode = nil } }
+            .accessibilityElement(children: .contain)
             .accessibilityLabel("Items in \(map?.folder.name ?? "this folder")")
         }
         .disabled(removalBusy)
     }
 
-    private func browserRow(_ node: FileNode, total: Double) -> some View {
+    /// Click 1 selects and focuses the browser at once. Click 2 opens a folder.
+    private func browserClick(_ node: FileNode) {
+        guard !removalBusy else { return }
+        browserFocused = true
+        let clicks = NSApp.currentEvent?.clickCount ?? 1
+        if clicks == 2 {
+            if node.isDirectory && !node.isSynthetic { vm.zoomIn(to: node) }
+        } else if clicks == 1 {
+            vm.selectedNode = node
+        }
+    }
+
+    private func handleBrowserKey(_ key: KeyEquivalent) -> Bool {
+        guard let map, !map.children.isEmpty else { return false }
+        let children = map.children
+        let index = vm.selectedNode.flatMap { node in map.childIndexOf(node.id) }
+        func select(_ i: Int) { vm.selectedNode = children[min(children.count - 1, max(0, i))] }
+        switch key {
+        case .downArrow: select(index.map { $0 + 1 } ?? 0)
+        case .upArrow: select(index.map { $0 - 1 } ?? children.count - 1)
+        case .home: select(0)
+        case .end: select(children.count - 1)
+        case .pageDown: select((index ?? -1) + 10)
+        case .pageUp: select((index ?? children.count) - 10)
+        case .return:
+            guard let index else { return false }
+            let node = children[index]
+            if node.isDirectory && !node.isSynthetic { vm.zoomIn(to: node) }
+        case .space:
+            guard let index else { return false }
+            quickLook(children[index])
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func browserRow(_ node: FileNode, total: Double, twoLine: Bool, selected: Bool) -> some View {
         let share = Double(node.size) / total * 100
         let percent = share > 0 && share < 1 ? "<1%" : "\(Int(share.rounded()))%"
+        let opens = node.isDirectory && !node.isSynthetic
         let color = map?.color(for: node, highContrast: highContrast)
             ?? Theme.wedgeColor(palette: nil, depth: 0, highContrast: highContrast)
-        return HStack(spacing: 8) {
-            Circle().fill(color).frame(width: 8, height: 8)
-                .overlay(Circle().strokeBorder(highContrast ? Theme.foreground.opacity(0.6) : .clear, lineWidth: 1))
-            Text(node.name).lineLimit(1).truncationMode(.middle)
-            Spacer(minLength: 4)
-            Text(percent).monospacedDigit().foregroundStyle(Theme.mutedForeground)
-            Text(Theme.format(node.size)).monospacedDigit()
-            Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
-                .foregroundStyle(Theme.mutedForeground)
-                .opacity(node.isDirectory && !node.isSynthetic ? 1 : 0)
+        let dot = Circle().fill(color).frame(width: 8, height: 8)
+            .overlay(Circle().strokeBorder(highContrast ? Theme.foreground.opacity(0.6) : .clear, lineWidth: 1))
+        let chevron = Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+            .foregroundStyle(Theme.mutedForeground)
+            .opacity(opens ? 1 : 0)
+        return Group {
+            if twoLine {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    dot
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(node.name).lineLimit(2).truncationMode(.middle)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("\(Theme.format(node.size)) · \(percent)").font(.caption.monospacedDigit())
+                            .foregroundStyle(Theme.mutedForeground)
+                    }
+                    Spacer(minLength: 0)
+                    chevron
+                }
+            } else {
+                HStack(spacing: 8) {
+                    dot
+                    Text(node.name).lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    Text(percent).monospacedDigit().foregroundStyle(Theme.mutedForeground)
+                    Text(Theme.format(node.size)).monospacedDigit().fixedSize()
+                    chevron
+                }
+            }
         }
         .font(.callout)
+        .padding(.horizontal, 8)
+        .padding(.vertical, twoLine ? 5 : 0)
+        .frame(minHeight: Self.browserRowHeight)
+        .background(selected ? Theme.selectionTint : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .help(node.name)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(node.name), \(Theme.format(node.size)), \(percent) of this folder\(node.isDirectory && !node.isSynthetic ? ", folder" : "")")
-        .accessibilityHint(node.isDirectory && !node.isSynthetic ? "Return opens this folder" : "")
+        .accessibilityLabel("\(node.name), \(Theme.format(node.size)), \(percent) of this folder\(opens ? ", folder" : "")")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { vm.selectedNode = node }
+        .accessibilityAction(named: "Open") { if opens { vm.zoomIn(to: node) } }
+        .accessibilityAction(named: "Quick Look") { quickLook(node) }
     }
 
     @ViewBuilder private func browserMenu(_ node: FileNode) -> some View {

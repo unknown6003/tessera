@@ -18,6 +18,9 @@ struct Sidebar: View {
         nonmutating set { vm.selectedSourceURL = newValue }
     }
     @State private var showFolderPicker = false
+    /// The source list is one keyboard stop: ↑↓ move the selection, Return
+    /// scans a source that is not on screen.
+    @FocusState private var sourcesFocused: Bool
 
     // Connect-to-server sheet
     @State private var showConnectSheet = false
@@ -67,16 +70,33 @@ struct Sidebar: View {
         VStack(spacing: 0) {
             sidebarHeader
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(sections, id: \.kind) { section in
-                        sectionView(title: section.kind.sectionTitle, items: section.items)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(sections, id: \.kind) { section in
+                                sectionView(title: section.kind.sectionTitle, items: section.items)
+                            }
+                        }
+                        .focusable(!vm.isDeleting && !vm.isScanning)
+                        .focused($sourcesFocused)
+                        .focusEffectDisabled()
+                        .onKeyPress(keys: [.upArrow, .downArrow, .return]) { press in
+                            guard press.modifiers.isDisjoint(with: [.command, .option, .control]) else { return .ignored }
+                            return handleSourceKey(press.key) ? .handled : .ignored
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityLabel("Sources")
+                        .accessibilityHint("Use the up and down arrow keys to choose a source. Return scans it.")
+                        addSourceRows
                     }
-                    addSourceRows
+                    .padding(.horizontal, 10)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
                 }
-                .padding(.horizontal, 10)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
+                .onChange(of: vm.selectedSourceURL) { _, url in
+                    if let url { proxy.scrollTo(url) }
+                }
             }
 
             Divider()
@@ -141,11 +161,8 @@ struct Sidebar: View {
             sectionLabel(title)
             ForEach(items) { info in
                 Button {
-                    guard !vm.isDeleting, !vm.isScanning else { return }
-                    selectedVolumeURL = info.url
-                    vm.selectedSourceURL = info.url
-                    // If we've already scanned this source, switch to it instantly.
-                    vm.showCachedScanIfAvailable(for: info.url)
+                    sourcesFocused = true
+                    selectSource(info)
                 } label: {
                     VolumeCard(info: info,
                                isSelected: selectedVolumeURL == info.url,
@@ -153,6 +170,13 @@ struct Sidebar: View {
                                isCached: vm.scannedURL != info.url && vm.hasCachedScan(for: info.url))
                 }
                 .buttonStyle(.plain)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Theme.electricBlue, lineWidth: 2)
+                        .opacity(sourcesFocused && selectedVolumeURL == info.url ? 1 : 0)
+                        .allowsHitTesting(false)
+                )
+                .id(info.url)
                 .disabled(vm.isDeleting || vm.isScanning)
                 .accessibilityAddTraits(selectedVolumeURL == info.url ? [.isSelected] : [])
                 .accessibilityLabel(Text(info.name))
@@ -160,6 +184,37 @@ struct Sidebar: View {
                 .accessibilityHint("Select or display this storage source")
             }
         }
+    }
+
+    private func selectSource(_ info: VolumeInfo) {
+        guard !vm.isDeleting, !vm.isScanning else { return }
+        selectedVolumeURL = info.url
+        vm.selectedSourceURL = info.url
+        // If we've already scanned this source, switch to it instantly.
+        vm.showCachedScanIfAvailable(for: info.url)
+    }
+
+    /// Sources in on-screen order, across sections.
+    private var orderedSources: [VolumeInfo] { sections.flatMap(\.items) }
+
+    private func handleSourceKey(_ key: KeyEquivalent) -> Bool {
+        guard !vm.isDeleting, !vm.isScanning else { return false }
+        let sources = orderedSources
+        guard !sources.isEmpty else { return false }
+        let index = sources.firstIndex { $0.url == selectedVolumeURL }
+        switch key {
+        case .downArrow:
+            selectSource(sources[min(sources.count - 1, (index ?? -1) + 1)])
+        case .upArrow:
+            selectSource(sources[max(0, (index ?? sources.count) - 1)])
+        case .return:
+            // ⌘R rescans the source on screen. Return only scans a new one.
+            guard let index, vm.scannedURL != sources[index].url else { return false }
+            vm.startScan(volumeURL: sources[index].url)
+        default:
+            return false
+        }
+        return true
     }
 
     private func sourceAccessibilityValue(_ info: VolumeInfo) -> String {

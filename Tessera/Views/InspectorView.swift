@@ -70,10 +70,14 @@ struct InspectorView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
+                // Long names wrap; a narrow column must not hide the name.
                 Text(node.name)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(4)
+                    .truncationMode(.middle)
                     .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .help(node.name)
 
                 Text(Theme.format(node.size))
                     .font(.title2.weight(.semibold).monospacedDigit())
@@ -118,17 +122,20 @@ struct InspectorView: View {
                             .frame(width: 14)
                         Text(child.name)
                             .font(.callout)
-                            .lineLimit(1)
+                            .lineLimit(2)
                             .truncationMode(.middle)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text(Theme.format(child.size))
                             .font(.callout.monospacedDigit())
                             .foregroundStyle(Theme.mutedForeground)
+                            .fixedSize()
                     }
                     .padding(.vertical, 4)
                 }
                 .buttonStyle(.interactive)
                 .contentShape(Rectangle())
+                .help(child.name)
             }
         }
         .padding(.top, 4)

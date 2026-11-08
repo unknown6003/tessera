@@ -26,7 +26,7 @@ cause was not profiled. This note does not claim a cause.
 | 5 Contrast | Increase Contrast switches the ring table to depth mixes 0, 6, 12, 16, 20 % and lighter neutrals. Browser dots get a 1 pt light ring. Measured on `#0A0B0D` (sRGB, WCAG formula): muted text `#969BA4` is 7.05:1 on `bg` and 6.30:1 on `elevated`; danger text 5.92:1 or more. Default rings: weakest is violet at depth 4, 2.90:1. High contrast rings: weakest is 3.95:1. Aggregate neutral: 1.86:1 default, 3.11:1 high contrast. Hidden space 3.95:1 and cloud 4.09:1 in high contrast. The default neutrals stay below 3:1 by design (DaisyDisk-style grey). | `Theme.swift`, `SunburstChart.swift`, `InspectorView.swift`, `ContentView.swift` |
 | 5 Motion | The sweep-in runs once per folder and is skipped under Reduce Motion. Window resizes never restart it. | `SunburstChart.swift` |
 | 6 Result | The dock result uses `rescueVerification` only when its moved count, failed count and method match `lastRemovalSummary`. Otherwise it shows the summary counts alone, without bytes. Held items now show the warning icon. No Undo. | `CollectorDock.swift` |
-| 7 Settings | One switch, off by default: "Share anonymous usage data". A "What is sent" section with three rows. Opt-out effects in one sentence. A native segmented 1–5 rating, only when sharing is on and the survey flag is live. No replay claim. | `AnalyticsSettingsView.swift` |
+| 7 Settings | Replaced in round 2 (see below). The round 1 opt-out switch no longer exists. | `AnalyticsSettingsView.swift` |
 | 8 Analytics | `Analytics.screen`: `explore` or `rescue` on mode change, `review` when the review sheet opens, a fixed tool name when a tool sheet opens, back to the mode screen on close. Events: `cleanup review opened` (item count), `tool opened` (fixed tool name), `permission prompted` when the Full Disk Access card shows, `permission dismissed` on Not Now. `compactLegend` sets the stacked browser height to 4 or 8 rows. It changes nothing else. No names, paths, search text, raw errors, network events or frame callbacks. | `ContentView.swift`, `CleanupActionBar.swift` |
 
 Preserved: `RemovalSnapshot` identity checks, `snapshotIsCurrent` before and
@@ -79,3 +79,92 @@ Run on a Mac. Record a capture or a log line per item.
     folder". Details reads in focus order.
 14. Keyboard only: Tab to browser, arrows, Return opens, ⌘↑ goes up, ⌘⌫ adds,
     ⇧⌘L reviews.
+
+## Round 2: native bug fixes
+
+Base: `9f16d6d` (parent: always-on anonymous collection, `setEnabled`
+removed). Native run of `c0f1872` passed 83 tests and Release. Real input
+found three bugs. Contact sheet: remote `/tmp/tessera-qual-c0f1872` (not on
+this machine; the fixes follow the parent's written evidence).
+
+Status: source changed, not compiled, not run. No rubric area is scored.
+
+| Native bug | Cause in source | Fix | Files |
+|---|---|---|---|
+| Arrows and Return do nothing in the child list; a clicked row has no keyboard focus | The browser was an AppKit-backed `List` with a computed selection binding and SwiftUI key handlers layered on it. The click did not give the table first responder. | The browser is now a `ScrollView` + `LazyVStack`. The container is `.focusable` with a `@FocusState`. A click sets focus and selects in the same call. `onKeyPress` handles ↑ ↓ Home End Page Up Page Down Return Space; Escape clears. A 2 pt cyan ring shows focus. The selection scrolls into view. A click on the map now also gives the map focus. | `ContentView.swift`, `SunburstChart.swift` |
+| List rows draw on top of the Review sheet at 1100x700 | The `List` table view drew outside SwiftUI's layering. | No AppKit table remains in the browser. Rows are plain SwiftUI views. | `ContentView.swift` |
+| 820 pt: names cut to "syn….bin" | A 207 pt column held dot, name, percent, size and chevron on one line. | Column is 230 to 320 pt. Below 290 pt, rows use two lines: the name wraps to two lines, size and percent go under it. Each row has the full name as a tooltip. | `ContentView.swift` |
+| 1100 pt: Details shows "synt…ile.bin" | The Details name allowed two lines and child rows one line. | The Details name wraps to four lines and is selectable. Child rows wrap to two lines; their sizes keep a fixed width. | `InspectorView.swift` |
+| 1000 pt: inline Details shrinks the map to about 140 pt | Round 1 put a 230 pt Details panel under the map. | Details is its own column only when the content width (window minus sidebar) is at least 980 pt. Otherwise the right column has an Items / Details switch, and the map keeps its size. ⌃⌘I opens the Details side of the switch. | `ContentView.swift` |
+
+Also in round 2:
+
+- Sources: the source list is one keyboard stop. ↑ ↓ move the selection
+  across sections and show a cached scan at once, as a click does. Return
+  scans a source that is not on screen; ⌘R still rescans the one on screen.
+  A cyan ring marks the focused selection. The list scrolls to it. The
+  existing busy gate blocks every key during a scan or removal.
+- Settings: no switch. It shows "On for every normal run", or the exact
+  reason nothing is sent (automated run, or no key). "What is sent" lists
+  screens, scan fields, cleanup counts, tool names, crash addresses and the
+  random ID, matching `ScanTelemetry.properties`, the cleanup events and
+  `AnalyticsPolicy`. "Never sent" names the excluded data and says there is
+  no screen recording or replay. The 1–5 rating stays optional, with no free
+  text.
+- Analytics order: every screen call goes through `Analytics.start()` first.
+  `start` is idempotent, so the first Explore screen is kept even when the
+  window appears before the app delegate starts analytics.
+
+Preserved: `RemovalSnapshot` identity checks and `snapshotIsCurrent`,
+confirmation inside the review sheet, `addToCollector` owner and protected
+gates, source and revision gating on the off-main map build, busy locks,
+and the `Tessera.captureState` hook (the "details" state now opens the
+Details side of the switch in narrow windows).
+
+## Rubric status
+
+The user target is 9 or more in all ten areas, from native evidence. This
+round has no native evidence, so every area stays unscored. Each area needs
+at least the captures below from one build, scored against the fixed rubric
+next to the Opus reference scores.
+
+| Area | Native proof needed |
+|---|---|
+| 1 Visual hierarchy | Explore at 820x600, 1100x700, 1240x800, 1600x1000 |
+| 2 Type and readability | Long-name fixture at 820 and 1100: browser and Details names readable |
+| 3 Spacing and density | The same four sizes, with and without Details |
+| 4 Color and contrast | Pixel samples: dot, wedge, Details badge; Increase Contrast captures |
+| 5 Navigation and discovery | Keyboard run: sources, map, browser, breadcrumb, tools, ⌘F |
+| 6 Map and list clarity | Wide folder (100,000 children): "Sorting…", then the full list |
+| 7 First-run and scan feedback | Empty, scanning, cancelled, partial and error states |
+| 8 Cleanup safety and review | Review at 1100x700 with no overlap; confirm, cancel, result bar |
+| 9 Keyboard and accessibility | VoiceOver and keyboard-only Explore to Trash, focus visible each step |
+| 10 Window adaptation and state | Live resize from 820 to 1600 with Details on; source switch states |
+
+## Round 2 native acceptance checklist
+
+Run on a Mac with the round 2 commit. Record a capture or log line each.
+
+1. Swift 6 build and the 83 tests pass. No new warnings in owned files.
+2. Click a browser row: the cyan ring appears. ↓ ↑ move one row, Page Down
+   moves 10, End reaches the last row, Return opens a folder, Space opens
+   Quick Look, Escape clears. Same after a click on the map, with arrows.
+3. Double-click a browser folder opens it. A single click selects at once.
+4. 1100x700, open Review: no browser row draws over the sheet. Repeat at
+   820x600 and 1240x800.
+5. 820x600 with the long-name fixture: browser names show in full or wrap
+   to two lines; no name is cut to its first three letters.
+6. 1100x700 and 1000x700 with Details on: the Items / Details switch shows,
+   the map side matches the Details-off capture within 2 pt, and the
+   Details name wraps.
+7. 1240x800 with Details on: three columns; map at least 400 pt.
+8. Sidebar: click a source, ↓ ↑ move across sections, a cached source shows
+   at once, Return scans an unscanned one. Keys do nothing during a scan.
+9. Wide folder: End in the browser reaches row 100,000 without a stall over
+   one second. Record the heartbeat log.
+10. Settings: a normal configured build shows "On for every normal run" and
+    no switch. An `SO_` run shows "Not sending: automated run".
+11. Network gate log on first launch: the first `$screen` is `explore`, sent
+    after `tessera app opened`, with no names or paths.
+12. VoiceOver: browser rows read "name, size, percent of this folder,
+    folder" and offer Open and Quick Look. The source list reads "Sources".

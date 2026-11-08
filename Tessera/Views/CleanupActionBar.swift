@@ -76,6 +76,7 @@ struct CleanupActionBar: View {
         }
         .onChange(of: presentedTool) { _, tool in
             if let tool {
+                Analytics.shared.start()
                 Analytics.shared.screen(tool.screen)
                 Analytics.shared.capture(.toolOpened, values: ["tool": .text(tool.screen.rawValue)])
             } else {

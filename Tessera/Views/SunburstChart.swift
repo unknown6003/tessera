@@ -37,6 +37,9 @@ struct MapSnapshot: Sendable {
         childIndex[id].map { children[$0] }
     }
 
+    /// Position of a direct child in `children`, without a linear search.
+    func childIndexOf(_ id: ObjectIdentifier) -> Int? { childIndex[id] }
+
     func wedge(for node: FileNode) -> SunburstChart.Wedge? {
         wedgeIndex[node.id].map { wedges[$0] }
     }
@@ -493,6 +496,8 @@ struct SunburstChart: View {
                                   chartRadius: chartRadius, hubRadius: hubRadius) else {
             onSelect(nil); return
         }
+        // A click gives the map keyboard focus, so arrow keys act at once.
+        mapFocused = true
         let clicks = NSApp.currentEvent?.clickCount ?? 1
         if clicks == 2 {
             if wedge.node.isDirectory && !wedge.node.isSynthetic {
