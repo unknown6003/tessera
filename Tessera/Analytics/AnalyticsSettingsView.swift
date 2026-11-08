@@ -43,6 +43,6 @@ struct AnalyticsSettingsView: View {
         .formStyle(.grouped)
         .frame(width: 540)
         .fixedSize(horizontal: false, vertical: true)
-        .onAppear { analytics.start(); analytics.screen(.settings) }
+        .onAppear { analytics.start(); analytics.screen(.settings); analytics.surveyShown() }
     }
 }

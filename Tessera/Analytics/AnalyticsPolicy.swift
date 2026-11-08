@@ -50,7 +50,8 @@ enum AnalyticsPolicy {
     private static let eventNames = Set(AnalyticsEvent.allCases.map(\.rawValue))
     private static let numericKeys: Set<String> = [
         "duration_ms", "enumeration_ms", "diagnosis_ms", "files", "directories", "coverage_gaps",
-        "items", "moved", "held", "failed", "bytes_bucket", "schema_version", "sample_count", "provider_reads"
+        "items", "moved", "held", "failed", "bytes_bucket", "schema_version", "sample_count", "provider_reads",
+        "$feature_flag_id", "$feature_flag_version", "$feature_flag_evaluated_at"
     ]
     private static let categories: [String: Set<String>] = [
         "source_class": ["local_internal", "local_external", "local_unknown", "cloud", "remote", "unknown"],
@@ -89,9 +90,19 @@ enum AnalyticsPolicy {
             } else if ["$app_version", "$app_build", "$lib_version", "$os_version"].contains(key),
                       let text = value as? String, validVersion(text) {
                 result[key] = text
-            } else if ["$session_id", "$survey_id", "$survey_submission_id"].contains(key),
+            } else if ["$session_id", "$survey_id", "$survey_submission_id", "$feature_flag_request_id"].contains(key),
                       let text = value as? String, UUID(uuidString: text) != nil {
                 result[key] = text
+            } else if key.hasPrefix("$feature/"), flagKeys.contains(String(key.dropFirst(9))) {
+                if let variant = value as? String, variants.contains(variant) { result[key] = variant }
+                else if let enabled = value as? Bool { result[key] = enabled }
+            } else if key == "$active_feature_flags", let keys = value as? [String] {
+                result[key] = keys.filter { flagKeys.contains($0) }
+            } else if ["$survey_completed", "$feature_flag_has_experiment"].contains(key), let value = value as? Bool {
+                result[key] = value
+            } else if key.hasPrefix("$survey_response_"), UUID(uuidString: String(key.dropFirst(17))) != nil,
+                      let rating = value as? Int, (1...5).contains(rating) {
+                result[key] = rating
             } else if key == "$survey_response", let rating = value as? Int, (1...5).contains(rating) {
                 result[key] = rating
             }

@@ -36,6 +36,7 @@ struct AnalyticsConfiguration: Sendable {
 struct AnalyticsFlagSnapshot: Sendable {
     var compactLegend = false
     var surveyID: UUID?
+    var surveyQuestionID: UUID?
 }
 
 private actor AnalyticsBackend {
@@ -120,7 +121,7 @@ private actor AnalyticsBackend {
     func flags() async -> AnalyticsFlagSnapshot {
         guard let sdk else { return .init() }
         // The SDK owns a bounded, cached reload. Do not wait for it on the UI thread.
-        await withCheckedContinuation { continuation in
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             sdk.reloadFeatureFlags { continuation.resume() }
         }
         var snapshot = AnalyticsFlagSnapshot()
@@ -128,8 +129,10 @@ private actor AnalyticsBackend {
             snapshot.compactLegend = flag.enabled && flag.variant == "compact"
         }
         if let flag = sdk.getFeatureFlagResult("tessera-feedback-survey"), flag.enabled,
-           let payload = flag.payload as? [String: Any], let id = payload["survey_id"] as? String {
+           let payload = flag.payload as? [String: Any], let id = payload["survey_id"] as? String,
+           let questionID = payload["question_id"] as? String {
             snapshot.surveyID = UUID(uuidString: id)
+            snapshot.surveyQuestionID = UUID(uuidString: questionID)
         }
         return snapshot
     }
@@ -152,6 +155,7 @@ final class Analytics: ObservableObject {
     @Published private(set) var isConfigured = false
     @Published private(set) var compactLegend = false
     @Published private(set) var surveyID: UUID?
+    private var surveyQuestionID: UUID?
     private let defaults: UserDefaults
     private let backend = AnalyticsBackend()
     private var generation: UInt64 = 0
@@ -192,6 +196,7 @@ final class Analytics: ObservableObject {
         setupTask?.cancel()
         compactLegend = false
         surveyID = nil
+        surveyQuestionID = nil
         lastScreen = nil
         let configuration = isEnabled && !Self.isSuppressed ? AnalyticsConfiguration.load() : nil
         AnalyticsNetworkGate.shared.configure(generation: revision, hosts: configuration?.allowedHosts ?? [])
@@ -205,6 +210,7 @@ final class Analytics: ObservableObject {
             guard !Task.isCancelled, generation == revision else { return }
             compactLegend = flags.compactLegend
             surveyID = flags.surveyID
+            surveyQuestionID = flags.surveyQuestionID
         }
     }
 
@@ -220,11 +226,17 @@ final class Analytics: ObservableObject {
     }
 
     func submitRating(_ rating: Int) {
-        guard (1...5).contains(rating), let surveyID, isEnabled, !Self.isSuppressed else { return }
+        guard (1...5).contains(rating), let surveyID, let surveyQuestionID, isEnabled, !Self.isSuppressed else { return }
         let values: [String: AnalyticsValue] = ["$survey_id": .text(surveyID.uuidString),
-            "$survey_submission_id": .text(UUID().uuidString), "$survey_response": .integer(rating)]
+            "$survey_submission_id": .text(UUID().uuidString), "$survey_response": .integer(rating),
+            "$survey_response_\(surveyQuestionID.uuidString)": .integer(rating), "$survey_completed": .boolean(true)]
         Task { await backend.capture("survey sent", values: values); await backend.flush() }
         self.surveyID = nil
+    }
+
+    func surveyShown() {
+        guard let surveyID, isEnabled, !Self.isSuppressed else { return }
+        Task { await backend.capture("survey shown", values: ["$survey_id": .text(surveyID.uuidString)]) }
     }
 
     func flush() { Task { await backend.flush() } }
