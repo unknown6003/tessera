@@ -228,7 +228,7 @@ export const content = {
     ctaLabel: 'Download for macOS',
     starLabel: 'Star on GitHub',
     sponsorLabel: 'Sponsor',
-    note: 'Requires macOS 26 (Tahoe) or later, Apple Silicon. The current build is unsigned — on first launch, right-click the app and choose Open (or System Settings → Privacy & Security → Open Anyway). You only do this once.',
+    note: 'Requires macOS 26 (Tahoe) or later, Apple Silicon. The current channel uses a stable self-signed certificate and is not notarized. macOS may ask you to approve it.',
   },
   faq: [
     {

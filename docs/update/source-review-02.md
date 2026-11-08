@@ -72,3 +72,23 @@ Settings' temporary old setter was excluded because the Opus writer owned its
 replacement. That change is now integrated in `a18a0b5`. These source reads do
 not prove native default collection or live ingestion. The later real-SDK wire
 probe and symbol-upload changes need their own validation.
+
+## SDK and server setup delta, c590e06
+
+Three further independent native Codex reads covered `a18a0b5..c590e06` on
+Standards, Spec and Risk. All 13 changed files were covered; no untracked file
+was present. No retained source finding remained. The saved resources clearly
+mark survey and experiment qualification as open. The wire probe, live symbol
+upload and SDK behavior still require macOS execution. Sixteen tool tests pass,
+including symbol identity, wrong-project and release-series failure paths.
+
+A separate whole-site claim search found historical no-telemetry and silent
+network claims outside the prior changed lines. The current privacy copy now
+states anonymous diagnostics are enabled. It also removes stale unsigned-build
+and unverified competitor-price claims. These are copy corrections; no new
+privacy behavior is inferred from them.
+
+The Opus process-local accessibility proposal `c927cd2` was not integrated. It
+used guessed underscored SwiftUI keys. The writer reverted it in `959606c`;
+that tree equals parent `c590e06`. Native qualification must test public system
+accessibility behavior and restore any temporary changes.
