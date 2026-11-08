@@ -112,14 +112,8 @@ struct Sidebar: View {
             reloadVolumes()
         }
         .onChange(of: customFolders.map(\.url)) { _, _ in saveCustomFolders() }
-        .onChange(of: allSources.map(\.url), initial: true) { _, _ in
-            var names: [URL: String] = [:]
-            for source in allSources {
-                names[source.url] = source.name
-                names[source.url.standardizedFileURL] = source.name
-            }
-            sourceNames = names
-        }
+        // Observe names as well as URLs: a source can be renamed in place.
+        .onChange(of: sourceNameLookup, initial: true) { _, names in sourceNames = names }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didMountNotification)) { _ in reloadVolumes() }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didUnmountNotification)) { _ in reloadVolumes() }
         .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
@@ -202,6 +196,15 @@ struct Sidebar: View {
         vm.selectedSourceURL = info.url
         // If we've already scanned this source, switch to it instantly.
         vm.showCachedScanIfAvailable(for: info.url)
+    }
+
+    /// URL to display name for every listed source, under both its URL and its
+    /// standardized URL. Built from data already in memory; no file I/O.
+    /// Later entries win on a repeated key, so duplicates cannot trap.
+    private var sourceNameLookup: [URL: String] {
+        Dictionary(allSources.flatMap { source in
+            [(source.url, source.name), (source.url.standardizedFileURL, source.name)]
+        }, uniquingKeysWith: { _, latest in latest })
     }
 
     /// Sources in on-screen order, across sections.

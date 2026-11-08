@@ -231,3 +231,27 @@ always-on analytics in normal builds.
 9. VoiceOver: a new removal result is announced once. The scan button's hint
    names the source.
 10. Captures stay private; they show real source names.
+
+### Round 4 follow-up (source review)
+
+- Source names: `Sidebar` now observes the full `[URL: String]` lookup, not
+  only the URL list, so a source renamed at the same URL updates the header,
+  subtitle and hint. The lookup is built from the in-memory source list with
+  `Dictionary(_:uniquingKeysWith:)`, so a repeated URL cannot trap. No file
+  I/O.
+- Quick Look monitor: Apple's declaration is
+  `addLocalMonitorForEvents(matching:handler: @escaping (NSEvent) -> NSEvent?) -> Any?`
+  (developer.apple.com, AppKit, NSEvent). The handler is not `@Sendable`,
+  and AppKit calls it only for events sent through the app's own event loop.
+  The state read and write now sit inside `MainActor.assumeIsolated`, which
+  returns a `Bool`, and the handler returns the event or nil at once. The
+  map's existing right-click monitor in `SunburstChart.swift` is outside
+  this patch and unchanged.
+
+Native checks added to the round 4 list:
+
+11. Rename a mounted volume, or a chosen folder's source entry, while it is
+    selected: the header and the button hint show the new name after the
+    source list refreshes.
+12. The Swift 6 build shows no isolation warning or error at the Quick Look
+    monitor. ⌘Y opens and closes the preview as in check 8.

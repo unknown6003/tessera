@@ -471,14 +471,24 @@ struct ContentView: View {
     /// Local monitor: sees key presses in every Tessera window, including the
     /// Quick Look panel. It acts only on ⌘Y while a preview is open; every
     /// other event passes through unchanged.
+    ///
+    /// AppKit declares the handler as a plain `@escaping (NSEvent) -> NSEvent?`
+    /// and calls it only for events sent through the app's own event loop, on
+    /// the main thread. `MainActor.assumeIsolated` states that contract for
+    /// Swift 6 and traps if it is ever broken. The decision stays synchronous,
+    /// because the handler must return the event or nil at once.
     private func installQuickLookKeyMonitor() {
         guard quickLookKeyMonitor == nil else { return }
         quickLookKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard quickLookURL != nil,
-                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-                  event.charactersIgnoringModifiers?.lowercased() == "y" else { return event }
-            quickLookURL = nil
-            return nil
+            let isCommandY = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
+                && event.charactersIgnoringModifiers?.lowercased() == "y"
+            guard isCommandY else { return event }
+            let closed = MainActor.assumeIsolated { () -> Bool in
+                guard quickLookURL != nil else { return false }
+                quickLookURL = nil
+                return true
+            }
+            return closed ? nil : event
         }
     }
 
