@@ -39,6 +39,16 @@ private func makeTree() -> FileNode {
 @Suite("ViewModel Tests")
 @MainActor
 struct ViewModelTests {
+    @Test("Bounded and full child ordering agree when sizes are equal")
+    func equalSizeOrder() {
+        let url = URL(fileURLWithPath: "/tmp/tessera-order")
+        let root = FileNode(url: url, name: "root", isDirectory: true, size: 0)
+        root.setChildren(["zeta", "alpha", "middle"].map {
+            FileNode(url: url.appendingPathComponent($0), name: $0, isDirectory: false, size: 4096)
+        })
+        #expect(root.sortedChildren.map(\.name) == ["alpha", "middle", "zeta"])
+        #expect(root.largestChildren(limit: 2).map(\.id) == Array(root.sortedChildren.prefix(2)).map(\.id))
+    }
 
     // MARK: - Collector: add / remove / clear / no duplicates
 

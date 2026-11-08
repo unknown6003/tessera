@@ -301,16 +301,21 @@ final class FileNode: Identifiable, @unchecked Sendable {
     /// True for synthetic nodes that must never be trashed or revealed in Finder.
     var isSynthetic: Bool { kind == .hiddenSpace || kind == .aggregate || kind == .cloudOnlyStorage || kind == .crossVolume }
 
-    /// Children sorted largest-first.
-    var sortedChildren: [FileNode] { children.sorted { $0.size > $1.size } }
+    /// One order for chart branches and their legend, including equal-size items.
+    static func largestFirst(_ lhs: FileNode, _ rhs: FileNode) -> Bool {
+        if lhs.size != rhs.size { return lhs.size > rhs.size }
+        return lhs.name.utf8.lexicographicallyPrecedes(rhs.name.utf8)
+    }
+
+    var sortedChildren: [FileNode] { children.sorted(by: Self.largestFirst) }
 
     /// Keep only the requested largest rows, without sorting a wide directory.
     func largestChildren(limit: Int) -> [FileNode] {
         guard limit > 0 else { return [] }
         var largest: [FileNode] = []
         for child in children {
-            if largest.count == limit, let last = largest.last, child.size <= last.size { continue }
-            let index = largest.firstIndex { $0.size < child.size } ?? largest.endIndex
+            if largest.count == limit, let last = largest.last, !Self.largestFirst(child, last) { continue }
+            let index = largest.firstIndex { Self.largestFirst(child, $0) } ?? largest.endIndex
             largest.insert(child, at: index)
             if largest.count > limit { largest.removeLast() }
         }
