@@ -20,6 +20,10 @@
 	<string>0.2.0</string>
 	<key>CFBundleVersion</key>
 	<string>12</string>
+	<key>PostHogProjectToken</key>
+	<string></string>
+	<key>PostHogHost</key>
+	<string>https://eu.i.posthog.com</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>

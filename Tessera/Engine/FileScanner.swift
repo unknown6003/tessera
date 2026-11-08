@@ -23,6 +23,7 @@ struct ScanProgress: Sendable {
     var bytesFound: Int64 = 0
     var dirsScanned: Int = 0
     var dirsDiscovered: Int = 1
+    var providerReadAttempts: Int = 0
     var currentPath: String = ""
     /// The volume's used-bytes figure, when scanning a whole volume (0 otherwise).
     /// Used for capacity reporting, not as a completion denominator.
@@ -156,13 +157,15 @@ struct FileScanner: Sendable {
     /// here lifts both.
     private static func buildResult(forEntries entries: [EntryInfo], parentPath: String,
                                     allowedDevices: Set<UInt32>,
-                                    shouldStop: () -> Bool = { false }) -> DirResult {
+                                    shouldStop: () -> Bool = { false },
+                                    onBatch: () -> Void = {}) -> DirResult {
         var result = DirResult()
         result.children.reserveCapacity(entries.count)
         let parentHasSlash = parentPath.hasSuffix("/")
 
         for (index, entry) in entries.enumerated() {
             if index.isMultiple(of: 256), shouldStop() { break }
+            if index.isMultiple(of: 8192) { onBatch() }
             switch entry.type {
             case .symlink, .other:
                 continue
@@ -569,7 +572,8 @@ struct FileScanner: Sendable {
             }
             var result = FileScanner.buildResult(forEntries: listing.entries, parentPath: work.path,
                                                   allowedDevices: allowedDevices,
-                                                  shouldStop: { self.readSession.isCancelled })
+                                                  shouldStop: { self.readSession.isCancelled },
+                                                  onBatch: { self.noteRead() })
             result.coverageGapPaths = listing.unreadablePaths
             return result
         }
@@ -651,6 +655,7 @@ struct FileScanner: Sendable {
             cond.lock()
             let coverageGaps = self.coverageGaps
             progress.isComplete = true
+            progress.providerReadAttempts = readSession.providerReadAttempts
             let snapshot = progress
             let cont = continuation
             continuation = nil

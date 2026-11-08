@@ -11,6 +11,7 @@ enum DebugAutomation {
     static var isAutomated: Bool {
         let env = ProcessInfo.processInfo.environment
         return env["SO_AUTOSCAN"] != nil || env["SO_BENCH"] != nil || env["SO_BENCH_RESCAN"] != nil
+            || env["SO_PERF_CASES"] != nil
     }
 
     private static let preferenceDomain: String? = {
@@ -38,6 +39,10 @@ enum DebugAutomation {
 
     static func runIfRequested(vm: ScanViewModel) {
         let env = ProcessInfo.processInfo.environment
+        if let input = env["SO_PERF_CASES"], let output = env["SO_PERF_OUTPUT"] {
+            PerformanceQualification.run(vm: vm, inputPath: input, outputPath: output)
+            return
+        }
 
         // Single-threaded scan benchmark:
         //   SO_BENCH=<path>           measure single-threaded scanSerial of <path>

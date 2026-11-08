@@ -149,7 +149,7 @@ struct ViewModelTests {
         // zoomOut should go back to root
         vm.zoomOut()
         #expect(vm.currentRoot?.id == root.id)
-        #expect(vm.selectedNode?.id == root.id)
+        #expect(vm.selectedNode?.id == childA.id)
         #expect(vm.hoveredNode == nil)
 
         // zoomIn again, then zoomToRoot

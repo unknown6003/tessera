@@ -41,12 +41,18 @@ final class DirectoryReadSession: @unchecked Sendable {
     private let lock = NSLock()
     private var stopped = false
     private var failedProviders = Set<String>()
+    private var providerAttempts = 0
 
     var isCancelled: Bool { lock.withLock { stopped } }
+    var providerReadAttempts: Int { lock.withLock { providerAttempts } }
     func cancel() { lock.withLock { stopped = true } }
 
     func canRead(_ provider: String?) -> Bool {
-        lock.withLock { !stopped && (provider.map { !failedProviders.contains($0) } ?? true) }
+        lock.withLock {
+            guard !stopped, provider.map({ !failedProviders.contains($0) }) ?? true else { return false }
+            if provider != nil { providerAttempts += 1 }
+            return true
+        }
     }
 
     func hold(_ provider: String?) {

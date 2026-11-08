@@ -25,8 +25,8 @@ import Sparkle
 //    out from under work in progress or silently discard a staged list. Once the
 //    app goes idle, the queued install proceeds.
 //
-// The update check is the ONLY network traffic the app performs on its own.
-// No user data is ever sent.
+// Update requests carry no file data. Optional anonymous diagnostics have their
+// own consent and payload boundary in Analytics/.
 
 /// What the updater is currently doing — surfaced in the app menu.
 enum UpdateStatus: Equatable {

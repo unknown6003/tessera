@@ -1,4 +1,4 @@
-# Tessera 1.0.0
+# Tessera 0.2.0
 
 Tessera has a new workspace and a scanner that streams large folders without
 rereading them. Explore gives the disk map more room. Sources and item details
@@ -21,3 +21,7 @@ in the main workspace.
 Scan time depends on the device, filesystem, permissions and provider state.
 Partial coverage stays marked. This release does not promise a complete scan of
 every possible drive in two minutes.
+
+This release stays in the 0.x series. Anonymous PostHog diagnostics are optional
+and off by default. Scan times include outcomes above the 120-second local-drive
+performance goal. That goal is not a scan timeout.

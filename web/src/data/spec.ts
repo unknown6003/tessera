@@ -11,10 +11,10 @@ export const content = {
   seo: {
     title: 'Tessera — See and reclaim your Mac’s disk. Free & open source.',
     description:
-      'A beautiful interactive map of every file on your Mac, plus a fast duplicate finder, app uninstaller, and dev-junk cleaner. Free, open source, no account, no telemetry — nothing ever leaves your Mac.',
+      'A beautiful interactive map of every file on your Mac, plus a fast duplicate finder, app uninstaller, and dev-junk cleaner. Free, open source, no account. Disk analysis stays on your Mac. Anonymous diagnostics are optional.',
     ogTitle: 'Tessera — see every byte, reclaim the space. Free & open source.',
     ogDescription:
-      'Visualize every byte, find duplicates, clean dev junk and app leftovers. Free, open source, 100% on-device. Nothing ever leaves your Mac.',
+      'Visualize every byte, find duplicates, clean dev junk and app leftovers. Free, open source, on-device disk analysis. No file names, paths or contents in optional diagnostics.',
   },
   nav: [
     {
@@ -64,11 +64,11 @@ export const content = {
     headline: 'Built for people who read the permissions dialog.',
     items: [
       'No account, ever',
-      'No telemetry or analytics',
+      'Anonymous diagnostics are optional',
       'No subscription',
       'Open source (GPL-3.0)',
       'Move to Trash by default',
-      '100% on-device',
+      'On-device disk analysis',
     ],
   },
   features: [
@@ -152,12 +152,12 @@ export const content = {
   privacy: {
     kicker: 'Privacy as architecture, not a policy',
     headline: "We couldn't see your files if we wanted to.",
-    body: 'Most "smart cleaners" need Full Disk Access and a network connection — and ask you to trust them with both. Tessera has no servers, no analytics, and no account, so there is nothing to leak and no one to leak it to. Everything runs on your hardware. The only time the app reaches the network on its own is when it checks for an update — and because it is open source, you can read exactly what it does, line by line.',
+    body: 'Tessera analyzes files on your Mac and needs no account. File names, paths and contents stay on your device. Sparkle checks for signed updates. You can also choose to share anonymous usage and performance data through PostHog in Settings. Sharing is off by default.',
     points: [
       {
-        title: 'No account, no telemetry',
+        title: 'You choose diagnostics',
         description:
-          'You never sign in. We never collect usage data. There is no analytics SDK, no crash beacon, no "anonymous" tracking — nothing. You can audit it with Little Snitch and watch the silence.',
+          'You never sign in. Optional diagnostics include scan times, counts, source type and cleanup outcomes. They exclude file names, paths, contents, searches and account names. Crash reports omit error text and paths. Turning sharing off cancels analytics requests and clears the local queue and anonymous ID.',
       },
       {
         title: "Open source, so you don't have to trust us",
@@ -165,9 +165,9 @@ export const content = {
           "Every line ships under the GPL-3.0 license. You don't have to take our word for the privacy claims — read the code, build it yourself, and verify every network call. Nothing about how Tessera works is hidden.",
       },
       {
-        title: 'The network is almost always silent',
+        title: 'Clear network boundaries',
         description:
-          'Tessera reaches the network on its own for exactly one thing — checking for updates — plus any network share you choose to mount. Your files are never part of that traffic.',
+          'Tessera checks for signed updates and reads network shares you choose to scan. If you enable diagnostics, PostHog receives anonymous events and the network connection. Location enrichment is off. There is no screen recording.',
       },
       {
         title: 'Outside the App Store, on purpose',
@@ -223,7 +223,7 @@ export const content = {
       'Cleanup + app uninstaller (like CleanMyMac)',
       'Free and open source under GPL-3.0',
       'Updates itself automatically — no clicks',
-      'No account, no telemetry, ever',
+      'No account. Diagnostics off by default',
     ],
     ctaLabel: 'Download for macOS',
     starLabel: 'Star on GitHub',

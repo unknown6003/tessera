@@ -5,8 +5,10 @@ packaged as a **.dmg**, and auto-updated via **Sparkle**. This is the full runbo
 You need an Apple Developer account (for the Developer ID certificate + notarization)
 and a one-time Sparkle signing key.
 
-> The app is hard-coded to be on-device only. The only network it performs is the
-> optional model download and Sparkle update checks — keep it that way.
+> Disk analysis stays on-device. Sparkle checks for updates. Optional anonymous
+> PostHog diagnostics are off by default. Never include file data or paths in
+> analytics. Configure only a dedicated Tessera project ingest token in the
+> processed plist; personal PostHog API keys belong in private CI/vault access.
 
 ## 0. One-time setup
 
