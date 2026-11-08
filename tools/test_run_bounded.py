@@ -18,7 +18,8 @@ class BoundedCommandTests(unittest.TestCase):
             [sys.executable, str(Path(__file__).with_name("run_bounded.py")),
              "--timeout", str(deadline), "--log", str(log), "--", sys.executable, str(script)],
             capture_output=True, text=True, timeout=10)
-        self.assertFalse(log.with_suffix(".log.pid").exists())
+        self.assertFalse(log.with_suffix(".log.pid").exists(),
+                         f"Runner exited {result.returncode}: {result.stdout}{result.stderr}")
         return root, result
 
     def test_deadline_stops_the_command(self):
