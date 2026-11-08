@@ -8,7 +8,8 @@ struct ContentView: View {
         var title: String { rawValue.capitalized }
     }
 
-    private struct RemovalSnapshot {
+    private struct RemovalSnapshot: Identifiable {
+        let id = UUID()
         let nodes: [FileNode]
         let sourcePath: String
         let rootID: ObjectIdentifier?
@@ -28,7 +29,6 @@ struct ContentView: View {
     @State private var largestRows: [FileNode] = []
     @State private var queuedReviewAction: RemovalSnapshot?
     @State private var queuedReviewIsPermanent = false
-    @State private var showReview = false
     @State private var reviewSnapshot: RemovalSnapshot?
     @State private var showTrashConfirm = false
     @State private var showDeleteAllConfirm = false
@@ -135,16 +135,14 @@ struct ContentView: View {
         .onChange(of: vm.chartRevision) { _, _ in refreshLargestRows() }
         .onChange(of: removalRequested) { _, _ in syncUpdaterBusy() }
         .onChange(of: vm.collector.isEmpty) { _, _ in syncUpdaterBusy() }
-        .sheet(isPresented: $showReview, onDismiss: finishReview) {
-            if let snapshot = reviewSnapshot {
-                CleanupReviewSheet(vm: vm, nodes: snapshot.nodes, sourcePath: snapshot.sourcePath,
+        .sheet(item: $reviewSnapshot, onDismiss: finishReview) { snapshot in
+            CleanupReviewSheet(vm: vm, nodes: snapshot.nodes, sourcePath: snapshot.sourcePath,
                                    rootID: snapshot.rootID, revision: snapshot.revision,
                                    onTrash: { nodes in
                                        queueReviewAction(nodes, permanent: false)
                                    }, onDelete: { nodes in
                                        queueReviewAction(nodes, permanent: true)
                                    })
-            }
         }
         .confirmationDialog("Move \(Theme.itemCount(pendingTrash?.nodes.count ?? 0)) to Trash?",
                             isPresented: $showTrashConfirm, titleVisibility: .visible) {
@@ -183,7 +181,7 @@ struct ContentView: View {
                   let source = vm.scannedURL,
                   source.resolvingSymlinksInPath().path.contains("/tmp/tessera-"),
                   let state = note.userInfo?["state"] as? String else { return }
-            showReview = false
+            reviewSnapshot = nil
             showTrashConfirm = false
             showDeleteAllConfirm = false
             showInspector = state == "details"
@@ -457,7 +455,6 @@ struct ContentView: View {
     private func openReview() {
         guard !vm.isScanning, !removalBusy, let snapshot = snapshot(vm.collector) else { return }
         reviewSnapshot = snapshot
-        showReview = true
     }
 
     private func snapshot(_ nodes: [FileNode]) -> RemovalSnapshot? {
@@ -472,7 +469,7 @@ struct ContentView: View {
                                             rootID: review.rootID, revision: review.revision,
                                             collectorIDs: Set(nodes.map(\.id)))
         queuedReviewIsPermanent = permanent
-        showReview = false
+        reviewSnapshot = nil
     }
 
     private func finishReview() {

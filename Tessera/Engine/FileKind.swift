@@ -74,7 +74,7 @@ enum FileKind: String, CaseIterable, Sendable, Identifiable {
     /// themselves counted, except packages, which are taken as a single `.app`
     /// unit (their contents are not double-counted underneath). Sorted by bytes
     /// descending; empty kinds are omitted.
-    static func breakdown(root: FileNode) -> [(kind: FileKind, bytes: Int64, count: Int)] {
+    static func breakdown(root: FileNode, shouldStop: @Sendable () -> Bool = { false }) -> [(kind: FileKind, bytes: Int64, count: Int)] {
         var tallies: [FileKind: Tally] = [:]
 
         func add(_ kind: FileKind, bytes: Int64) {
@@ -85,7 +85,8 @@ enum FileKind: String, CaseIterable, Sendable, Identifiable {
         // Iterative pre-order walk to avoid deep recursion on large trees.
         var stack: [FileNode] = [root]
         while let node = stack.popLast() {
-            for child in node.children where !child.isSynthetic {
+            for (index, child) in node.children.enumerated() where !child.isSynthetic {
+                if index.isMultiple(of: 256), shouldStop() { return [] }
                 if child.kind == .package {
                     // A package is one unit; count it and don't descend.
                     add(.app, bytes: child.size)
@@ -104,11 +105,13 @@ enum FileKind: String, CaseIterable, Sendable, Identifiable {
 
     /// The largest `limit` regular files of this kind in the tree, bytes-descending.
     /// Packages count as `.app` and are not descended; synthetic nodes are skipped.
-    static func largestFiles(of kind: FileKind, in root: FileNode, limit: Int) -> [FileNode] {
+    static func largestFiles(of kind: FileKind, in root: FileNode, limit: Int,
+                             shouldStop: @Sendable () -> Bool = { false }) -> [FileNode] {
         var matches: [FileNode] = []
         var stack: [FileNode] = [root]
         while let node = stack.popLast() {
-            for child in node.children where !child.isSynthetic {
+            for (index, child) in node.children.enumerated() where !child.isSynthetic {
+                if index.isMultiple(of: 256), shouldStop() { return [] }
                 if child.kind == .package {
                     if kind == .app { matches.append(child) }
                 } else if child.isDirectory {

@@ -1,6 +1,18 @@
 import SwiftUI
 import AppKit
 
+struct ScanTreeRevision: Equatable {
+    let rootID: ObjectIdentifier?
+    let revision: UInt64
+}
+
+final class TreeReadCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stopped = false
+    var isCancelled: Bool { lock.withLock { stopped } }
+    func cancel() { lock.withLock { stopped = true } }
+}
+
 @MainActor
 final class ScanViewModel: ObservableObject {
     // MARK: - Published state
@@ -19,6 +31,8 @@ final class ScanViewModel: ObservableObject {
     @Published var duplicateProgress = DuplicateProgress()
     @Published var isScanning = false
     @Published private(set) var isDeleting = false
+    @Published private(set) var isReadingTree = false
+    private var treeReaders = 0
     @Published private(set) var deletionProgress = 0
     @Published private(set) var deletionTotal = 0
     @Published private(set) var scanStartedAt: Date?
@@ -32,6 +46,9 @@ final class ScanViewModel: ObservableObject {
     /// after cleanup). The chart uses this to invalidate angular layout without
     /// tying expensive layout work to window-size changes.
     @Published private(set) var chartRevision: UInt64 = 0
+    var treeRevision: ScanTreeRevision {
+        ScanTreeRevision(rootID: rootNode?.id, revision: chartRevision)
+    }
     @Published var errorMessage: String?
     @Published var needsFullDiskAccess = false
     /// Drives the first-launch onboarding prompt that asks for Full Disk Access
@@ -680,7 +697,7 @@ final class ScanViewModel: ObservableObject {
     /// Scan the current tree for exact-content duplicate files. Detection runs on a
     /// GCD worker pool (off the cooperative pool, since it does blocking reads).
     func findDuplicates() {
-        guard let root = rootNode, !isFindingDuplicates, !isDeleting else { return }
+        guard rootNode != nil, !isFindingDuplicates, !isDeleting else { return }
         stopDuplicateSearch()
         let generation = duplicateGeneration
         let token = DuplicateCancelToken()
@@ -697,18 +714,18 @@ final class ScanViewModel: ObservableObject {
                 self.duplicateProgress = prog
             }
         }
-        // Snapshot the candidate files on the main actor before handing them to the
-        // background pass, so the background never walks `FileNode.children` while the
-        // collector delete flow can mutate the same arrays on the main actor.
-        let files = DuplicateFinder.collectFiles(root: root)
         duplicateTask = Task { [weak self] in
+            guard let self else { return }
+            let files = await self.readTree { root, cancel in
+                DuplicateFinder.collectFiles(root: root, shouldStop: { cancel.isCancelled || token.isCancelled })
+            } ?? []
+            guard self.duplicateGeneration == generation, !token.isCancelled else { return }
             let groups: [DuplicateGroup] = await withCheckedContinuation { cont in
                 DispatchQueue.global(qos: .userInitiated).async {
                     cont.resume(returning: DuplicateFinder.find(files: files, cancel: token, progress: onProgress))
                 }
             }
-            guard let self,
-                  self.duplicateGeneration == generation,
+            guard self.duplicateGeneration == generation,
                   !token.isCancelled else { return }
             self.duplicateGroups = groups
             self.isFindingDuplicates = false
@@ -828,6 +845,26 @@ final class ScanViewModel: ObservableObject {
 
     // MARK: - Delete
 
+    /// Keep the published tree immutable while a tool walks it off the UI thread.
+    /// Source changes may replace the root; this read retains its original tree.
+    func readTree<Value: Sendable>(
+        _ operation: @escaping @Sendable (FileNode, TreeReadCancellation) -> Value
+    ) async -> Value? {
+        guard !isDeleting, !Task.isCancelled, let root = rootNode else { return nil }
+        let cancellation = TreeReadCancellation()
+        treeReaders += 1
+        isReadingTree = true
+        defer {
+            treeReaders -= 1
+            isReadingTree = treeReaders > 0
+        }
+        return await withTaskCancellationHandler {
+            try? await Self.offMain { operation(root, cancellation) }
+        } onCancel: {
+            cancellation.cancel()
+        }
+    }
+
     /// Move every collected item to the Trash (recoverable), then prune them from
     /// the tree. The default, recommended action — restore from Finder if needed.
     func moveCollectorToTrash() async throws {
@@ -841,7 +878,7 @@ final class ScanViewModel: ObservableObject {
     }
 
     private func remove(_ nodes: [FileNode], permanently: Bool) async throws {
-        guard !isDeleting, !isScanning else { throw RemovalStateError.busy }
+        guard !isDeleting, !isScanning, treeReaders == 0 else { throw RemovalStateError.busy }
         let targets = topLevelTargets(nodes.filter { !$0.isSynthetic })
         guard !targets.isEmpty else { return }
         isDeleting = true
@@ -897,7 +934,7 @@ final class ScanViewModel: ObservableObject {
 
     private enum RemovalStateError: LocalizedError {
         case busy
-        var errorDescription: String? { "Wait for the current scan or cleanup to finish." }
+        var errorDescription: String? { "Wait for the current scan, file analysis or cleanup to finish." }
     }
 
     nonisolated private static func offMain<Value: Sendable>(

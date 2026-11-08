@@ -14,10 +14,14 @@ struct ByKindView: View {
     private let largestN = 12
 
     @State private var expanded: FileKind?
+    @State private var breakdown: [(kind: FileKind, bytes: Int64, count: Int)] = []
+    @State private var largest: [FileNode] = []
+    @State private var isLoading = false
+    @State private var isLoadingLargest = false
 
-    private var breakdown: [(kind: FileKind, bytes: Int64, count: Int)] {
-        guard let root = vm.rootNode else { return [] }
-        return FileKind.breakdown(root: root)
+    private struct LargestKey: Equatable {
+        let tree: ScanTreeRevision
+        let kind: FileKind?
     }
 
     private var totalBytes: Int64 { breakdown.reduce(0) { $0 + $1.bytes } }
@@ -28,7 +32,9 @@ struct ByKindView: View {
                 FeatureSectionLabel("By Kind")
 
                 let rows = breakdown
-                if rows.isEmpty {
+                if isLoading {
+                    ProgressView("Reading file types…")
+                } else if rows.isEmpty {
                     Label("No files to categorize yet.", systemImage: "square.grid.2x2")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
@@ -42,7 +48,35 @@ struct ByKindView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .task(id: vm.treeRevision) { await loadBreakdown() }
+            .task(id: LargestKey(tree: vm.treeRevision, kind: expanded)) { await loadLargest() }
         }
+    }
+
+    private func loadBreakdown() async {
+        let revision = vm.treeRevision
+        isLoading = true
+        breakdown = []
+        let rows = await vm.readTree { root, cancel in
+            FileKind.breakdown(root: root, shouldStop: { cancel.isCancelled })
+        }
+        guard !Task.isCancelled, revision == vm.treeRevision else { return }
+        breakdown = rows ?? []
+        isLoading = false
+    }
+
+    private func loadLargest() async {
+        largest = []
+        guard let kind = expanded else { isLoadingLargest = false; return }
+        let revision = vm.treeRevision
+        let limit = largestN
+        isLoadingLargest = true
+        let files = await vm.readTree { root, cancel in
+            FileKind.largestFiles(of: kind, in: root, limit: limit, shouldStop: { cancel.isCancelled })
+        }
+        guard !Task.isCancelled, revision == vm.treeRevision, expanded == kind else { return }
+        largest = files ?? []
+        isLoadingLargest = false
     }
 
     // MARK: Kind row
@@ -111,9 +145,11 @@ struct ByKindView: View {
 
     @ViewBuilder
     private func largestFiles(for kind: FileKind) -> some View {
-        let files = vm.rootNode.map { FileKind.largestFiles(of: kind, in: $0, limit: largestN) } ?? []
+        let files = largest
 
-        if files.isEmpty {
+        if isLoadingLargest {
+            ProgressView("Finding largest files…").controlSize(.small)
+        } else if files.isEmpty {
             Text("No files of this kind.")
                 .font(.caption).foregroundStyle(.tertiary)
         } else {

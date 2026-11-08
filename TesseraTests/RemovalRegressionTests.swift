@@ -66,6 +66,45 @@ struct RemovalRegressionTests {
         #expect(result.recoveryNote.contains("empty it"))
     }
 
+    @Test("A cancelled background tree read holds cleanup until the worker returns")
+    func treeReadExcludesRemoval() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data([1]).write(to: url.appendingPathComponent("data"))
+        let suiteName = "TesseraTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
+        vm.startScan(volumeURL: url)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        let root = try #require(vm.rootNode)
+        let target = try #require(root.children.first)
+        let release = DispatchSemaphore(value: 0)
+        let reader = Task {
+            await vm.readTree { tree, cancel in
+                _ = release.wait(timeout: .now() + .seconds(3))
+                return (tree.children.count, cancel.isCancelled)
+            }
+        }
+        defer { release.signal() }
+        while !vm.isReadingTree, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(vm.isReadingTree)
+        do {
+            try await vm.deletePermanently([target])
+            Issue.record("Cleanup must not mutate a tree with an active reader")
+        } catch { }
+        reader.cancel()
+        #expect(vm.isReadingTree)
+        release.signal()
+        let result = await reader.value
+        #expect(result?.0 == 1)
+        #expect(result?.1 == true)
+        #expect(!vm.isReadingTree)
+        #expect(!vm.isDeleting)
+        #expect(FileManager.default.fileExists(atPath: target.url.path))
+    }
+
     @Test("Async cleanup yields the main actor, holds the source, and prunes partial success")
     func responsivePartialCleanup() async throws {
         let url = try fixture()

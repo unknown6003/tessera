@@ -53,16 +53,18 @@ struct LargeOldFilesView: View {
     @State private var age: AgeWindow = .any
     /// `nil` = all kinds.
     @State private var kind: FileKind? = nil
+    @State private var matches: [FileNode] = []
+    @State private var isLoading = false
+
+    private struct ReadKey: Equatable {
+        let tree: ScanTreeRevision
+        let query: LargeOldFiles.Query
+    }
 
     private var query: LargeOldFiles.Query {
         LargeOldFiles.Query(minSizeBytes: minSize.rawValue,
                             maxAgeDays: age.days,
                             kind: kind)
-    }
-
-    private var matches: [FileNode] {
-        guard let root = vm.rootNode else { return [] }
-        return LargeOldFiles.find(root: root, query: query)
     }
 
     var body: some View {
@@ -79,7 +81,9 @@ struct LargeOldFilesView: View {
                 let rows = matches
                 resultsHeader(count: rows.count)
 
-                if rows.isEmpty {
+                if isLoading {
+                    ProgressView("Finding matching files…")
+                } else if rows.isEmpty {
                     Label("No files match these filters.", systemImage: "magnifyingglass")
                         .font(.caption).foregroundStyle(.secondary)
                         .padding(.vertical, 4)
@@ -92,7 +96,21 @@ struct LargeOldFilesView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .task(id: ReadKey(tree: vm.treeRevision, query: query)) { await loadMatches() }
         }
+    }
+
+    private func loadMatches() async {
+        let revision = vm.treeRevision
+        let requestedQuery = query
+        matches = []
+        isLoading = true
+        let rows = await vm.readTree { root, cancel in
+            LargeOldFiles.find(root: root, query: requestedQuery, shouldStop: { cancel.isCancelled })
+        }
+        guard !Task.isCancelled, revision == vm.treeRevision, requestedQuery == query else { return }
+        matches = rows ?? []
+        isLoading = false
     }
 
     // MARK: Filters

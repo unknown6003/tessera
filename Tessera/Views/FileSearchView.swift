@@ -13,6 +13,7 @@ struct FileSearchView: View {
     @State private var query: String = ""
     @State private var result: SearchResult?
     @State private var isSearching = false
+    @State private var searchTask: Task<Void, Never>?
     /// Bumped each time a search starts so a slow search that finishes after a
     /// newer one is ignored — the last query the user ran wins.
     @State private var runToken = 0
@@ -57,6 +58,7 @@ struct FileSearchView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .onDisappear { searchTask?.cancel(); runToken &+= 1 }
         }
     }
 
@@ -72,6 +74,9 @@ struct FileSearchView: View {
                 .onSubmit(run)
             if !query.isEmpty {
                 Button {
+                    searchTask?.cancel()
+                    runToken &+= 1
+                    isSearching = false
                     query = ""
                     result = nil
                     focused = true
@@ -226,25 +231,24 @@ struct FileSearchView: View {
     /// off the main actor.
     private func run() {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let root = vm.rootNode else { return }
+        guard !trimmed.isEmpty, vm.rootNode != nil else { return }
+        let revision = vm.treeRevision
         runToken += 1
         let token = runToken
         isSearching = true
         result = nil
         let now = Int64(Date().timeIntervalSince1970)
         let filter = FileSearchParser.parse(trimmed)
-        // Snapshot the candidate leaves here on the main actor, before handing them
-        // to the background filter pass — the background must never walk
-        // `FileNode.children` while the collector delete flow can mutate the same
-        // arrays on the main actor.
-        let candidates = FileSearch.collectFiles(root: root)
-        Task {
-            let nodes = await Task.detached(priority: .userInitiated) {
-                FileSearch.find(files: candidates, filter: filter, nowEpochSeconds: now)
-            }.value
+        searchTask?.cancel()
+        searchTask = Task {
+            let nodes = await vm.readTree { root, cancel in
+                let candidates = FileSearch.collectFiles(root: root, shouldStop: { cancel.isCancelled })
+                return FileSearch.find(files: candidates, filter: filter, nowEpochSeconds: now,
+                                       shouldStop: { cancel.isCancelled })
+            }
             // Ignore a stale search superseded by a newer one.
-            guard token == runToken else { return }
-            result = SearchResult(query: trimmed, filter: filter, nodes: nodes)
+            guard token == runToken, revision == vm.treeRevision else { return }
+            result = SearchResult(query: trimmed, filter: filter, nodes: nodes ?? [])
             isSearching = false
         }
     }
