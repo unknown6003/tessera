@@ -47,45 +47,24 @@ struct CleanupActionBar: View {
     @State private var presentedTool: Tool?
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button {
-                onRescue()
-            } label: {
-                Label(rescueTitle, systemImage: "lifepreserver.fill")
-            }
-            .buttonStyle(.flatProminent)
-            .controlSize(.regular)
-            .help("Build a safe plan to make room")
-
-            Menu {
-                Section("Tools") {
-                    ForEach(Tool.allCases) { tool in
-                        Button {
-                            presentedTool = tool
-                        } label: {
-                            Label(tool.label, systemImage: tool.symbol)
-                        }
+        Menu {
+            Section("Explore this scan") {
+                ForEach(Tool.allCases) { tool in
+                    Button { presentedTool = tool } label: {
+                        Label(tool.label, systemImage: tool.symbol)
                     }
                 }
-            } label: {
-                Label("Tools", systemImage: "square.grid.2x2")
             }
-            .buttonStyle(.flat)
-            .controlSize(.regular)
-            .help("Open another way to explore this scan")
-
-            Spacer(minLength: 0)
+            Divider()
+            Button("Open Rescue", action: onRescue)
+        } label: {
+            Label("Tools", systemImage: "wrench.and.screwdriver")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .help("Search, duplicates, apps, file types and old files")
+        .disabled(vm.isScanning || vm.isDeleting || vm.rootNode == nil)
         .sheet(item: $presentedTool) { tool in
             toolSheet(tool)
         }
-    }
-
-    private var rescueTitle: String {
-        guard let plan = vm.rescuePlan, !plan.safeRecommendations.isEmpty else { return "Rescue" }
-        let bytes = plan.safeRecommendations.reduce(0) { $0 + $1.physicalBytes }
-        return "Rescue · \(Theme.format(bytes))"
     }
 
     @ViewBuilder
@@ -107,6 +86,8 @@ struct CleanupActionBar: View {
                 }
 
                 Spacer(minLength: 0)
+                Button("Done") { presentedTool = nil }
+                    .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 24)
             .padding(.top, 22)
@@ -126,6 +107,7 @@ struct CleanupActionBar: View {
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .disabled(vm.isDeleting || vm.isScanning)
             }
         }
         .frame(width: tool.sheetWidth, height: 680)

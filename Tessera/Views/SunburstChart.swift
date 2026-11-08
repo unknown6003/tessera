@@ -4,10 +4,12 @@ import AppKit
 // MARK: - SunburstChart
 
 /// Pure-Canvas sunburst (ring chart) that renders up to five rings around a
-/// central glass hub. Angular layout is precomputed when `root` or its content
+/// central hub. Angular layout is precomputed when `root` or its content
 /// revision changes; resizing only updates Canvas geometry, while hover/selection
 /// vary per frame.
 struct SunburstChart: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
     let root: FileNode?
     /// Invalidates cached wedge angles when the same root object is mutated.
     let contentRevision: UInt64
@@ -105,7 +107,18 @@ struct SunburstChart: View {
                                 onHover(nil)
                             }
                         }
+                        .onTapGesture(count: 2, coordinateSpace: .local) { location in
+                            guard isEnabled else { return }
+                            if let node = hitTest(at: location, center: geometry.center,
+                                                  chartRadius: geometry.chartRadius,
+                                                  hubRadius: geometry.hubRadius)?.node,
+                               node.isDirectory, !node.isSynthetic {
+                                onSelect(node)
+                                onZoomIn(node)
+                            }
+                        }
                         .onTapGesture(coordinateSpace: .local) { location in
+                            guard isEnabled else { return }
                             handleTap(at: location, center: geometry.center,
                                       chartRadius: geometry.chartRadius,
                                       hubRadius: geometry.hubRadius)
@@ -156,7 +169,7 @@ struct SunburstChart: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityValue(accessibilityValue)
-        .accessibilityHint("Click a folder to open it. Click a file to select it. Drag a file to the review queue.")
+        .accessibilityHint("Select items with a click or the Largest items list. Double-click a folder to open it. Drag an item to the Cleanup List.")
     }
 
     private var accessibilityValue: String {
@@ -215,9 +228,9 @@ struct SunburstChart: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: hoveredNode?.id)
-        .animation(.easeInOut(duration: 0.18), value: selectedNode?.id)
-        .animation(.easeInOut(duration: 0.35), value: layoutRootID)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: hoveredNode?.id)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: selectedNode?.id)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: layoutRootID)
     }
 
     /// Shading for a wedge. Flat design: every wedge is a single solid color from
@@ -287,7 +300,7 @@ struct SunburstChart: View {
         // Pass hover/clicks through to the wedges below. Only when zoomed in does
         // the hub become an active target (tap = zoom out).
         .allowsHitTesting(isZoomed)
-        .onTapGesture { if isZoomed { onZoomOut() } }
+        .onTapGesture { if isEnabled && isZoomed { onZoomOut() } }
         .help(isZoomed ? "Go back up one level" : "")
     }
 
@@ -341,24 +354,14 @@ struct SunburstChart: View {
 
     // MARK: - Interaction
 
-    /// Handle a left click on the chart: zoom into a directory, select a file, or
-    /// clear the selection when the click misses every real wedge.
+    /// Select a wedge. Opening a folder is a separate, deliberate action.
     private func handleTap(at location: CGPoint, center: CGPoint,
                            chartRadius: CGFloat, hubRadius: CGFloat) {
         guard let wedge = hitTest(at: location, center: center,
                                   chartRadius: chartRadius, hubRadius: hubRadius) else {
             onSelect(nil); return
         }
-        if wedge.node.isSynthetic {
-            // Synthetic wedges (hidden space, cross-volume, "Other") aren't real
-            // files, but selecting them surfaces their breakdown/explanation in the
-            // inspector — notably the Hidden Space analyzer.
-            onSelect(wedge.node)
-        } else if wedge.node.isDirectory {
-            onZoomIn(wedge.node)
-        } else {
-            onSelect(wedge.node)
-        }
+        onSelect(wedge.node)
     }
 
     /// Drag a real wedge out of the chart and into the bottom dock. On first
@@ -368,6 +371,7 @@ struct SunburstChart: View {
                              hubRadius: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .named(CollectorDragController.appSpace))
             .onChanged { value in
+                guard isEnabled else { return }
                 if drag.node == nil {
                     // Convert the app-space grab point into chart-local space.
                     let localStart = CGPoint(x: value.startLocation.x - chartFrameInApp.minX,
@@ -375,6 +379,7 @@ struct SunburstChart: View {
                     guard let wedge = hitTest(at: localStart, center: center,
                                               chartRadius: chartRadius, hubRadius: hubRadius),
                           !wedge.node.isSynthetic else { return }
+                    onSelect(wedge.node)
                     drag.begin(wedge.node, at: value.location)
                     onHover(nil)   // suppress the tooltip while dragging
                 } else {
@@ -382,7 +387,7 @@ struct SunburstChart: View {
                 }
             }
             .onEnded { value in
-                guard drag.node != nil else { return }
+                guard isEnabled, drag.node != nil else { drag.reset(); return }
                 drag.update(to: value.location)
                 if let dropped = drag.end() {
                     onDrop(dropped)
@@ -393,10 +398,12 @@ struct SunburstChart: View {
     @ViewBuilder
     private func contextMenuItems(center: CGPoint, chartRadius: CGFloat,
                                   hubRadius: CGFloat) -> some View {
-        let node = hitTest(at: cursor, center: center,
-                           chartRadius: chartRadius, hubRadius: hubRadius)?.node
+        let node = selectedNode
         if let node, !node.isSynthetic {
-            Button("Add to Collector") { onAddToCollector(node) }
+            if node.isDirectory {
+                Button("Open Folder") { onZoomIn(node) }
+            }
+            Button("Add to Cleanup List") { onAddToCollector(node) }
             Button("Reveal in Finder") { onRevealInFinder(node) }
         } else {
             // Synthetic wedge (or empty space): explain why no actions apply.
@@ -425,8 +432,12 @@ struct SunburstChart: View {
     private func installRightClickMonitor() {
         guard rightClickMonitor == nil else { return }
         rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown]) { event in
-            if let local = localPoint(for: event) {
+            if isEnabled, let local = localPoint(for: event),
+               let geometry = Self.chartGeometry(for: windowFrame.size) {
                 cursor = local
+                onSelect(hitTest(at: local, center: geometry.center,
+                                 chartRadius: geometry.chartRadius,
+                                 hubRadius: geometry.hubRadius)?.node)
             }
             return event
         }
@@ -528,8 +539,12 @@ struct SunburstChart: View {
         layout = Self.buildLayout(root: root)
         layoutRootID = root.id
         layoutRevision = contentRevision
-        appearProgress = 0
-        withAnimation(.easeInOut(duration: 0.35)) { appearProgress = 1 }
+        if reduceMotion {
+            appearProgress = 1
+        } else {
+            appearProgress = 0
+            withAnimation(.easeInOut(duration: 0.35)) { appearProgress = 1 }
+        }
     }
 
     /// Walk the tree breadth-by-depth, allocating angular spans proportional to

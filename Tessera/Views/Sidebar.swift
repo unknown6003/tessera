@@ -11,7 +11,10 @@ struct Sidebar: View {
 
     @State private var volumes: [VolumeInfo] = []
     @State private var customFolders: [VolumeInfo] = []
-    @State private var selectedVolumeURL: URL?
+    private var selectedVolumeURL: URL? {
+        get { vm.selectedSourceURL }
+        nonmutating set { vm.selectedSourceURL = newValue }
+    }
     @State private var showFolderPicker = false
 
     // Connect-to-server sheet
@@ -56,14 +59,14 @@ struct Sidebar: View {
             Divider()
                 .opacity(0.3)
 
-            scanFooter
+            updateRow.padding(.vertical, 10)
         }
-        .desktopGlassPanel(cornerRadius: 24, shadowRadius: 28, shadowY: 16)
+        .background(Theme.surface)
         .onAppear { reloadVolumes() }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didMountNotification)) { _ in reloadVolumes() }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didUnmountNotification)) { _ in reloadVolumes() }
         .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
-            if let url = try? result.get() {
+            if !vm.isDeleting, !vm.isScanning, let url = try? result.get() {
                 let custom = VolumeInfo(folderURL: url)
                 customFolders = [custom] + customFolders.filter { $0.url != url }
                 selectedVolumeURL = url
@@ -77,18 +80,13 @@ struct Sidebar: View {
 
     private var sidebarHeader: some View {
         HStack {
-            Image(systemName: "externaldrive.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.tint)
-                .frame(width: 34, height: 34)
-                // A tinted disc, NOT nested glass — glass-on-glass double-blurs
-                // into an unreadable smear. The panel itself supplies the glass.
-                .background(Circle().fill(.tint.opacity(0.16)))
-                .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 1))
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable().frame(width: 30, height: 30)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Tessera")
                     .font(.headline.weight(.semibold))
-                Text("Disk space")
+                Text("Sources")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -115,6 +113,7 @@ struct Sidebar: View {
             sectionLabel(title)
             ForEach(items) { info in
                 Button {
+                    guard !vm.isDeleting, !vm.isScanning else { return }
                     selectedVolumeURL = info.url
                     vm.selectedSourceURL = info.url
                     // If we've already scanned this source, switch to it instantly.
@@ -125,7 +124,9 @@ struct Sidebar: View {
                                isScanned: vm.scannedURL == info.url,
                                isCached: vm.scannedURL != info.url && vm.hasCachedScan(for: info.url))
                 }
-                .buttonStyle(.interactive)
+                .buttonStyle(.plain)
+                .disabled(vm.isDeleting || vm.isScanning)
+                .accessibilityAddTraits(selectedVolumeURL == info.url ? [.isSelected] : [])
                 .accessibilityLabel(Text(info.name))
                 .accessibilityValue(Text(sourceAccessibilityValue(info)))
                 .accessibilityHint("Select or display this storage source")
@@ -168,7 +169,8 @@ struct Sidebar: View {
             .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.interactive)
+        .buttonStyle(.plain)
+        .disabled(vm.isDeleting || vm.isScanning)
     }
 
     @ViewBuilder
@@ -177,28 +179,6 @@ struct Sidebar: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 6)
-    }
-
-    // MARK: Scan footer
-
-    @ViewBuilder
-    private var scanFooter: some View {
-        VStack(spacing: 8) {
-            if vm.isScanning {
-                scanningProgress
-            } else {
-                if let root = vm.rootNode {
-                    viewingSummary(root: root)
-                }
-                if showSwitchNotice {
-                    switchNotice
-                }
-                scanButton
-            }
-            updateRow
-        }
-        .padding(.bottom, 16)
-        .padding(.top, vm.isScanning ? 8 : 4)
     }
 
     // MARK: Version / updates
@@ -220,8 +200,8 @@ struct Sidebar: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: updater.status.symbol)
-                        .font(.system(size: 9, weight: .semibold))
-                        .symbolEffect(.rotate, isActive: updater.status.isBusy)
+                        .font(.caption.weight(.semibold))
+
                     Text("Version \(updater.currentVersion)")
                         .font(.caption)
                     Text("·")
@@ -284,7 +264,7 @@ struct Sidebar: View {
                 updater.acknowledgeUpdate()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.icon(size: 18))
@@ -299,143 +279,6 @@ struct Sidebar: View {
                     .strokeBorder(Theme.electricBlue.opacity(0.28), lineWidth: 1))
         )
         .transition(.opacity.combined(with: .move(edge: .bottom)))
-    }
-
-    /// What's currently displayed in the chart — names the scanned disk so the
-    /// sidebar selection and the on-screen tree can't drift silently.
-    @ViewBuilder
-    private func viewingSummary(root: FileNode) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "eye.fill")
-                .foregroundStyle(.green)
-                .font(.caption2)
-            Text("Viewing \(name(for: vm.scannedURL) ?? root.name)")
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-            Text("·")
-                .foregroundStyle(.tertiary)
-            Text("\(Theme.format(root.size)) · \(vm.progress.filesScanned) items")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
-    }
-
-    /// True when the highlighted source isn't the one currently displayed, so the
-    /// user can scan it or jump back to what's on screen.
-    private var showSwitchNotice: Bool {
-        guard let selected = selectedVolumeURL, vm.scannedURL != nil else { return false }
-        return selected != vm.scannedURL
-    }
-
-    private var switchNotice: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "arrow.triangle.swap")
-                .font(.caption)
-                .foregroundStyle(.tint)
-            Text("\(name(for: selectedVolumeURL) ?? "This source") isn't scanned yet.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 4)
-            Button("Back") {
-                selectedVolumeURL = vm.scannedURL
-                vm.selectedSourceURL = vm.scannedURL
-            }
-            .buttonStyle(.interactive)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.tint)
-            .help("Re-select \(name(for: vm.scannedURL) ?? "the scanned disk") (the one currently displayed)")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background {
-            let s = RoundedRectangle(cornerRadius: 12, style: .continuous)
-            s.fill(.tint.opacity(0.10))
-                .overlay(s.strokeBorder(.tint.opacity(0.30), lineWidth: 1))
-        }
-        .padding(.horizontal, 14)
-    }
-
-    private var scanButton: some View {
-        Button {
-            if let url = selectedVolumeURL { vm.startScan(volumeURL: url) }
-        } label: {
-            Label(scanButtonTitle, systemImage: "lifepreserver.fill")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.flatProminent)
-        .controlSize(.large)
-        .disabled(selectedVolumeURL == nil)
-        .padding(.horizontal, 14)
-    }
-
-    /// "Rescan X" when the selection is already on screen, "Rescue X" otherwise.
-    private var scanButtonTitle: String {
-        guard let name = name(for: selectedVolumeURL) else { return "Rescue" }
-        return selectedVolumeURL == vm.scannedURL ? "Rescan \(name)" : "Rescue \(name)"
-    }
-
-    /// Friendly name for a source URL, resolved from the discovered sources.
-    private func name(for url: URL?) -> String? {
-        guard let url else { return nil }
-        return allSources.first { $0.url == url }?.name
-    }
-
-    @ViewBuilder
-    private var scanningProgress: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Scanning…")
-                    .font(.subheadline.weight(.medium))
-                Spacer()
-                if let fraction = vm.progress.fraction {
-                    Text("\(Int(fraction * 100))%")
-                        .font(.subheadline.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.tint)
-                } else {
-                    ProgressView()
-                        .controlSize(.mini)
-                }
-            }
-
-            if let fraction = vm.progress.fraction {
-                ProgressView(value: fraction)
-            } else {
-                ProgressView(value: 0.0)
-                    .progressViewStyle(.linear)
-                    .opacity(0.3)
-            }
-
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(formattedProgress)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Text(vm.progress.currentPath)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                Spacer()
-                Button("Stop") { vm.cancelScan() }
-                    .buttonStyle(.interactive)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.red)
-            }
-        }
-        .padding(.horizontal, 14)
-    }
-
-    private var formattedProgress: String {
-        let files = vm.progress.filesScanned
-        let bytes = Theme.format(vm.progress.bytesFound)
-        return "\(files) items · \(bytes)"
     }
 
     // MARK: Connect-to-server sheet
@@ -468,12 +311,12 @@ struct Sidebar: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("EXAMPLES")
-                    .font(.caption2.weight(.semibold))
+                Text("Examples")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .kerning(0.6)
                 Text("smb://nas.local/Media\nnfs://10.0.0.5/export\nhttps://dav.example.com/files")
-                    .font(.caption2.monospaced())
+                    .font(.caption.monospaced())
                     .foregroundStyle(.tertiary)
             }
 
@@ -490,7 +333,7 @@ struct Sidebar: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(connectAddress.trimmingCharacters(in: .whitespaces).isEmpty || isConnecting)
+                .disabled(connectAddress.trimmingCharacters(in: .whitespaces).isEmpty || isConnecting || vm.isDeleting || vm.isScanning)
             }
         }
         .padding(24)
@@ -499,12 +342,17 @@ struct Sidebar: View {
 
     private func connect() {
         let address = connectAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !address.isEmpty, !isConnecting else { return }
+        guard !address.isEmpty, !isConnecting, !vm.isDeleting, !vm.isScanning else { return }
         isConnecting = true
         connectError = nil
         Task { @MainActor in
             do {
                 let mountURL = try await NetworkShareMounter.mount(address)
+                guard !vm.isDeleting, !vm.isScanning else {
+                    isConnecting = false
+                    showConnectSheet = false
+                    return
+                }
                 reloadVolumes()
                 selectedVolumeURL = mountURL
                 vm.selectedSourceURL = mountURL
@@ -523,7 +371,8 @@ struct Sidebar: View {
     private func reloadVolumes() {
         volumes = StorageSourceDiscovery.discover()
         customFolders = customFolders.filter { FileManager.default.fileExists(atPath: $0.url.path) }
-        if selectedVolumeURL == nil || !allSources.contains(where: { $0.url == selectedVolumeURL }) {
+        guard !vm.isDeleting, !vm.isScanning else { return }
+        if selectedVolumeURL == nil {
             selectedVolumeURL = defaultSelection
         }
         vm.selectedSourceURL = selectedVolumeURL
@@ -567,12 +416,13 @@ private struct VolumeCard: View {
                 }
                 Spacer()
                 if isScanned {
-                    Label("Viewing", systemImage: "eye.fill")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.green)
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.electricBlue)
+                        .accessibilityLabel("Currently viewing")
                 } else if isCached {
-                    Label("Saved", systemImage: "clock.arrow.circlepath")
-                        .font(.caption2)
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.caption)
                         .foregroundStyle(.tint)
                 } else if let total = info.totalBytes {
                     Text(Theme.format(total))
@@ -580,7 +430,7 @@ private struct VolumeCard: View {
                         .foregroundStyle(.tertiary)
                 } else if info.subtitle != nil {
                     Image(systemName: "chevron.right")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.quaternary)
                 }
             }
@@ -589,20 +439,18 @@ private struct VolumeCard: View {
                 capacityBar(total: total)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 8)
         .padding(.vertical, 8)
         .background {
             let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
             if isSelected {
                 shape.fill(Theme.selectionTint)
-                    .overlay(shape.strokeBorder(Theme.electricBlue, lineWidth: 1))
             } else {
                 shape.fill(.clear)
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .animation(.smooth(duration: 0.2), value: isSelected)
-        .animation(.smooth(duration: 0.2), value: isScanned)
+
     }
 
     @ViewBuilder
@@ -628,7 +476,7 @@ private struct VolumeCard: View {
             .frame(height: 5)
 
             Text("\(usedStr) used of \(totalStr)")
-                .font(.caption2.monospacedDigit())
+                .font(.caption.monospacedDigit())
                 .foregroundStyle(.tertiary)
         }
     }

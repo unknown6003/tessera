@@ -13,9 +13,8 @@ import AppKit
 // MARK: - Opaque window
 
 /// Reaches the hosting `NSWindow` and paints it a solid near-black. Keeps the
-/// full-size content view + hidden title bar for a seamless top edge, but the
-/// window is fully opaque — nothing from the desktop shows through, so the app
-/// looks the same no matter what sits behind it.
+/// native toolbar for a continuous top edge. The window is opaque, so the
+/// desktop does not change the content behind the map.
 ///
 /// (Name kept for existing call sites; it no longer makes the window transparent.)
 struct TransparentWindowConfigurator: NSViewRepresentable {
@@ -30,8 +29,7 @@ struct TransparentWindowConfigurator: NSViewRepresentable {
             window.backgroundColor = NSColor(Theme.bg)
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            window.styleMask.insert(.fullSizeContentView)
-            // Drag the window only from the (hidden) title-bar strip, never from
+            // Drag the window only from the native title bar, never from
             // the content body — background-movability fought the chart's wedge
             // drag-and-drop.
             window.isMovableByWindowBackground = false

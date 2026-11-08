@@ -8,6 +8,7 @@ import AppKit
 /// on-device classification (filename extension only); nothing is deleted here.
 struct ByKindView: View {
     @ObservedObject var vm: ScanViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// How many largest-files to surface when a kind is expanded.
     private let largestN = 12
@@ -32,7 +33,7 @@ struct ByKindView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text("Disk use grouped by file type. Tap a kind to see its largest files.")
-                        .font(.caption2).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     ForEach(rows, id: \.kind) { row in
@@ -53,7 +54,7 @@ struct ByKindView: View {
 
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
                     expanded = isOpen ? nil : row.kind
                 }
             } label: {
@@ -76,11 +77,11 @@ struct ByKindView: View {
                         }
                         bar(fraction: fraction)
                         Text("\(row.count) file\(row.count == 1 ? "" : "s")")
-                            .font(.caption2).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(.secondary)
                     }
 
                     Image(systemName: isOpen ? "chevron.down" : "chevron.right")
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -114,7 +115,7 @@ struct ByKindView: View {
 
         if files.isEmpty {
             Text("No files of this kind.")
-                .font(.caption2).foregroundStyle(.tertiary)
+                .font(.caption).foregroundStyle(.tertiary)
         } else {
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(files) { file in
@@ -133,7 +134,7 @@ struct ByKindView: View {
                     .font(.caption.weight(.medium))
                     .lineLimit(1).truncationMode(.middle)
                 Text(displayPath(file))
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
             }
@@ -141,13 +142,13 @@ struct ByKindView: View {
             Spacer(minLength: 4)
 
             Text(Theme.format(file.size))
-                .font(.caption2.monospacedDigit().weight(.semibold))
+                .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.secondary)
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([file.url])
             } label: {
-                Image(systemName: "magnifyingglass").font(.system(size: 10))
+                Image(systemName: "magnifyingglass").font(.caption)
             }
             .buttonStyle(.interactive).foregroundStyle(.tint)
             .help("Reveal in Finder")

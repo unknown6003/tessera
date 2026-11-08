@@ -11,12 +11,14 @@ struct TesseraApp: App {
     @StateObject private var updater = UpdaterController()
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("Tessera") {
             ContentView()
                 .environmentObject(updater)
         }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1180, height: 760)
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified)
+        .defaultSize(width: 1240, height: 800)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
             // Updates are automatic; this just skips the wait for the next

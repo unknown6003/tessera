@@ -41,7 +41,7 @@ struct FileSearchView: View {
                 FeatureSectionLabel("Search Files")
 
                 Text("Describe what you're looking for — type, size, age, name, or location.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 searchField
@@ -107,7 +107,7 @@ struct FileSearchView: View {
                     run()
                 } label: {
                     Text(example)
-                        .font(.caption2)
+                        .font(.caption)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
                         .background(Capsule().fill(Theme.surface))
@@ -135,7 +135,7 @@ struct FileSearchView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "text.magnifyingglass")
-                    .font(.caption2).foregroundStyle(Theme.electricBlue)
+                    .font(.caption).foregroundStyle(Theme.electricBlue)
                 Text(FileSearchParser.describe(result.filter))
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -190,7 +190,7 @@ struct FileSearchView: View {
                     .font(.caption.weight(.medium))
                     .lineLimit(1).truncationMode(.middle)
                 Text(displayPath(file))
-                    .font(.system(size: 9, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
             }
@@ -198,13 +198,13 @@ struct FileSearchView: View {
             Spacer(minLength: 4)
 
             Text(Theme.format(file.size))
-                .font(.caption2.monospacedDigit().weight(.semibold))
+                .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.secondary)
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([file.url])
             } label: {
-                Image(systemName: "magnifyingglass").font(.system(size: 10))
+                Image(systemName: "magnifyingglass").font(.caption)
             }
             .buttonStyle(.interactive).foregroundStyle(.tint)
             .help("Reveal in Finder")

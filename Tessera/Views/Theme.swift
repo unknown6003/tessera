@@ -351,7 +351,7 @@ struct IconButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         FlatButtonSurface(
-            label: configuration.label.frame(width: size, height: size),
+            label: configuration.label.frame(width: max(22, size), height: max(22, size)),
             radius: size / 2,
             isPressed: configuration.isPressed,
             resting: .clear,
@@ -377,6 +377,7 @@ struct PlainInteractiveButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let active = isHovering && isEnabled
         return configuration.label
+            .frame(minHeight: 22)
             .brightness(active && !configuration.isPressed ? 0.12 : 0)
             .opacity(configuration.isPressed ? 0.85 : 1.0)
             // Scale down only on press: a hover-grow would reflow full-width rows.
