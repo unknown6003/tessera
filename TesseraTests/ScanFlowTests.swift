@@ -12,7 +12,7 @@ struct ScanFlowTests {
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         try Data(repeating: 7, count: 4096).write(to: cache.appendingPathComponent("sample.o"))
-        let suite = "TesseraTests." + UUID().uuidString
+        let suite = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let vm = ScanViewModel(defaults: defaults)
@@ -31,7 +31,7 @@ struct ScanFlowTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         try Data([1, 2]).write(to: root.appendingPathComponent("sample"))
-        let suite = "TesseraTests." + UUID().uuidString
+        let suite = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let vm = ScanViewModel(defaults: defaults)

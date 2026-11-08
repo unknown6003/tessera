@@ -93,7 +93,7 @@ struct RemovalRegressionTests {
         let protectedFolder = url.appendingPathComponent(".docker", isDirectory: true)
         try FileManager.default.createDirectory(at: protectedFolder, withIntermediateDirectories: true)
         try Data(repeating: 2, count: 8192).write(to: protectedFolder.appendingPathComponent("keep.qcow2"))
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -123,7 +123,7 @@ struct RemovalRegressionTests {
         let url = try fixture()
         defer { try? FileManager.default.removeItem(at: url) }
         try Data([1]).write(to: url.appendingPathComponent("data"))
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -164,7 +164,7 @@ struct RemovalRegressionTests {
         for index in 0..<128 {
             try Data(repeating: 1, count: 4096).write(to: url.appendingPathComponent("file-\(index)"))
         }
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)

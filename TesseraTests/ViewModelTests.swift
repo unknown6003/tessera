@@ -2,6 +2,16 @@ import Testing
 import Foundation
 @testable import Tessera
 
+enum TestPreferenceDomain {
+    static var prefix: String {
+        guard let job = ProcessInfo.processInfo.environment["SO_CI_JOB"],
+              job.range(of: "^[a-f0-9]{12}$", options: .regularExpression) != nil else {
+            return "TesseraTests."
+        }
+        return "TesseraTests.CI." + job + "."
+    }
+}
+
 // MARK: - Fixture builder
 
 /// Build a hand-wired 3-level tree:
@@ -54,7 +64,7 @@ struct ViewModelTests {
 
     @Test("Collector add, remove, clear and total size are correct")
     func collectorAddRemoveClear() {
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -88,7 +98,7 @@ struct ViewModelTests {
 
     @Test("addToCollector does not add the same node twice")
     func collectorNoDuplicates() {
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -108,7 +118,7 @@ struct ViewModelTests {
 
     @Test("addToCollector refuses .hiddenSpace and .aggregate nodes")
     func collectorRefusesSynthetic() {
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -131,7 +141,7 @@ struct ViewModelTests {
 
     @Test("zoomIn only works on directories; zoomOut walks to parent; zoomToRoot restores")
     func zoomNavigation() {
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -171,7 +181,7 @@ struct ViewModelTests {
 
     @Test("zoomOut is a no-op when currentRoot has no parent")
     func zoomOutAtRoot() {
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -256,7 +266,7 @@ struct ViewModelTests {
         try Data(repeating: 1, count: 100).write(to: a.appendingPathComponent("fa.bin"))
         try Data(repeating: 2, count: 200).write(to: b.appendingPathComponent("fb.bin"))
 
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -309,7 +319,7 @@ struct ViewModelTests {
         }
         try Data("newest".utf8).write(to: latest.appendingPathComponent("latest.marker"))
 
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -334,7 +344,7 @@ struct ViewModelTests {
     func failedScanCanRetry() async throws {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -366,7 +376,7 @@ struct ViewModelTests {
         try payload.write(to: duplicates.appendingPathComponent("copy-b.bin"))
         try Data("other".utf8).write(to: other.appendingPathComponent("other.bin"))
 
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -404,7 +414,7 @@ struct ViewModelTests {
         try Data(repeating: 7, count: 128)
             .write(to: directory.appendingPathComponent("remove-me.bin"))
 
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)

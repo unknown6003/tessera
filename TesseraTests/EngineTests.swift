@@ -782,7 +782,7 @@ struct EngineTests {
 
     @Test("RescueCaseStore saves and clears a local case without network state")
     func rescueCaseRoundTrip() throws {
-        let suiteName = "TesseraTests.RescueCase.\(UUID().uuidString)"
+        let suiteName = TestPreferenceDomain.prefix + "RescueCase." + UUID().uuidString
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             Issue.record("Could not create test defaults")
             return

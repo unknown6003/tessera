@@ -123,6 +123,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let serviceProvider = FinderServiceProvider()
 
     @MainActor
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        if ProcessInfo.processInfo.environment["SO_CI"] == "1" {
+            NSApp.setActivationPolicy(.prohibited)
+        }
+    }
+
+    @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
         Analytics.shared.start()
         NSApp.servicesProvider = serviceProvider
