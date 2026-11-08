@@ -1,0 +1,58 @@
+{
+  "report": {
+    "revision": "30ff2eeb3e1bf23a90b427728b9377bfb899cbde",
+    "lane": "web",
+    "policy": "a381cc8cc38957e93247813263a81220cc6f73c69dd60d21def1747db2f06780",
+    "startedAt": 1794181639.1590261,
+    "host": "Linux-7.0.14-26-pve-x86_64-with-glibc2.41",
+    "steps": [
+      {
+        "name": "release-policy",
+        "result": "success",
+        "durationSeconds": 0.032
+      },
+      {
+        "name": "tool-regressions",
+        "result": "success",
+        "durationSeconds": 3.774
+      },
+      {
+        "name": "web-install",
+        "result": "success",
+        "durationSeconds": 1.371
+      },
+      {
+        "name": "web-check",
+        "result": "success",
+        "durationSeconds": 1.137
+      },
+      {
+        "name": "web-lint",
+        "result": "success",
+        "durationSeconds": 4.235
+      },
+      {
+        "name": "web-test",
+        "result": "success",
+        "durationSeconds": 3.072
+      },
+      {
+        "name": "web-build",
+        "result": "success",
+        "durationSeconds": 2.773
+      },
+      {
+        "name": "web-browser",
+        "result": "success",
+        "durationSeconds": 2.173
+      }
+    ],
+    "result": "success",
+    "assets": {
+      "js": 413215,
+      "css": 41210
+    },
+    "finishedAt": 1794181657.7270093
+  },
+  "signature": "502ae9f579fc9a722af275d4d0f0b068c6fcec619674eefde68ae74c2a06fcc8"
+}
