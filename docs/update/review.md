@@ -113,3 +113,14 @@ The probe also showed Foundation totalFileAllocatedSize returning 20,480.
 `0fcd162` uses that total in the live identity. The primary reviewed this small
 API-key change against the raw values and existing fallback. It does not relax
 the equality check. The same native regression must pass before release.
+
+The regression passed at `0fcd162`, along with the full 70-test suite and the
+125,036-node live identity audit. CI also passed at the docs-only descendant
+`7fb8386`. Both GitHub review threads were then resolved.
+
+A separate same-model source read checked the ASCII matcher in `7319f83`.
+It retained no correctness defect after pointer lifetimes, Sendable state,
+NUL handling, Unicode fallback and protection order were checked. Its suggested
+empty-needle fallback was added. The primary checked all literal rule predicates
+against the old diff. No rule changed. Native measurements still decide whether
+this optimization helps.

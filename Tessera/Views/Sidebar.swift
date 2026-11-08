@@ -11,6 +11,8 @@ struct Sidebar: View {
 
     @State private var volumes: [VolumeInfo] = []
     @State private var customFolders: [VolumeInfo] = []
+    @State private var isReloadingSources = false
+    @State private var reloadSourcesAgain = false
     private var selectedVolumeURL: URL? {
         get { vm.selectedSourceURL }
         nonmutating set { vm.selectedSourceURL = newValue }
@@ -99,6 +101,7 @@ struct Sidebar: View {
             }
             .buttonStyle(.icon)
             .help("Refresh sources")
+            .disabled(isReloadingSources)
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
@@ -369,13 +372,27 @@ struct Sidebar: View {
     // MARK: Source loading
 
     private func reloadVolumes() {
-        volumes = StorageSourceDiscovery.discover()
-        customFolders = customFolders.filter { FileManager.default.fileExists(atPath: $0.url.path) }
-        guard !vm.isDeleting, !vm.isScanning else { return }
-        if selectedVolumeURL == nil {
-            selectedVolumeURL = defaultSelection
+        guard !isReloadingSources else {
+            reloadSourcesAgain = true
+            return
         }
-        vm.selectedSourceURL = selectedVolumeURL
+        isReloadingSources = true
+        let checkedFolders = customFolders.map(\.url)
+        let checkedFolderIDs = Set(customFolders.map(\.id))
+        Task { @MainActor in
+            let snapshot = await StorageSourceDiscovery.discover(checkingFolders: checkedFolders)
+            volumes = snapshot.sources
+            // Keep folders added while this request was reading metadata.
+            customFolders.removeAll { checkedFolderIDs.contains($0.id) && !snapshot.existingFolders.contains($0.url) }
+            if !vm.isDeleting, !vm.isScanning, selectedVolumeURL == nil {
+                selectedVolumeURL = defaultSelection
+            }
+            isReloadingSources = false
+            if reloadSourcesAgain {
+                reloadSourcesAgain = false
+                reloadVolumes()
+            }
+        }
     }
 
     private var defaultSelection: URL? {

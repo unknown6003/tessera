@@ -145,6 +145,18 @@
       "auditTimeLimit": "13.26-16.31 seconds includes per-node live checks, not scan-only timing.",
       "capacityRefreshRegression": "passed",
       "fixtureHashesUnchanged": true
+    },
+    {
+      "revision": "0fcd1629c9b1c04d3d8a3c82736b9b42050e4afd",
+      "debugTestsPassed": 70,
+      "debugTestsFailed": 0,
+      "releaseBuild": "passed",
+      "resourceForkRemoval": "passed",
+      "capacityRefresh": "passed",
+      "fixtureStableIdentities": 125036,
+      "fixtureIdentityMismatches": 0,
+      "fixtureCoverageGaps": 0,
+      "fixtureHashesUnchanged": true
     }
   ],
   "evidence": [
@@ -174,6 +186,10 @@
     },
     {
       "root": "/tmp/tessera-native-verification.1GZiGk/at298201d-79721",
+      "report": "REPORT.md"
+    },
+    {
+      "root": "/tmp/tessera-native-verification.1GZiGk/at0fcd162-1794154444",
       "report": "REPORT.md"
     }
   ],
@@ -217,6 +233,29 @@
         "Last progress file count, not a separately logged final count.",
         "A 4.09-second heartbeat interval prevents a continuously responsive claim."
       ]
+    },
+    {
+      "revision": "0fcd1629c9b1c04d3d8a3c82736b9b42050e4afd",
+      "configuration": "Release",
+      "completed": false,
+      "stopReason": "240.115-second deadline",
+      "profiled": true,
+      "sampleSessions": 28,
+      "sampledPeakRssBytes": 1656635392,
+      "filesLastObserved": 4535670,
+      "directoriesLastObserved": 1296950,
+      "coverageGaps": null,
+      "heartbeatMilliseconds": null,
+      "hotStacks": [
+        "CleanupClassifier.rules.first and Foundation substring search.",
+        "CleanupClassifier.hasProtectedDescendant and protectedCategory.",
+        "Sidebar.reloadVolumes -> StorageSourceDiscovery on main thread in one sample."
+      ],
+      "limits": [
+        "28 sample sessions add overhead; no unprofiled estimate.",
+        "No final summary, coverage or heartbeat emitted before termination.",
+        "Staging and chart causes remain unproved."
+      ]
     }
   ],
   "controlledFixtureComparison": {
@@ -251,5 +290,21 @@
       "Alternating warm processes. Kernel cache and host load are not controlled.",
       "Total time ranges overlap. No robust total-time gain is claimed."
     ]
-  }
+  },
+  "ci": [
+    {
+      "revision": "7fb83866b330d73bee5e6a50572bb996d7d0a127",
+      "nativeTests": 70,
+      "stressTestExecutions": 350,
+      "releaseBuild": "passed",
+      "webChecks": "passed",
+      "scannerRescan": "MATCH",
+      "ciRunId": 42499018642,
+      "qualificationRunId": 42499018771,
+      "skippedReviewServices": [
+        "CodeRabbit",
+        "Macroscope"
+      ]
+    }
+  ]
 }

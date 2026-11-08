@@ -86,3 +86,22 @@ coverage with 303 gaps. Sampled peak RSS was 1,650,032,640 bytes. Its longest
 heartbeat interval was 4,093.7 ms. The app completed, but that run did not meet
 the two-minute target or prove continuous UI response. Native profiling remains
 a gate for that unresolved cost. The old 96.69-second result stays historical.
+
+`0fcd162` passed all 70 native tests, including actual resource-fork removal,
+the capacity checks and 125,036 live identity comparisons with no mismatch.
+CI at `7fb8386` also passed 70 tests, 350 stress test executions, a Release build,
+scanner/rescan checks and the web checks. Two optional review services skipped
+their checks. Both retained PR findings are resolved.
+
+The profiled `0fcd162` root run reached its 240-second deadline. It used 28 sample
+sessions, so its time is not an unprofiled comparison. Late worker stacks show
+Foundation substring search in rule matching and protected-descendant checks.
+One main-thread sample shows synchronous source discovery. The final count,
+coverage and heartbeat were not emitted before timeout. The [full report](native/0fcd162.md)
+retains those limits.
+
+`7319f83` adds ASCII literal matching while retaining Foundation behavior for
+Unicode, empty strings and embedded NUL. Rule order and predicates stay the
+same. A separate source read checked pointer lifetimes, Unicode fallback and
+protected rule order. Two new regressions compare matching and protected-owner
+boundaries. Native equivalence and duration checks remain required.

@@ -49,7 +49,7 @@ enum StorageSourceKind: String, Sendable, CaseIterable {
 
 /// A scannable storage source: a physical disk, an external/removable drive, a
 /// cloud provider folder, a mounted network share, or a hand-picked folder.
-struct VolumeInfo: Identifiable, Hashable {
+struct VolumeInfo: Identifiable, Hashable, Sendable {
     let id = UUID()
     let url: URL
     let name: String
@@ -90,7 +90,23 @@ struct VolumeInfo: Identifiable, Hashable {
 /// and iCloud Drive. Network shares the user hasn't mounted yet are reached via
 /// `NetworkShareMounter`.
 enum StorageSourceDiscovery {
-    static func discover() -> [VolumeInfo] {
+    struct Snapshot: Sendable {
+        let sources: [VolumeInfo]
+        let existingFolders: Set<URL>
+    }
+
+    private static let discoveryQueue = DispatchQueue(label: "Tessera.source-discovery", qos: .utility)
+
+    static func discover(checkingFolders folders: [URL]) async -> Snapshot {
+        await withCheckedContinuation { continuation in
+            discoveryQueue.async {
+                let existing = Set(folders.filter { FileManager.default.fileExists(atPath: $0.path) })
+                continuation.resume(returning: Snapshot(sources: discoverSynchronously(), existingFolders: existing))
+            }
+        }
+    }
+
+    private static func discoverSynchronously() -> [VolumeInfo] {
         var seen = Set<URL>()
         return (mountedVolumes() + cloudProviders())
             .filter { seen.insert($0.url.standardizedFileURL).inserted }
