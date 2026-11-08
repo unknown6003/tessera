@@ -38,8 +38,8 @@ enum DebugAutomation {
             return
         }
 
-        // Incremental re-scan benchmark: full parallel scan, then a re-scan reusing
-        // the prior tree (unchanged subtrees skipped).
+        // Rescan correctness benchmark. The cache argument no longer skips
+        // subtrees, since directory mtime cannot prove descendant contents.
         //   SO_BENCH_RESCAN=<path>   SO_AUTOQUIT=1
         if let benchPath = env["SO_BENCH_RESCAN"] {
             runRescanBench(path: benchPath, autoQuit: env["SO_AUTOQUIT"] == "1")
@@ -233,9 +233,8 @@ enum DebugAutomation {
         }
     }
 
-    /// Incremental re-scan benchmark: warm, full scan, then a re-scan that reuses
-    /// the prior tree for unchanged subtrees. Reports both times + a correctness
-    /// check that the incremental total matches the full total.
+    /// Warm, full scan, then a fresh rescan through the cache-compatible API.
+    /// Reports both times and checks their allocated-byte totals.
     private static func runRescanBench(path: String, autoQuit: Bool) {
         Task.detached(priority: .userInitiated) {
             let url = URL(fileURLWithPath: path)

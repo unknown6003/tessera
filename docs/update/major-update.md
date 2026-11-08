@@ -14,7 +14,7 @@ Constraints: preserve the saved Rescue work; keep exact-path identity checks and
 
 ## Ownership
 
-The primary agent owns all implementation and integration. Scanner, saved-work and design agents have read-only scopes. Native verification will use the linked Mac, with bounded commands and no user-file deletion.
+The primary agent owns scanner, model, cleanup and integration changes. A separate UI writer owned views and TesseraApp in a tool-prepared checkout. Integration was serial. Scanner, saved-work, design and review agents had read-only scopes. Native verification uses the linked Mac, with bounded commands and no user-file deletion.
 
 ## Source findings to verify
 

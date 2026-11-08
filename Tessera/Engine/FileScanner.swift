@@ -25,12 +25,12 @@ struct ScanProgress: Sendable {
     var dirsDiscovered: Int = 1
     var currentPath: String = ""
     /// The volume's used-bytes figure, when scanning a whole volume (0 otherwise).
-    /// Used as the denominator for an honest, bytes-based progress fraction.
+    /// Used for capacity reporting, not as a completion denominator.
     var volumeUsedTotal: Int64 = 0
-    /// Set on the final tick so the bar reads exactly 100% regardless of metric.
+    /// Enumeration has ended. View-model diagnosis may still be running.
     var isComplete: Bool = false
 
-    /// 0…1 fraction of completion, or nil while the estimate is still too noisy.
+    /// Completion is unknown until enumeration ends.
     var fraction: Double? {
         if isComplete { return 1.0 }
 
@@ -353,8 +353,8 @@ struct FileScanner: Sendable {
     /// Termination is tracked by `pending` (directories discovered but not yet
     /// completed): starts at 1 (the root); each completion does
     /// `pending += childDirCount; pending -= 1`. When `pending` hits 0 the whole
-    /// tree is done. A watchdog force-finishes if progress stalls on an
-    /// uninterruptible syscall, so the scan ALWAYS terminates.
+    /// tree is done. A watchdog publishes partial coverage if reads stall and no
+    /// worker is committing children. An OS read can outlive the scan.
     private final class ScanCoordinator: @unchecked Sendable {
         private let cond = NSCondition()
         private static let workerSlots = DispatchSemaphore(value: 12)
