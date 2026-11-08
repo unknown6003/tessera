@@ -415,7 +415,7 @@ struct ContentView: View {
                 // The dock shows whenever a scan or removal is on screen and has
                 // the filled review button; the page's own button covers only
                 // the case without a dock.
-                CleanupSuggestionsView(vm: vm, onMoveToTrash: dockIsVisible ? nil : openReview)
+                CleanupSuggestionsView(vm: vm, onMoveToTrash: dockIsVisible ? nil : { openReview() })
             }
             .padding(24)
             .frame(maxWidth: 1000, alignment: .leading)

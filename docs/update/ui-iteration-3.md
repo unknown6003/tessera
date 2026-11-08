@@ -264,3 +264,22 @@ Native checks:
 4. Open Settings (⌘,) and leave it key, then resize the main window across
    a breakpoint: Settings keeps focus; the main window's browser does not
    take it.
+
+## Compile fix: ambiguous ScrollView init
+
+Base: `3e40942`. Scope: `ContentView.swift` and this note.
+
+Native Debug and Release builds of parent `8a99b8b` on Xcode 27.2 failed
+with an ambiguous `ScrollView` initializer at `ContentView.swift:412`. A
+standalone native repro traced it to line 418:
+`CleanupSuggestionsView(vm: vm, onMoveToTrash: dockIsVisible ? nil : openReview)`.
+The conditional of `nil` and a method reference left the closure type
+open, and the error surfaced at the enclosing `ScrollView`.
+
+Fix: an explicit closure, `dockIsVisible ? nil : { openReview() }`. Same
+runtime behaviour: the page's review button still shows only when the dock
+is hidden, and it calls the same `openReview`, with all its gates. The
+earlier modifier-chain timeout is gone in that native build.
+
+Native check: Debug and Release build on Xcode 27.2 and 26.6, then the full
+test suite.
