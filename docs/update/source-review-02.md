@@ -114,3 +114,11 @@ starts. Normal configured runs still collect anonymous diagnostics.
 The Opus dock consumer is a later delta and was outside these three reads.
 All 17 Python tool checks and the release-policy validator pass. The two new
 native regressions and the real Trash result still need macOS execution.
+
+CI at `778dfdf` compiled and ran all 89 tests. The new removal regression
+failed because a loose `.qcow2` file is protected by live preflight but is not
+a report recommendation. The classifier reports directories and installer
+files. The fixture now uses an owned `.docker` directory with a payload and
+requires its protected recommendation before removal. The result assertions
+remain. This is a test-only correction; native runtime checks keep their
+original app-source pin.

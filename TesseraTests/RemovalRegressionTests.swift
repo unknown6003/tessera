@@ -90,7 +90,9 @@ struct RemovalRegressionTests {
         let url = try fixture()
         defer { try? FileManager.default.removeItem(at: url) }
         try Data(repeating: 1, count: 4096).write(to: url.appendingPathComponent("owned-disposable.bin"))
-        try Data(repeating: 2, count: 8192).write(to: url.appendingPathComponent("keep.qcow2"))
+        let protectedFolder = url.appendingPathComponent(".docker", isDirectory: true)
+        try FileManager.default.createDirectory(at: protectedFolder, withIntermediateDirectories: true)
+        try Data(repeating: 2, count: 8192).write(to: protectedFolder.appendingPathComponent("keep.qcow2"))
         let suiteName = "TesseraTests." + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -100,8 +102,8 @@ struct RemovalRegressionTests {
         while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
         #expect(!vm.isScanning)
         let target = try #require(vm.rootNode?.children.first { $0.name == "owned-disposable.bin" })
-        let unrelated = try #require(vm.rootNode?.children.first { $0.name == "keep.qcow2" })
-        #expect(vm.rescuePlan?.recommendations.contains { $0.node.id == unrelated.id && $0.risk != .safe } == true)
+        let unrelated = try #require(vm.rootNode?.children.first { $0.name == ".docker" })
+        try #require(vm.rescuePlan?.recommendations.contains { $0.node.id == unrelated.id && $0.risk == .protected } == true)
         let bytes = target.physicalSize
         try await vm.deletePermanently([target])
         let summary = try #require(vm.lastRemovalSummary)
