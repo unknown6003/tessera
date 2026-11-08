@@ -1,8 +1,8 @@
 # Tessera
 
 A fast, private, native macOS disk visualizer and cleaner. Scan any disk, cloud
-folder, or network share; see exactly what's using space in an interactive Liquid
-Glass sunburst; and reclaim it safely — with duplicate detection, an app
+folder, or network share; see what's using space in an interactive sunburst;
+and review cleanup with duplicate detection, an app
 uninstaller, dev-junk cleanup, and hidden-space tools. **Everything runs
 on-device. No user data ever leaves your Mac.**
 
@@ -17,6 +17,10 @@ on-device. No user data ever leaves your Mac.**
 - **Visual scan** — a parallel `getattrlistbulk` engine renders a live sunburst of
   your disk; multi-disk/cloud/network sources with an in-memory scan cache for
   instant switching.
+- **Explore and Rescue** — a resizable workspace with a hideable source sidebar,
+  optional item details, exact-path cleanup review and explicit coverage gaps.
+  Scan status shows observed counts and the current phase. Scan time depends on
+  the device and its access rules. Rescans read fresh metadata.
 - **Cleanup suggestions** — rule-based detection of caches, dev junk (DerivedData,
   node_modules, package caches), Adobe media cache, logs, installers, and more.
   Everything is staged for you to review; nothing is deleted automatically.
@@ -29,7 +33,7 @@ on-device. No user data ever leaves your Mac.**
 - **Leftover finder** — support files left behind by apps you already deleted.
 - **Hidden Space** — read and clear purgeable caches, APFS local snapshots, and
   Full-Disk-Access–gated files.
-- **Safe by default** — staged items are reviewed in the collector; deletion
+- **Safe by default** — staged items are reviewed in the Cleanup List; deletion
   defaults to **Move to Trash** (recoverable), with Delete Permanently as an
   explicit, confirmed option.
 
@@ -81,6 +85,10 @@ The marketing site lives in [`web/`](web/) and deploys to GitHub Pages
 
 Windows and Linux builds are planned; the packaging plan lives in
 [DISTRIBUTION.md](DISTRIBUTION.md).
+
+The major update's [design direction](docs/update/design-direction.md),
+[language decision](docs/update/language-decision.md) and
+[review record](docs/update/review.md) explain the current implementation.
 
 ## Contributing
 
