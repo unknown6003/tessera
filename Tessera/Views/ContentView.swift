@@ -56,6 +56,12 @@ struct ContentView: View {
     @State private var map: MapSnapshot?
     @State private var mapTask: Task<Void, Never>?
     @State private var quickLookURL: URL?
+    /// Closes Quick Look on a second ⌘Y. The preview panel becomes the key
+    /// window, so the window's own ⌘Y button never sees that key press.
+    @State private var quickLookKeyMonitor: Any?
+    /// Display names from the source list ("iCloud Drive", not the folder's
+    /// on-disk name). Filled by `Sidebar`; no metadata read happens here.
+    @State private var sourceNames: [URL: String] = [:]
     @State private var queuedReviewAction: RemovalSnapshot?
     @State private var queuedReviewIsPermanent = false
     @State private var reviewSnapshot: RemovalSnapshot?
@@ -68,7 +74,7 @@ struct ContentView: View {
     var body: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
-                Sidebar(vm: vm)
+                Sidebar(vm: vm, sourceNames: $sourceNames)
                     .frame(width: showSidebar ? 210 : 0)
                     .clipped()
                     .opacity(showSidebar ? 1 : 0)
@@ -167,6 +173,11 @@ struct ContentView: View {
         // A read refused during a removal runs again when the removal ends.
         .onChange(of: vm.isDeleting) { _, deleting in if !deleting { refreshMap() } }
         .quickLookPreview($quickLookURL)
+        .onAppear(perform: installQuickLookKeyMonitor)
+        .onDisappear {
+            if let monitor = quickLookKeyMonitor { NSEvent.removeMonitor(monitor) }
+            quickLookKeyMonitor = nil
+        }
         // Analytics: fixed screen names and counts only. No names or paths.
         .onChange(of: appMode, initial: true) { _, _ in
             if reviewSnapshot == nil { recordScreen(modeScreen) }
@@ -241,7 +252,7 @@ struct ContentView: View {
             // Name and status only. The full path of the selection lives in the
             // inspector, so one state never repeats the same path.
             VStack(alignment: .leading, spacing: 3) {
-                Text(vm.rootNode?.name ?? sourceName)
+                Text(vm.rootNode == nil ? sourceName : displayName(for: vm.scannedURL, fallback: vm.rootNode?.name))
                     .font(.headline)
                     .lineLimit(1)
                     .help(vm.scannedURL?.path ?? vm.selectedSourceURL?.path ?? "")
@@ -260,14 +271,16 @@ struct ContentView: View {
                 Button {
                     if let source = vm.selectedSourceURL { vm.startScan(volumeURL: source) }
                 } label: {
-                    Label(showsOtherSource ? "Scan \(sourceName)" : "Rescan",
-                          systemImage: "arrow.clockwise")
+                    // Short, fixed labels. The source name is in the title,
+                    // the subtitle and the sidebar, not in the button.
+                    Label(scanButtonTitle, systemImage: "arrow.clockwise")
                 }
                 .disabled(vm.selectedSourceURL == nil)
                 .buttonStyle(.flat)
                 .controlSize(.small)
                 .keyboardShortcut("r", modifiers: .command)
-                .help("Scan this source again (⌘R)")
+                .help(showsOtherSource ? "Scan \(sourceName) (⌘R)" : "Scan this source again (⌘R)")
+                .accessibilityHint(showsOtherSource ? "Scans \(sourceName)" : "Scans \(sourceName) again")
             }
         }
         .padding(.horizontal, 20)
@@ -284,14 +297,27 @@ struct ContentView: View {
             return vm.selectedSourceURL == nil ? "Choose a source to begin" : "Not scanned yet"
         }
         if showsOtherSource {
-            return "Showing the last scan. \(sourceName) is selected but not scanned."
+            return "\(sourceName) is selected and not scanned yet."
         }
         return vm.scanStatus.isEmpty ? "Scan complete" : vm.scanStatus
     }
 
+    private var scanButtonTitle: String {
+        if vm.rootNode == nil { return "Scan" }
+        return showsOtherSource ? "Scan Selected Source" : "Rescan"
+    }
+
+    /// The selected source's name, as the source list shows it.
     private var sourceName: String {
-        guard let source = vm.selectedSourceURL else { return "Tessera" }
-        return source.lastPathComponent.isEmpty ? source.path : source.lastPathComponent
+        guard vm.selectedSourceURL != nil else { return "Tessera" }
+        return displayName(for: vm.selectedSourceURL, fallback: nil)
+    }
+
+    private func displayName(for url: URL?, fallback: String?) -> String {
+        guard let url else { return fallback ?? "Tessera" }
+        if let name = sourceNames[url] ?? sourceNames[url.standardizedFileURL] { return name }
+        if let fallback { return fallback }
+        return url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
     }
 
     private var rescueWorkspace: some View {
@@ -439,6 +465,20 @@ struct ContentView: View {
             guard !Task.isCancelled, let built = built ?? nil,
                   vm.currentRoot?.id == folder.id, vm.treeRevision == revision else { return }
             map = built
+        }
+    }
+
+    /// Local monitor: sees key presses in every Tessera window, including the
+    /// Quick Look panel. It acts only on ⌘Y while a preview is open; every
+    /// other event passes through unchanged.
+    private func installQuickLookKeyMonitor() {
+        guard quickLookKeyMonitor == nil else { return }
+        quickLookKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard quickLookURL != nil,
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  event.charactersIgnoringModifiers?.lowercased() == "y" else { return event }
+            quickLookURL = nil
+            return nil
         }
     }
 
@@ -662,11 +702,13 @@ struct ContentView: View {
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let source = vm.selectedSourceURL {
                 VStack(alignment: .leading, spacing: 8) {
+                    Text(sourceName).font(.headline)
                     Text(source.path).font(.caption.monospaced()).foregroundStyle(.secondary)
                         .lineLimit(2).truncationMode(.middle)
                     Button { vm.startScan(volumeURL: source) } label: {
-                        Label("Scan \(sourceName)", systemImage: "magnifyingglass")
+                        Label("Scan", systemImage: "magnifyingglass")
                     }
+                    .accessibilityHint("Scans \(sourceName)")
                     .buttonStyle(.flatProminent).controlSize(.large)
                     .disabled(removalBusy)
                 }

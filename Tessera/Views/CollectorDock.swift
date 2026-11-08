@@ -64,47 +64,33 @@ struct CollectorDock: View {
     @ObservedObject var vm: ScanViewModel
     @ObservedObject var drag: CollectorDragController
     var onReview: () -> Void
-    /// Set when a removal finishes in this window; cleared by Dismiss.
-    @State private var showResult = false
+    /// The summary the user dismissed, or one from before a source change.
+    /// A new removal has a new id, so its result always shows, even when
+    /// `isDeleting` changes too fast for SwiftUI to see both values.
+    @State private var hiddenSummaryID: UUID?
 
-    /// The latest removal's result. `rescueVerification` adds bytes, but only
-    /// when it describes the same removal as `lastRemovalSummary`. Otherwise
-    /// the summary counts show alone. There is no Undo: Tessera cannot restore
-    /// files itself.
-    private enum RemovalResult {
-        case verified(RescueVerification)
-        case counts(ScanViewModel.RemovalSummary)
-    }
-
-    private var removalResult: RemovalResult? {
-        let verification = vm.rescueVerification
-        guard let summary = vm.lastRemovalSummary else { return verification.map(RemovalResult.verified) }
-        if let verification,
-           (verification.movedPaths?.count ?? 0) == summary.moved,
-           verification.failedPaths.count == summary.failed,
-           (verification.removalMethod == .permanent) == summary.permanently {
-            return .verified(verification)
-        }
-        return .counts(summary)
+    /// The dock shows only the removal it just ran. Rescue keeps its own
+    /// full-plan verification in the Rescue workspace; its held list can
+    /// include risk items the user never selected, so it is never read here.
+    /// There is no Undo: Tessera cannot restore files itself.
+    private var shownSummary: ScanViewModel.RemovalSummary? {
+        guard !vm.isDeleting, let summary = vm.lastRemovalSummary,
+              summary.id != hiddenSummaryID else { return nil }
+        return summary
     }
 
     var body: some View {
         VStack(spacing: 0) {
             if let notice = vm.collectorNotice { noticeRow(notice) }
-            if showResult, !vm.isDeleting, let result = removalResult {
-                switch result {
-                case .verified(let verification): resultRow(verification)
-                case .counts(let summary): summaryRow(summary)
-                }
-            }
+            if let summary = shownSummary { resultBar(summary) }
             dockRow
         }
         .background(drag.isOverCollector ? Theme.selectionTint : Theme.surface)
-        .onChange(of: vm.isDeleting) { wasDeleting, deleting in
-            if wasDeleting && !deleting { showResult = removalResult != nil }
-            if deleting { showResult = false }
+        .onChange(of: vm.scannedURL) { _, _ in hiddenSummaryID = vm.lastRemovalSummary?.id }
+        .onChange(of: vm.lastRemovalSummary?.id) { _, id in
+            guard id != nil, let summary = vm.lastRemovalSummary else { return }
+            AccessibilityNotification.Announcement(Self.resultText(summary)).post()
         }
-        .onChange(of: vm.scannedURL) { _, _ in showResult = false }
         .onChange(of: vm.collectorNotice) { _, notice in
             if let notice { AccessibilityNotification.Announcement(notice).post() }
         }
@@ -169,26 +155,29 @@ struct CollectorDock: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func resultRow(_ result: RescueVerification) -> some View {
-        resultBar(permanent: result.removalMethod == .permanent,
-                  moved: result.movedPaths?.count ?? 0, held: result.heldPaths?.count ?? 0,
-                  failed: result.failedPaths.count, bytes: result.movedBytes)
+    /// "Moved 1 item (16.8 MB allocated) to Trash." Held and failed counts
+    /// appear only when this action held or failed something.
+    static func resultText(_ summary: ScanViewModel.RemovalSummary) -> String {
+        let verb = summary.permanently ? "Deleted" : "Moved"
+        let target = summary.permanently ? "" : " to Trash"
+        var text = "\(verb) \(Theme.itemCount(summary.moved)) (\(Theme.format(summary.movedBytes)) allocated)\(target)."
+        var problems: [String] = []
+        if summary.held > 0 { problems.append("\(summary.held) held") }
+        if summary.failed > 0 { problems.append("\(summary.failed) failed") }
+        if !problems.isEmpty { text += " " + problems.joined(separator: ", ") + "." }
+        return text
     }
 
-    private func summaryRow(_ summary: ScanViewModel.RemovalSummary) -> some View {
-        resultBar(permanent: summary.permanently, moved: summary.moved,
-                  held: summary.held, failed: summary.failed, bytes: nil)
-    }
-
-    private func resultBar(permanent: Bool, moved: Int, held: Int, failed: Int, bytes: Int64?) -> some View {
-        let verb = permanent ? "Deleted" : "Moved"
-        let target = permanent ? "" : " to Trash"
-        let size = bytes.map { " (\(Theme.format($0)))" } ?? ""
+    private func resultBar(_ summary: ScanViewModel.RemovalSummary) -> some View {
+        let permanent = summary.permanently
+        let moved = summary.moved
+        let failed = summary.failed
+        let held = summary.held
         return HStack(spacing: 10) {
             Image(systemName: failed > 0 || held > 0 ? "exclamationmark.triangle" : "checkmark.circle")
                 .foregroundStyle(failed > 0 ? Theme.danger : Theme.electricBlue)
                 .accessibilityHidden(true)
-            Text("\(verb) \(Theme.itemCount(moved))\(size)\(target). \(held) held, \(failed) failed.")
+            Text(Self.resultText(summary))
                 .font(.callout.monospacedDigit())
                 .lineLimit(2)
             Spacer(minLength: 8)
@@ -198,7 +187,7 @@ struct CollectorDock: View {
                 Button("Show Trash") { NSWorkspace.shared.open(trash) }
                     .buttonStyle(.flat).controlSize(.small)
             }
-            Button("Dismiss") { showResult = false }
+            Button("Dismiss") { hiddenSummaryID = summary.id }
                 .buttonStyle(.flat).controlSize(.small)
         }
         .padding(.horizontal, 20)

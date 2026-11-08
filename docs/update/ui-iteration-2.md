@@ -168,3 +168,66 @@ Run on a Mac with the round 2 commit. Record a capture or log line each.
     after `tessera app opened`, with no names or paths.
 12. VoiceOver: browser rows read "name, size, percent of this folder,
     folder" and offer Open and Quick Look. The source list reads "Sources".
+
+## Round 4: removal result, source button, Quick Look
+
+Base: `90f6626`, merged into the child with `--no-ff`. Scope:
+`CollectorDock.swift`, `ContentView.swift`, `Sidebar.swift` and this note.
+The round 3 accessibility override stays reverted (`959606c`). Increase
+Contrast and Reduce Motion still need a native run with the real system
+settings.
+
+Native run of `c590e06`: 86 tests and Release passed, and the round 2
+keyboard fixes worked with real input. The native report scored the areas
+5 to 7. Its captures show private source names and stay unpublished. This
+round has no native run and gives no score.
+
+Status: source changed, not compiled, not run.
+
+| Native finding | Cause | Fix | Files |
+|---|---|---|---|
+| F1: moving one item from Explore showed "1 held" when nothing was held | The dock borrowed `rescueVerification` when its counts matched. That record covers the whole Rescue plan, so its held list can include risk items the user never selected. | The dock reads only `lastRemovalSummary`, which the parent now scopes to the one action, with its own `id` and `movedBytes`. It never reads `rescueVerification`. Text: "Moved 1 item (16.8 MB allocated) to Trash." Held and failed counts appear only when this action held or failed something. The result shows whenever `lastRemovalSummary.id` is new, so a fast `isDeleting` change cannot hide it. Dismiss hides only that id. A source change hides the shown result. VoiceOver announces each new result. The Rescue workspace keeps its own full-plan verification. | `CollectorDock.swift` |
+| The header button read "Scan com~apple~CloudDocs" | The button used the selected URL's last path component. | Fixed labels: "Scan" with no scan on screen, "Rescan" for the source on screen, "Scan Selected Source" when another source is selected. The source name moves to the title, the subtitle ("iCloud Drive is selected and not scanned yet."), the empty-state heading, the tooltip and the VoiceOver hint. Names come from the source list (`VolumeInfo.name`) through a binding from `Sidebar`. No new metadata read. | `ContentView.swift`, `Sidebar.swift` |
+| A second ⌘Y did not close Quick Look | The Quick Look panel becomes the key window. The ⌘Y button lives in the main window, so it never saw the second press. Space and Escape work because the panel handles them. | A local `NSEvent` key monitor (public AppKit API) closes the preview on ⌘Y while one is open. It passes every other key through. It is removed when the window goes away. | `ContentView.swift` |
+
+Not changed in this round:
+
+- VoiceOver and Accessibility Inspector focus landing on the window or the
+  header. Real VoiceOver is still untested, and the report names no cause.
+  Changing focus order without a cause could break the keyboard path that
+  now works.
+- F2: the wide folder (100,000 children) shows 815 ms to `plan_ready`, 1.56
+  s in accessibility calls and about 2 s for End. A separate native profile
+  is measuring it. The browser, its `ForEach` and the map build are
+  unchanged until that report names a cause.
+- The breadcrumb and the map hub still show the scan root's on-disk name
+  (for iCloud Drive, `com~apple~CloudDocs`). They name tree nodes, not
+  sources.
+
+Preserved: the selection, source, revision, identity, owner, protected and
+confirmation gates, the busy locks, the dock's busy state, and the
+always-on analytics in normal builds.
+
+## Round 4 native acceptance checklist
+
+1. Swift 6 build, 86 tests and Release pass. No new warnings in owned files.
+2. Explore: add one item that has no Rescue risk and move it to Trash while
+   the Rescue plan has unselected risk items. The dock reads "Moved 1 item
+   (<size> allocated) to Trash." with no held count. The size matches the
+   item's allocated size in Details before the move.
+3. A removal that holds one item and fails one: the dock shows "1 held, 1
+   failed." and the warning icon.
+4. Two removals in a row: each one shows its own result. Dismiss, then a
+   third removal: its result shows.
+5. A very fast removal of one small file: the result still shows.
+6. Switch source after a removal: the result hides. Rescue still shows its
+   own verification card unchanged.
+7. Select iCloud Drive with another scan on screen: the button reads "Scan
+   Selected Source", the subtitle reads "iCloud Drive is selected and not
+   scanned yet." No button shows `com~apple~CloudDocs`. Check the empty
+   state, a chosen folder and an external volume as well.
+8. Quick Look: ⌘Y opens, ⌘Y closes. Space and Escape still close. With no
+   preview open, ⌘Y in the search field and in Settings does nothing new.
+9. VoiceOver: a new removal result is announced once. The scan button's hint
+   names the source.
+10. Captures stay private; they show real source names.
