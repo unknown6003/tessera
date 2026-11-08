@@ -52,7 +52,8 @@ No Tessera area is qualified at 9/10 yet.
 The second Opus implementation recovered after provider failures. It is integrated
 at `e9a2e5a`. Native qualification of `c0f1872` passed 83 tests and Release,
 but found inactive list keys, list rows overlapping Review, and poor narrow
-window names and map size. These need another implementation and native check.
+window names and map size. Opus fixes are integrated at `a18a0b5`; their native
+recheck is running at exact app source `c590e06`.
 No new score is justified yet.
 
 All 400 warm-cache pipeline trials passed on the CI VM at the exact `02c6a34`
@@ -64,7 +65,8 @@ and wide-folder UI responsiveness remain open.
 Tessera now has a dedicated EU PostHog project, ID 340688, its own public ingest
 token and a project-scoped control key in the shared vault. Normal configured
 builds collect anonymous data without an opt-out, per Ammar's updated request.
-Automated tests and benchmarks remain excluded. Live ingestion, server
-resources and dSYM upload still need verification. The SDK cannot provide
+Automated tests and benchmarks remain excluded. Thirteen server resources and the survey flag payload are verified. Live
+ingestion, survey submission, experiment metrics, dSYM upload and a resolved
+native stack still need proof. The SDK cannot provide
 macOS replay or built-in macOS survey UI. The fixed native rating flow is the
 supported survey route.
