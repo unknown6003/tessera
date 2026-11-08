@@ -44,6 +44,11 @@ struct ContentView: View {
     /// Browser columns narrower than this use two-line rows, so names wrap
     /// instead of truncating.
     private static let twoLineColumnWidth: CGFloat = 290
+    /// Flag-gated compact pitch for single-line browser rows (`tessera-
+    /// compact-legend`, variant `compact`). 24 pt fits one callout line with
+    /// the existing paddings, keeps keyboard targets clear of each other and
+    /// leaves the two-line pitch untouched. Presentation only.
+    private static let compactRowHeight: CGFloat = 24
 
     @StateObject private var vm = ScanViewModel(defaults: DebugAutomation.defaults)
     @StateObject private var drag = CollectorDragController()
@@ -160,6 +165,12 @@ struct ContentView: View {
             .preferredColorScheme(.dark)
             .coordinateSpace(.named(CollectorDragController.appSpace))
             .toolbar { toolbarItems }
+            // One continuous plane under the bar. macOS 26 draws the window
+            // toolbar with Liquid Glass by default; here it paints the same
+            // near-black as the window and always shows that background, so
+            // nothing frosted separates the bar from the header and content.
+            .toolbarBackground(Theme.bg, for: .windowToolbar)
+            .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
             .overlay {
                 if let node = drag.node {
                     DragPreview(node: node).position(drag.location).allowsHitTesting(false)
@@ -180,6 +191,7 @@ struct ContentView: View {
             .help(showSidebar ? "Hide sources (⌃⌘S)" : "Show sources (⌃⌘S)")
             .disabled(vm.showFDAOnboarding)
         }
+        .sharedBackgroundVisibility(.hidden)
         ToolbarItem(placement: .principal) {
             Picker("Workspace", selection: $appMode) {
                 ForEach(AppMode.allCases) { mode in Text(mode.title).tag(mode) }
@@ -188,10 +200,12 @@ struct ContentView: View {
             .frame(width: 190)
             .disabled(vm.showFDAOnboarding)
         }
+        .sharedBackgroundVisibility(.hidden)
         ToolbarItem(placement: .primaryAction) {
             CleanupActionBar(vm: vm, returnScreen: modeScreen, onRescue: { appMode = .rescue })
                 .disabled(removalBusy || vm.isScanning || vm.rootNode == nil || vm.showFDAOnboarding)
         }
+        .sharedBackgroundVisibility(.hidden)
         ToolbarItem(placement: .primaryAction) {
             // Wide windows show Details beside the map; narrow windows
             // show it inline below the map. No popover.
@@ -207,6 +221,7 @@ struct ContentView: View {
             .help("Show or hide selected item details (⌃⌘I)")
             .disabled(appMode != .explore || vm.showFDAOnboarding)
         }
+        .sharedBackgroundVisibility(.hidden)
     }
 
     private func withStateHandlers(_ content: some View) -> some View {
@@ -343,7 +358,7 @@ struct ContentView: View {
                 Text("Removing \(vm.deletionProgress) of \(vm.deletionTotal)")
                     .font(.caption.monospacedDigit())
                     .accessibilityLabel("Removal progress")
-            } else if !vm.isScanning {
+            } else if !vm.isScanning && showsHeaderScanButton {
                 Button {
                     if let source = vm.selectedSourceURL { vm.startScan(volumeURL: source) }
                 } label: {
@@ -393,6 +408,15 @@ struct ContentView: View {
     private var scanButtonTitle: String {
         if vm.rootNode == nil { return "Scan" }
         return showsOtherSource ? "Scan Selected Source" : "Rescan"
+    }
+
+    /// One scan action per view. The header keeps Rescan while a result is on
+    /// screen, and the placeholder when no source is chosen. The empty state,
+    /// an error card and Full Disk Access each own their body action, so no
+    /// view shows two scan buttons.
+    private var showsHeaderScanButton: Bool {
+        !vm.needsFullDiskAccess && vm.errorMessage == nil
+            && (vm.rootNode != nil || vm.selectedSourceURL == nil)
     }
 
     /// The selected source's name, as the source list shows it.
@@ -572,12 +596,20 @@ struct ContentView: View {
         }
     }
 
-    /// Presentation-only flag: the stacked browser shows 4 or 8 rows before it
-    /// scrolls, and never more than 40 % of the height. It never changes
-    /// scanning, order or cleanup protection.
+    /// Presentation-only flags: the stacked browser shows 4 or 8 rows before
+    /// it scrolls (max 40 % of the height), and the single-line row pitch
+    /// follows `compactRowHeight`. Neither changes scanning, order or
+    /// cleanup protection.
     private func stackedBrowserHeight(available: CGFloat) -> CGFloat {
-        let rows = CGFloat(analytics.compactLegend ? 4 : 8) * Self.browserRowHeight + 28
+        let pitch = singleRowPitch
+        let rows = CGFloat(analytics.compactLegend ? 4 : 8) * pitch + 28
         return min(rows, max(120, available * 0.4))
+    }
+
+    /// The pitch single-line browser rows actually use. Without the flag this
+    /// stays exactly the historical 28 pt; with it, the compact 24 pt.
+    private var singleRowPitch: CGFloat {
+        analytics.compactLegend ? Self.compactRowHeight : Self.browserRowHeight
     }
 
     private var chart: some View {
@@ -690,7 +722,7 @@ struct ContentView: View {
         let children = map?.children ?? []
         let total = Double(max(1, map?.folder.size ?? 1))
         let selectedID = vm.selectedNode?.id
-        let pitch = twoLine ? Self.browserTwoLineRowHeight : Self.browserRowHeight
+        let pitch = twoLine ? Self.browserTwoLineRowHeight : singleRowPitch
         let selectedIndex = selectedID.flatMap { map?.childIndexOf($0) }
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
@@ -908,6 +940,10 @@ struct ContentView: View {
                     }
                     .accessibilityHint("Scans \(sourceName)")
                     .buttonStyle(.flatProminent).focusEffectDisabled().controlSize(.large)
+                    // The header scan button is hidden in this state, so the
+                    // body CTA carries ⌘R while it is on screen.
+                    .keyboardShortcut("r", modifiers: .command)
+                    .help("Scan \(sourceName) (⌘R)")
                     .disabled(removalBusy)
                 }
             }

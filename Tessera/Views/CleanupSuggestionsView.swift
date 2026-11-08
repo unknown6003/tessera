@@ -195,8 +195,9 @@ struct CleanupSuggestionsView: View {
                     .tint(targetColor(plan))
                     .accessibilityLabel(primaryLabel(plan.measurement))
                     .accessibilityValue(primary.map(Theme.format) ?? "Unknown")
+                // The headline above already names the figure once, so this
+                // caption carries only the goal.
                 HStack {
-                    Text(primaryLabel(plan.measurement))
                     Spacer()
                     Text("Goal: under \(capacityGoalPercent)% used")
                 }
@@ -225,7 +226,7 @@ struct CleanupSuggestionsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 20)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) { Divider() }
     }
