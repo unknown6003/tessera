@@ -8,11 +8,13 @@ On the same M1 Max and the same warm fixture, the saved Release app took 0.825, 
 
 That trial changed the enumeration strategy, not the app language. It does not establish a cold whole-drive time or a two-minute guarantee. Raw evidence is in the linked Mac's /tmp/tessera-native-verification.1GZiGk/REPORT.md. Final whole-volume, memory and combined-app checks remain separate gates.
 
+A later alternating trial compared `301cb25` with `f80598c` on the same warm fixture, with three measured processes per revision. Both found every expected file and no coverage gap. Median peak RSS fell from 61,538,304 to 50,003,968 bytes, or 18.74 percent. Median child-build time fell from 18.302 to 12.053 ms. Total time ranges overlapped, so the small total-time difference is not a robust speed claim. The native Release app also completed its scan and diagnosis in 132.56 seconds. Samples at 60 and 120 seconds found cleanup rule evaluation, rather than node allocation, as the active work. That finding calls for a classifier fix before a new language.
+
 ## Where time and memory went
 
 The saved scanner stopped bulk enumeration at 8,192 entries and reread wide folders with one lstat per file. Cloud reads could spend ten seconds on each stalled folder. Unsafe directory-mtime reuse skipped deeper changes. File removal blocked the main actor. Repeated pruning and capacity samples added work for each item.
 
-The update streams bulk records on one descriptor, bounds worker and helper counts, holds a stalled provider for the current scan, checks cancellation between batches and reads fresh metadata on a rescan. Cleanup validates an immutable action record off the main actor and samples capacity around the batch. The UI stays available while disk work runs. Reader scratch storage is 1,024 records per worker. Actual process memory must still be measured.
+The update streams bulk records on one descriptor, bounds worker and helper counts, holds a stalled provider for the current scan, checks cancellation between batches and reads fresh metadata on a rescan. Cleanup validates an immutable action record off the main actor and samples capacity around the batch. The UI stays available while disk work runs. Reader scratch storage is 1,024 records per worker. Compact identity storage lowers measured fixture memory without changing the language. Root app and engine-only RSS are distinct measures and must not be mixed.
 
 ## Language options
 
