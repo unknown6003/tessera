@@ -145,3 +145,59 @@ Native colour checks:
 4. Map order, angles and the "Other" size match a capture of the same
    folder from `803f064`. Only colours change.
 5. `LayoutTests` and the full test suite pass.
+
+## F5: browser focus after Details and layout changes
+
+Base: `a19413a`. Scope: `ContentView.swift` and this note. Status: source
+changed, not compiled, not run. No score.
+
+Native finding (run `778`): after ⌃⌘I, accessibility focus landed on the
+window's group, not the list. Keyboard-only use after the toggle was
+unreliable.
+
+Cause: the browser sits in different `if` branches depending on layout:
+beside or under the map, inside the narrow Items / Details switch or not,
+and hidden while the switch shows Details. A change of branch gives the
+browser a new view identity, so SwiftUI drops its `@FocusState`, and
+nothing set focus again.
+
+Fix (public SwiftUI and AppKit only, no timers):
+
+- `BrowserHost` names the browser's place: stacked, inside the switch,
+  visible. `changeBrowserHost` wraps every action that can change it: the
+  Details toggle (⌃⌘I and the toolbar button), the Items / Details switch,
+  the sidebar toggle (⌃⌘S) and the window-width update. It reads
+  `browserFocused` before the change, while the old browser still exists.
+- If Details replaces a focused browser, that is remembered. Returning to
+  Items, or hiding Details, sets a one-shot request.
+- If the browser moves to a new container while visible (a resize across a
+  breakpoint, the sidebar, the Details column) and it had focus, it sets the
+  same request.
+- If the place does not change, nothing is recorded, so an ordinary resize
+  never moves focus.
+- The browser's `onAppear` honours the request once, only when Tessera's
+  main window is key (`NSApp.keyWindow`), with no attached sheet, no
+  `NSPanel` (Quick Look) key, no `NSText` first responder (a text field
+  editing), no review sheet, no Quick Look URL, no removal and no
+  onboarding. The request is dropped when the browser gains focus by other
+  means or the user leaves Explore.
+
+Boundary: if focus was on a Details button and Details is hidden in a wide
+window, the browser does not move, so no request is made and focus stays
+where AppKit puts it. Tessera has no focus binding for Details' buttons, so
+it cannot tell that case from focus on the map or the sidebar. The fix does
+not guess there.
+
+Native checks:
+
+1. 1000x700: click a browser row, press ⌃⌘I (Details shows in the switch),
+   then ⌃⌘I again. The browser has focus: ↓ moves the selection, and the
+   Accessibility Inspector shows focus in the list.
+2. Same, but switch with the Items / Details control instead of ⌃⌘I.
+3. Browser focused at 1240x800, resize to 900 (the browser moves into the
+   switch or below the map): focus stays in the browser.
+4. Map focused (or a sidebar source) at 1240x800, resize to 900: focus does
+   not jump to the browser.
+5. Quick Look open, or the review sheet open, during a resize or ⌃⌘I: focus
+   stays in the panel or sheet.
+6. ⌃⌘S with the browser focused: the browser keeps focus.

@@ -60,6 +60,13 @@ struct ContentView: View {
     @FocusState private var browserFocused: Bool
     /// Set by the first selection in this window; hides the selection hint.
     @State private var hasSelectedOnce = false
+    /// Set when the browser had keyboard focus right before a Details toggle,
+    /// a pane switch, a sidebar toggle or a resize rebuilt it. The rebuilt
+    /// browser takes focus back once, in `onAppear`.
+    @State private var refocusBrowserOnAppear = false
+    /// Set when Details replaced a focused browser in the narrow switch.
+    /// Returning to Items, or hiding Details, gives the browser focus back.
+    @State private var browserFocusBeforeDetails = false
     /// The folder on screen, shared by the map, the child browser and Details.
     @State private var map: MapSnapshot?
     @State private var mapTask: Task<Void, Never>?
@@ -122,7 +129,9 @@ struct ContentView: View {
             .accessibilityHidden(vm.showFDAOnboarding)
         }
         .frame(minWidth: 820, minHeight: 600)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            changeBrowserHost { windowWidth = width }
+        }
         .background(Theme.bg.ignoresSafeArea())
         .background(TransparentWindowConfigurator())
         .background(KeyboardShortcuts(vm: vm, onQuickLook: quickLook)
@@ -132,7 +141,7 @@ struct ContentView: View {
         .coordinateSpace(.named(CollectorDragController.appSpace))
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Button { showSidebar.toggle() } label: {
+                Button { changeBrowserHost { showSidebar.toggle() } } label: {
                     Label("Sources", systemImage: "sidebar.left")
                 }
                 .keyboardShortcut("s", modifiers: [.command, .control])
@@ -155,8 +164,10 @@ struct ContentView: View {
                 // Wide windows show Details beside the map; narrow windows
                 // show it inline below the map. No popover.
                 Button {
-                    showInspector.toggle()
-                    if showInspector { compactPane = .details }
+                    changeBrowserHost {
+                        showInspector.toggle()
+                        if showInspector { compactPane = .details }
+                    }
                 } label: {
                     Label("Details", systemImage: "sidebar.right")
                 }
@@ -179,6 +190,13 @@ struct ContentView: View {
         .onChange(of: vm.currentRoot?.id, initial: true) { _, _ in refreshMap() }
         .onChange(of: vm.treeRevision) { _, _ in refreshMap() }
         .onChange(of: vm.selectedNode?.id) { _, id in if id != nil { hasSelectedOnce = true } }
+        // A pending refocus is only for the next rebuild. Once the browser has
+        // focus, or the user leaves Explore, drop it.
+        .onChange(of: browserFocused) { _, focused in if focused { refocusBrowserOnAppear = false } }
+        .onChange(of: appMode) { _, _ in
+            refocusBrowserOnAppear = false
+            browserFocusBeforeDetails = false
+        }
         // A read refused during a removal runs again when the removal ends.
         .onChange(of: vm.isDeleting) { _, deleting in if !deleting { refreshMap() } }
         .quickLookPreview($quickLookURL)
@@ -416,12 +434,75 @@ struct ContentView: View {
         showInspector && windowWidth - (showSidebar ? 211 : 0) >= Self.detailsColumnMinimumContent
     }
 
+    // MARK: - Browser focus across rebuilds
+
+    /// Where the browser lives. A change in any field gives it a new view
+    /// identity (a different `if` branch), so SwiftUI drops its focus.
+    private struct BrowserHost: Equatable {
+        /// Below the map (chart area under 580 pt) instead of beside it.
+        let stacked: Bool
+        /// Inside the narrow Items / Details switch.
+        let switched: Bool
+        /// False while the switch shows Details instead of the browser.
+        let visible: Bool
+    }
+
+    private var browserHost: BrowserHost {
+        let sidebar: CGFloat = showSidebar ? 211 : 0
+        let beside = detailsBeside
+        let inspector: CGFloat = beside ? min(300, max(240, windowWidth * 0.22)) + 1 : 0
+        let switched = showInspector && !beside
+        return BrowserHost(stacked: windowWidth - sidebar - inspector < 580,
+                           switched: switched,
+                           visible: !(switched && compactPane == .details))
+    }
+
+    /// Runs a layout change and records whether the browser should take
+    /// focus back. Reads `browserFocused` before the change, while the old
+    /// browser still exists, so the value is current. Records nothing when
+    /// the browser keeps its place, so an ordinary resize never moves focus.
+    private func changeBrowserHost(_ change: () -> Void) {
+        let old = browserHost
+        let wasFocused = browserFocused
+        change()
+        let new = browserHost
+        guard appMode == .explore, old != new else { return }
+        if !new.visible {
+            // Details replaces the browser. Remember to come back.
+            browserFocusBeforeDetails = wasFocused
+            refocusBrowserOnAppear = false
+        } else if !old.visible {
+            // Back to Items, or Details hidden.
+            refocusBrowserOnAppear = browserFocusBeforeDetails
+            browserFocusBeforeDetails = false
+        } else {
+            // Same browser, new container (resize, sidebar, Details column).
+            refocusBrowserOnAppear = wasFocused
+        }
+    }
+
+    /// Gives focus back to a rebuilt browser only when nothing else should
+    /// keep it: Tessera's main window is key, with no sheet, no Quick Look
+    /// panel and no active text editor, and no removal or onboarding runs.
+    private func restoreBrowserFocusIfNeeded() {
+        guard refocusBrowserOnAppear else { return }
+        refocusBrowserOnAppear = false
+        guard !removalBusy, reviewSnapshot == nil, quickLookURL == nil, !vm.showFDAOnboarding,
+              appMode == .explore,
+              let key = NSApp.keyWindow, key.sheetParent == nil, key.attachedSheet == nil,
+              !(key is NSPanel), !(key.firstResponder is NSText) else { return }
+        browserFocused = true
+    }
+
     /// The browser, or in narrow windows the browser and Details behind one
     /// switch. Details never takes height from the map.
     @ViewBuilder private func rightColumn(twoLine: Bool) -> some View {
         if showInspector && !detailsBeside {
             VStack(spacing: 8) {
-                Picker("Show", selection: $compactPane) {
+                Picker("Show", selection: Binding(
+                    get: { compactPane },
+                    set: { pane in changeBrowserHost { compactPane = pane } }
+                )) {
                     ForEach(CompactPane.allCases) { pane in Text(pane.title).tag(pane) }
                 }
                 .pickerStyle(.segmented)
@@ -597,6 +678,7 @@ struct ContentView: View {
             Spacer(minLength: 0)
         }
         .disabled(removalBusy)
+        .onAppear(perform: restoreBrowserFocusIfNeeded)
     }
 
     /// Click 1 selects and focuses the browser at once. Click 2 opens a folder.
