@@ -101,3 +101,16 @@ release upload gate, vault-to-CLI aliases, the matching negative tests, always-o
 project rule, site claim corrections, and both seven-day experiment metrics.
 The app Swift source is unchanged from `c590e06`. All 17 tool tests pass.
 Native SDK, symbol ingestion and UI results remain separate runtime gates.
+
+## Removal and test-service delta, 90f6626
+
+Three independent Codex reads reviewed `b227003..90f6626` on Standards,
+Spec and Risk. All seven changed Swift files were covered. No finding
+survived source checks. The removal summary now records only this action's
+successful bytes and counts. Rescue keeps its full-plan held list. One shared
+run policy excludes XCTest and automation before either Sparkle or PostHog
+starts. Normal configured runs still collect anonymous diagnostics.
+
+The Opus dock consumer is a later delta and was outside these three reads.
+All 17 Python tool checks and the release-policy validator pass. The two new
+native regressions and the real Trash result still need macOS execution.

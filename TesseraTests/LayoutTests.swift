@@ -57,6 +57,34 @@ struct LayoutTests {
                 "The 300 tiny children must collapse into an 'Other' wedge, not vanish")
     }
 
+    @Test("A capped nested ring keeps equal-size order and every omitted byte")
+    func cappedNestedRingPreservesRemainder() {
+        let base = URL(fileURLWithPath: "/tmp/layout-capped-nested")
+        let root = FileNode(url: base, name: "root", isDirectory: true, size: 0)
+        let folder = FileNode(url: base.appendingPathComponent("wide"),
+                              name: "wide", isDirectory: true, size: 0)
+        let large = (0..<64).map { index in
+            let name = "large-" + String(format: "%03d", index)
+            return FileNode(url: folder.url.appendingPathComponent(name),
+                            name: name, isDirectory: false, size: 100)
+        }
+        let small = (0..<200).map { index in
+            let name = "small-\(index)"
+            return FileNode(url: folder.url.appendingPathComponent(name),
+                            name: name, isDirectory: false, size: 1)
+        }
+        folder.setChildren(Array(large.reversed()) + small)
+        root.setChildren([folder])
+        root.recomputeDirectorySizes()
+
+        let ring = SunburstChart.buildLayout(root: root).filter { $0.depth == 1 }
+        let real = ring.filter { !$0.node.isSynthetic }
+        #expect(real.map(\.node.id) == Array(large.prefix(60)).map(\.id))
+        #expect(ring.filter { $0.node.kind == .aggregate }.map(\.node.size) == [600])
+        #expect(ring.reduce(Int64(0)) { $0 + $1.node.size } == folder.size)
+        #expect(folder.children.count == 264)
+    }
+
     /// All wedge angles must be finite and ordered; no NaN/inf can reach Canvas.
     @Test("Every wedge has finite, ordered angles")
     func wedgeAnglesAreFinite() {
