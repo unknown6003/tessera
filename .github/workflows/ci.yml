@@ -23,6 +23,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate release policy
+        run: |
+          python3 tools/validate_release.py
+          python3 -m unittest discover -s tools -p 'test_release_policy.py'
+
       - name: Toolchain
         run: xcodebuild -version
 

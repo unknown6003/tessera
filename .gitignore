@@ -3,6 +3,7 @@
 xcuserdata/
 build/
 DerivedData/
+__pycache__/
 
 # Off-device cloud backend (Cloudflare Worker). NOT shipped: the app is
 # on-device only and must make no network calls related to user data. Excluded

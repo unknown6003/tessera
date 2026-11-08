@@ -123,9 +123,12 @@ Release. Change it if you host the appcast elsewhere.
 In `Tessera/Info.plist`: set `CFBundleShortVersionString` (e.g. `0.1.1`) and
 increment `CFBundleVersion` (monotonic build number). Sparkle compares these.
 
-**v1 launch guard:** `release.sh --publish` refuses every `1.x` version unless
-the owner has explicitly directed the v1 launch and the command is rerun with
-`CONFIRM_V1_RELEASE=YES`. Do not set that override preemptively.
+**Release series:** Tessera remains in 0.x.x. Ammar must explicitly request a
+major milestone before this policy can change. The release validator rejects
+all non-0.x versions. No environment variable bypasses this rule.
+
+The withdrawn 1.0.0 had build 11. The corrected 0.2.0 uses build 12 so Sparkle
+can offer it to any installation that received the withdrawn build.
 
 ## 2. Build, sign, notarize, staple the app
 ```sh

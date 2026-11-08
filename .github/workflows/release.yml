@@ -24,7 +24,6 @@ jobs:
 
       - name: Validate release identity
         env:
-          CONFIRM_V1_RELEASE: ${{ vars.CONFIRM_V1_RELEASE }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
@@ -39,10 +38,7 @@ jobs:
             echo "CFBundleVersion must be a positive integer" >&2
             exit 1
           }
-          if [[ "$version" == 1.* && "$CONFIRM_V1_RELEASE" != YES ]]; then
-            echo 'Publishing a 1.x milestone requires repository variable CONFIRM_V1_RELEASE=YES' >&2
-            exit 1
-          fi
+          python3 tools/validate_release.py --tag "$GITHUB_REF_NAME"
           [[ -n "$SPARKLE_PRIVATE_KEY" ]] || {
             echo 'Missing SPARKLE_PRIVATE_KEY: export the existing Sparkle key and add it as a repository Actions secret.' >&2
             exit 1
