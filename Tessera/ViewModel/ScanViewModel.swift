@@ -1029,6 +1029,7 @@ final class ScanViewModel: ObservableObject {
             after: after,
             removalMethod: removalMethod
         )
+        if let after { rescuePlan = rescuePlan?.updatingMeasurement(after) }
         lastRescueError = errorMessage ?? failures.first?.localizedDescription
         rescuePhase = .result
         persistRescueCase(candidateIDs: stagedRescueCandidateIDs())

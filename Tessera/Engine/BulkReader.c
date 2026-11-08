@@ -68,7 +68,7 @@ int br_directory_read(BRDirectory *directory, BREntry *out, int maxEntries,
                                      ATTR_CMN_MODTIME        |
                                      ATTR_CMN_FLAGS          |
                                      ATTR_CMN_FILEID);
-    alist.fileattr = (attrgroup_t)(ATTR_FILE_LINKCOUNT | ATTR_FILE_TOTALSIZE |
+    alist.fileattr = (attrgroup_t)(ATTR_FILE_LINKCOUNT | ATTR_FILE_DATALENGTH |
                                    ATTR_FILE_ALLOCSIZE);
 
     // Caller-owned scratch buffer (reused across directories — no per-call malloc).
@@ -178,19 +178,21 @@ int br_directory_read(BRDirectory *directory, BREntry *out, int maxEntries,
                 field += 4;
             }
 
-            // ATTR_FILE_TOTALSIZE: int64_t logical file size.
-            if (ret_file & ATTR_FILE_TOTALSIZE) {
-                if (recordEnd - field < 8) return -1;
-                e.logical_size = ri64(field);
-                field += 8;
-            }
-
             if (e.type == BR_TYPE_REG && !(ret_file & ATTR_FILE_ALLOCSIZE)) return -1;
 
             // ATTR_FILE_ALLOCSIZE: int64_t
             if (ret_file & ATTR_FILE_ALLOCSIZE) {
                 if (recordEnd - field < 8) return -1;
                 e.alloc_size = ri64(field);
+                field += 8;
+            }
+
+            // Match lstat and URLResourceValues.fileSize: data fork only.
+            // TOTALSIZE includes resource forks and would reject unchanged files.
+            if (e.type == BR_TYPE_REG && !(ret_file & ATTR_FILE_DATALENGTH)) return -1;
+            if (ret_file & ATTR_FILE_DATALENGTH) {
+                if (recordEnd - field < 8) return -1;
+                e.logical_size = ri64(field);
             }
 
             // Skip . and .. and unnamed entries

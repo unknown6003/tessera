@@ -836,6 +836,16 @@ struct EngineTests {
         #expect(plan.targetSpace == 25)
         #expect(plan.changingCapacityGoal(to: 0.90).targetSpace == 10)
         #expect(plan.changingCapacityGoal(to: 0.50).targetSpace == 50)
+        let after = RescueMeasurement(volumePath: "/tmp/rescue", totalBytes: 200,
+                                      availableBytes: 60, freeBytes: 60,
+                                      logicalBytes: 140, physicalBytes: 140,
+                                      measuredAt: Date(timeIntervalSince1970: 5))
+        let refreshed = plan.updatingMeasurement(after)
+        #expect(refreshed.measurement == after)
+        #expect(refreshed.targetSpace == 50)
+        #expect(refreshed.measurement.primaryBytes! >= refreshed.targetSpace!)
+        #expect(refreshed.generatedAt == plan.generatedAt)
+        #expect(refreshed.capacityGoal == plan.capacityGoal)
         #expect(RescuePlan.clampedCapacityGoal(0.10) == 0.50)
         #expect(RescuePlan.clampedCapacityGoal(1.0) == 0.95)
     }

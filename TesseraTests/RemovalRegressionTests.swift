@@ -66,6 +66,25 @@ struct RemovalRegressionTests {
         #expect(result.recoveryNote.contains("empty it"))
     }
 
+    @Test("A resource fork uses the same logical size in scan and removal checks")
+    func resourceForkIdentity() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let file = url.appendingPathComponent("forked.dat")
+        try Data(repeating: 1, count: 4096).write(to: file)
+        try Data(repeating: 2, count: 16384).write(to: file.appendingPathComponent("..namedfork/rsrc"))
+        let root = try await FileScanner.scan(url: url) { _ in }
+        let node = try #require(root.children.first)
+        let expected = try #require(node.scanIdentity)
+        let current = try #require(ScanIdentity.current(at: file))
+        #expect(expected.logicalSize == 4096)
+        #expect(expected.matches(current))
+        let prepared = DeletionService.prepare(node)
+        #expect(prepared.check == .ready)
+        #expect(DeletionService.perform(prepared, permanently: true) == nil)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+
     @Test("A cancelled background tree read holds cleanup until the worker returns")
     func treeReadExcludesRemoval() async throws {
         let url = try fixture()
@@ -140,6 +159,8 @@ struct RemovalRegressionTests {
         #expect(vm.rescueVerification?.removalMethod == .permanent)
         #expect(vm.rescueVerification?.removalTitle == "Deleted permanently")
         #expect(vm.savedRescueCase?.verification?.removalMethod == .permanent)
+        #expect(vm.rescuePlan?.measurement == vm.rescueVerification?.after)
+        #expect(vm.savedRescueCase?.measurement == vm.rescueVerification?.after)
         #expect(vm.deletionProgress == targets.count)
         #expect(root.children.count == 1)
         #expect(root.children.first?.id == stale.id)
