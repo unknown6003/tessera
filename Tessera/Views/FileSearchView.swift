@@ -58,7 +58,11 @@ struct FileSearchView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .onDisappear { searchTask?.cancel(); runToken &+= 1 }
+            .onDisappear { cancelSearch() }
+            .onChange(of: vm.treeRevision) { _, _ in
+                cancelSearch()
+                result = nil
+            }
         }
     }
 
@@ -74,9 +78,7 @@ struct FileSearchView: View {
                 .onSubmit(run)
             if !query.isEmpty {
                 Button {
-                    searchTask?.cancel()
-                    runToken &+= 1
-                    isSearching = false
+                    cancelSearch()
                     query = ""
                     result = nil
                     focused = true
@@ -229,6 +231,13 @@ struct FileSearchView: View {
 
     /// Parse the current query into a filter and run it over the scanned tree,
     /// off the main actor.
+    private func cancelSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        runToken &+= 1
+        isSearching = false
+    }
+
     private func run() {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, vm.rootNode != nil else { return }
