@@ -39,8 +39,6 @@ struct FileSearchView: View {
     var body: some View {
         if vm.rootNode != nil {
             VStack(alignment: .leading, spacing: 12) {
-                FeatureSectionLabel("Search Files")
-
                 Text("Describe what you're looking for — type, size, age, name, or location.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

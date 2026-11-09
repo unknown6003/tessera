@@ -464,12 +464,17 @@ struct ContentView: View {
             GeometryReader { geometry in
                 if geometry.size.width >= 580 {
                     let column = min(320, max(230, geometry.size.width * 0.36))
-                    HStack(spacing: 16) {
-                        chart
+                    let spacing: CGFloat = 16
+                    let horizontalPadding: CGFloat = 20
+                    let mapWidth = max(0, min(geometry.size.height,
+                        geometry.size.width - column - spacing - 2 * horizontalPadding))
+                    HStack(spacing: spacing) {
+                        chart.frame(width: mapWidth)
                         rightColumn(twoLine: column < Self.twoLineColumnWidth)
                             .frame(width: column)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, horizontalPadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     VStack(spacing: 8) {
                         chart

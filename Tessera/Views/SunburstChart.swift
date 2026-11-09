@@ -11,6 +11,7 @@ struct MapSnapshot: Sendable {
     let folder: FileNode
     let revision: ScanTreeRevision
     let wedges: [SunburstChart.Wedge]
+    let ringCount: Int
     /// Every direct child, in `FileNode.largestFirst` order (the map's order).
     let children: [FileNode]
     private let wedgeIndex: [ObjectIdentifier: Int]
@@ -29,7 +30,8 @@ struct MapSnapshot: Sendable {
         var childIndex: [ObjectIdentifier: Int] = [:]
         childIndex.reserveCapacity(children.count)
         for (index, child) in children.enumerated() { childIndex[child.id] = index }
-        return MapSnapshot(folder: folder, revision: revision, wedges: wedges, children: children,
+        return MapSnapshot(folder: folder, revision: revision, wedges: wedges,
+                           ringCount: SunburstChart.renderedRingCount(in: wedges), children: children,
                            wedgeIndex: wedgeIndex, childIndex: childIndex)
     }
 
@@ -120,14 +122,22 @@ struct SunburstChart: View {
         let ringSpan: CGFloat
     }
 
-    static func chartGeometry(for size: CGSize) -> ChartGeometry? {
+    nonisolated static func renderedRingCount(in layout: [Wedge]) -> Int {
+        min(maxRings, layout.reduce(1) { max($0, $1.depth + 1) })
+    }
+
+    private static func radialSpan(chartRadius: CGFloat, hubRadius: CGFloat, ringCount: Int) -> CGFloat {
+        (chartRadius - hubRadius) / CGFloat(min(maxRings, max(1, ringCount)))
+    }
+
+    static func chartGeometry(for size: CGSize, ringCount: Int = maxRings) -> ChartGeometry? {
         guard size.width.isFinite, size.height.isFinite,
               size.width > 0, size.height > 0 else { return nil }
         let side = min(size.width, size.height)
         guard side >= minimumRenderableSide else { return nil }
         let chartRadius = side / 2 * 0.96
         let hubRadius = chartRadius * hubFraction
-        let ringSpan = (chartRadius - hubRadius) / CGFloat(maxRings)
+        let ringSpan = radialSpan(chartRadius: chartRadius, hubRadius: hubRadius, ringCount: ringCount)
         guard chartRadius.isFinite, hubRadius.isFinite, ringSpan.isFinite,
               ringSpan > 0 else { return nil }
         return ChartGeometry(
@@ -140,6 +150,7 @@ struct SunburstChart: View {
 
     private var root: FileNode? { map?.folder }
     private var layout: [Wedge] { map?.wedges ?? [] }
+    private var ringCount: Int { map?.ringCount ?? 1 }
     private var highContrast: Bool { contrast == .increased }
     /// The folder the sweep-in last ran for. Unprimed views draw at full sweep.
     @State private var sweptRootID: ObjectIdentifier?
@@ -160,12 +171,12 @@ struct SunburstChart: View {
 
     var body: some View {
         GeometryReader { geo in
-            if let geometry = Self.chartGeometry(for: geo.size) {
+            if let geometry = Self.chartGeometry(for: geo.size, ringCount: ringCount) {
                 ZStack {
                     // Flat design: the wedges sit directly on the solid window
                     // background. No frosted plate, no vibrancy.
                     canvas(center: geometry.center,
-                           chartRadius: geometry.chartRadius,
+                           ringSpan: geometry.ringSpan,
                            hubRadius: geometry.hubRadius)
                         // Make the entire chart frame hit-testable, including the
                         // transparent gaps between wedges, so hover and taps always land.
@@ -336,8 +347,7 @@ struct SunburstChart: View {
 
     // MARK: - Canvas
 
-    private func canvas(center: CGPoint, chartRadius: CGFloat, hubRadius: CGFloat) -> some View {
-        let ringSpan = (chartRadius - hubRadius) / CGFloat(Self.maxRings)
+    private func canvas(center: CGPoint, ringSpan: CGFloat, hubRadius: CGFloat) -> some View {
         let wedges = layout
         // Offscreen rendering never runs onAppear; draw it at full sweep.
         let progress = sweptRootID == root?.id ? appearProgress : 1.0
@@ -640,7 +650,7 @@ struct SunburstChart: View {
     private func hitTest(at p: CGPoint, center: CGPoint,
                          chartRadius: CGFloat, hubRadius: CGFloat) -> Wedge? {
         Self.hitTest(in: layout, at: p, center: center,
-                     chartRadius: chartRadius, hubRadius: hubRadius)
+                     chartRadius: chartRadius, hubRadius: hubRadius, ringCount: ringCount)
     }
 
     /// Pure, side-effect-free polar hit-test: which wedge in `layout` contains
@@ -650,18 +660,19 @@ struct SunburstChart: View {
     /// code in `canvas` uses this exact geometry, so a click always lands on the
     /// wedge under the cursor.
     static func hitTest(in layout: [Wedge], at p: CGPoint, center: CGPoint,
-                        chartRadius: CGFloat, hubRadius: CGFloat) -> Wedge? {
+                        chartRadius: CGFloat, hubRadius: CGFloat, ringCount: Int? = nil) -> Wedge? {
         guard chartRadius.isFinite, hubRadius.isFinite,
               chartRadius > hubRadius, hubRadius >= 0 else { return nil }
         let dx = p.x - center.x, dy = p.y - center.y
         let r = sqrt(dx * dx + dy * dy)
         guard r.isFinite else { return nil }
         guard r >= hubRadius, r <= chartRadius else { return nil }
-        let ringSpan = (chartRadius - hubRadius) / CGFloat(maxRings)
+        let rings = min(maxRings, max(1, ringCount ?? renderedRingCount(in: layout)))
+        let ringSpan = radialSpan(chartRadius: chartRadius, hubRadius: hubRadius, ringCount: rings)
         guard ringSpan.isFinite, ringSpan > 0 else { return nil }
         let rawDepth = (r - hubRadius) / ringSpan
         guard rawDepth.isFinite, rawDepth >= 0 else { return nil }
-        let depth = min(maxRings - 1, Int(rawDepth))
+        let depth = min(rings - 1, Int(rawDepth))
         var deg = Angle(radians: atan2(dy, dx)).degrees
         if deg < 0 { deg += 360 }
 

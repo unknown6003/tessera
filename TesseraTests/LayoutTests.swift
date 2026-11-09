@@ -135,9 +135,43 @@ struct LayoutTests {
 
     // MARK: - Hit-testing
 
-    private func chartGeometry(for size: CGSize)
+    @Test("Shallow maps fill the chart and their outer ring stays selectable")
+    func shallowMapsUseAvailableRadius() throws {
+        for rings in 1...SunburstChart.maxRings {
+            let root = FileNode(url: URL(fileURLWithPath: "/tmp/layout-radius-\(rings)"),
+                                name: "root", isDirectory: true, size: 0)
+            var parent = root
+            for depth in 1..<rings {
+                let folder = FileNode(name: "folder-\(depth)", isDirectory: true, size: 0)
+                parent.setChildren([folder])
+                parent = folder
+            }
+            let leaf = FileNode(name: "leaf", isDirectory: false, size: 100)
+            parent.setChildren([leaf])
+            root.recomputeDirectorySizes()
+
+            let snapshot = try #require(MapSnapshot.build(folder: root,
+                revision: ScanTreeRevision(rootID: root.id, revision: 1)))
+            #expect(snapshot.ringCount == rings)
+            let geometry = try #require(SunburstChart.chartGeometry(for: CGSize(width: 640, height: 480),
+                                                                   ringCount: snapshot.ringCount))
+            #expect(abs(geometry.hubRadius + CGFloat(rings) * geometry.ringSpan - geometry.chartRadius) < 0.00001)
+            let wedge = try #require(snapshot.wedges.first { $0.node.id == leaf.id })
+            let angle = (wedge.startAngle + wedge.endAngle) / 2 * .pi / 180
+            let radius = geometry.chartRadius * 0.95
+            let point = CGPoint(x: geometry.center.x + cos(angle) * radius,
+                                y: geometry.center.y + sin(angle) * radius)
+            let hit = SunburstChart.hitTest(in: snapshot.wedges, at: point, center: geometry.center,
+                                            chartRadius: geometry.chartRadius, hubRadius: geometry.hubRadius,
+                                            ringCount: snapshot.ringCount)
+            #expect(hit?.node.id == leaf.id, "The visible rim must select its file at \(rings) rings")
+        }
+    }
+
+    private func chartGeometry(for size: CGSize, wedges: [SunburstChart.Wedge])
         -> (center: CGPoint, chartRadius: CGFloat, hubRadius: CGFloat, ringSpan: CGFloat) {
-        guard let geometry = SunburstChart.chartGeometry(for: size) else {
+        guard let geometry = SunburstChart.chartGeometry(for: size,
+            ringCount: SunburstChart.renderedRingCount(in: wedges)) else {
             Issue.record("Expected renderable chart geometry for \(size)")
             return (.zero, 0, 0, 0)
         }
@@ -202,7 +236,7 @@ struct LayoutTests {
         let wedges = SunburstChart.buildLayout(root: root)
         #expect(!wedges.isEmpty)
 
-        let g = chartGeometry(for: CGSize(width: 800, height: 800))
+        let g = chartGeometry(for: CGSize(width: 800, height: 800), wedges: wedges)
 
         for w in wedges {
             let midDeg = (w.startAngle + w.endAngle) / 2
@@ -223,7 +257,7 @@ struct LayoutTests {
     func hitTestMissesHubAndBeyondRim() {
         let root = multiRingRoot()
         let wedges = SunburstChart.buildLayout(root: root)
-        let g = chartGeometry(for: CGSize(width: 800, height: 800))
+        let g = chartGeometry(for: CGSize(width: 800, height: 800), wedges: wedges)
 
         // Dead centre — inside the hub hole.
         #expect(SunburstChart.hitTest(in: wedges, at: g.center, center: g.center,
