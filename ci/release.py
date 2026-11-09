@@ -428,7 +428,8 @@ class Release:
             raise ValueError("Expected one generate_appcast in the resolved SPM artifact cache")
         generator_home = self.output / "generator-home"
         (generator_home / "Library/Caches").mkdir(parents=True)
-        generator_env = self.env | {"HOME": str(generator_home), "CFFIXED_USER_HOME": str(generator_home)}
+        # The real HOME keeps the login keychain in the search list for the ed25519 key.
+        generator_env = self.env | {"CFFIXED_USER_HOME": str(generator_home)}
         cache_path = self.command("generator-cache", ["xcrun", "swift", "-e",
             'import Foundation; print(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].path)'],
             120, env=generator_env).strip()

@@ -135,10 +135,10 @@ The stable signing private key stays in the existing Mac keychain. Sparkle's
 existing `ed25519` account stays in that keychain too. The source public key is
 `Tessera/Info.plist:SUPublicEDKey`. Do not export or regenerate either key.
 The publisher discovers `generate_appcast` only in its resolved SPM artifact
-cache. It checks that Foundation resolves the generator cache inside a new
-private home before running it. The generator still uses the existing login
-keychain through Security services. That access with the private home needs
-a native check. It does not search unrelated user DerivedData folders.
+cache. It sets only `CFFIXED_USER_HOME` to a new private home and checks that
+Foundation resolves the generator cache inside it. It keeps the real `HOME`:
+a private `HOME` empties the keychain search list, and the generator then
+cannot find the `ed25519` key (`-25300`). It does not search unrelated user DerivedData folders.
 
 The vault credential is `posthog-tessera`, used through
 `$HOME/.local/bin/agent-access`. It supplies `POSTHOG_API_KEY`,
