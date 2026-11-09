@@ -1,0 +1,12 @@
+{
+  "report": {
+    "revision": "fdae45dbc8c57846017454a263fe2474ea9ed70f",
+    "lane": "native",
+    "policy": "a381cc8cc38957e93247813263a81220cc6f73c69dd60d21def1747db2f06780",
+    "result": "failure",
+    "failure": "FileNotFoundError",
+    "steps": [],
+    "finishedAt": 1794182637.240567
+  },
+  "signature": "a5ea45d4ef459a030a5f9fd3a7257029f8bc11c8a9ef6611c4be5b143990b3d0"
+}
