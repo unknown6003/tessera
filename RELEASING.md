@@ -123,7 +123,8 @@ cd "$release_archive"
 
 Without the pair, the existing clean-HEAD worktree checks still apply. Archive
 mode cannot skip CI. The `c052` native campaign failed one EngineTests timeout
-case in five iterations. Diagnosis is in progress. No full native publisher
+case in five iterations. The session-scoped fix is in `949c930`; fresh native
+qualification is running. No full native publisher
 run is qualified until a final source commit passes both CI lanes.
 
 ## Keys and the pinned symbol tool

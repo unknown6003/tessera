@@ -237,4 +237,78 @@ struct ScanRegressionTests {
         // Release parent links in order while every node is still retained.
         for node in chain { node.setChildren([]) }
     }
+
+    @Test("Real paths beyond PATH_MAX retain every file in bulk and fallback scans")
+    func overlongFilesystemPaths() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let rootFD = Darwin.open(url.path, O_RDONLY | O_DIRECTORY)
+        try #require(rootFD >= 0)
+        var descriptors = [rootFD]
+        let component = "abcdefghijklmnop"
+        defer {
+            for fd in descriptors {
+                _ = Darwin.unlinkat(fd, "sentinel", 0)
+                _ = Darwin.unlinkat(fd, "shortcut", 0)
+                _ = Darwin.unlinkat(fd, "empty", AT_REMOVEDIR)
+            }
+            for index in descriptors.indices.reversed() where index > 0 {
+                Darwin.close(descriptors[index])
+                _ = Darwin.unlinkat(descriptors[index - 1], component, AT_REMOVEDIR)
+            }
+            Darwin.close(descriptors[0])
+        }
+        var path = url.path
+        var expectedBytes: Int64 = 0
+        for depth in 1...80 {
+            let parent = descriptors.last!
+            try #require(Darwin.mkdirat(parent, component, 0o700) == 0)
+            let child = Darwin.openat(parent, component, O_RDONLY | O_DIRECTORY)
+            if child < 0 { _ = Darwin.unlinkat(parent, component, AT_REMOVEDIR) }
+            try #require(child >= 0)
+            descriptors.append(child)
+            path += "/" + component
+            if depth == 20 || depth == 80 {
+                let fd = Darwin.openat(child, "sentinel", O_CREAT | O_EXCL | O_WRONLY, 0o600)
+                try #require(fd >= 0)
+                let payload = [UInt8](repeating: 7, count: depth == 20 ? 4096 : 8192)
+                let written = payload.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
+                var metadata = Darwin.stat()
+                let status = Darwin.fstat(fd, &metadata)
+                Darwin.close(fd)
+                try #require(written == payload.count && status == 0)
+                expectedBytes += Int64(metadata.st_blocks) * 512
+            }
+        }
+        #expect(path.utf8.count > Int(PATH_MAX))
+        let fullPathFD = Darwin.open(path, O_RDONLY | O_DIRECTORY)
+        #expect(fullPathFD < 0 && errno == ENAMETOOLONG)
+        if fullPathFD >= 0 { Darwin.close(fullPathFD) }
+        try #require(Darwin.mkdirat(descriptors.last!, "empty", 0o700) == 0)
+        let fallback = try #require(BulkDirScanner.fallbackEntries(atPath: path, session: DirectoryReadSession()))
+        #expect(Set(fallback.entries.map(\.name)) == ["sentinel", "empty"])
+        #expect(fallback.unreadablePaths.isEmpty)
+
+        let root = try await FileScanner.scan(url: url) { _ in }
+        var nodes = [root]
+        var directories = 0
+        var files = 0
+        while let node = nodes.popLast() {
+            if node.isDirectory { directories += 1 } else { files += 1 }
+            nodes.append(contentsOf: node.children)
+        }
+        #expect(directories == 82)
+        #expect(files == 2)
+        #expect(root.size == expectedBytes)
+        #expect(root.scanCoverageGaps.isEmpty)
+        let deepRoot = try await FileScanner.scan(url: URL(fileURLWithPath: path)) { _ in }
+        #expect(Set(deepRoot.children.map(\.name)) == ["sentinel", "empty"])
+        #expect(deepRoot.scanCoverageGaps.isEmpty)
+
+        try #require(Darwin.symlinkat(".", descriptors.last!, "shortcut") == 0)
+        var directory = BRDirectory()
+        let status = br_directory_open(path + "/shortcut", &directory)
+        #expect(status == -1)
+        if status == 0 { br_directory_close(&directory) }
+    }
 }

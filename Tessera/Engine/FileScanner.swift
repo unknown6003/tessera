@@ -316,9 +316,6 @@ struct FileScanner: Sendable {
             }
             for path in listing.unreadablePaths { root.addScanCoverageGap(path) }
             let entries = listing.entries
-            if entries.isEmpty && !FileManager.default.isReadableFile(atPath: work.path) {
-                root.addScanCoverageGap(work.path)
-            }
             let t1 = DispatchTime.now().uptimeNanoseconds
             let result = buildResult(forEntries: entries, parentPath: work.path,
                                      allowedDevices: allowedDevices)
@@ -757,6 +754,14 @@ struct FileScanner: Sendable {
         var sb = Darwin.stat()
         if Darwin.lstat(rootPath, &sb) == 0 {
             devices.insert(UInt32(bitPattern: sb.st_dev))
+        } else if errno == ENAMETOOLONG {
+            var directory = BRDirectory()
+            if br_directory_open(rootPath, &directory) == 0 {
+                if Darwin.fstat(directory.fd, &sb) == 0 {
+                    devices.insert(UInt32(bitPattern: sb.st_dev))
+                }
+                br_directory_close(&directory)
+            }
         }
         if rootPath == "/" {
             var dataSB = Darwin.stat()

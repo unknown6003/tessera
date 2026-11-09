@@ -316,18 +316,30 @@ enum BulkDirScanner {
 
     // MARK: - Fallback
 
-    private static func fallbackEntries(atPath path: String, session: DirectoryReadSession) -> DirectoryListing? {
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else {
+    static func fallbackEntries(atPath path: String, session: DirectoryReadSession) -> DirectoryListing? {
+        var directory = BRDirectory()
+        guard br_directory_open(path, &directory) == 0 else { return nil }
+        guard let stream = Darwin.fdopendir(directory.fd) else {
+            br_directory_close(&directory)
             return nil
         }
-
+        // fdopendir owns the descriptor until closedir.
+        defer { Darwin.closedir(stream) }
         var entries: [EntryInfo] = []
-        entries.reserveCapacity(names.count)
         var unreadablePaths: [String] = []
-        for name in names {
+        while true {
             guard !session.isCancelled else { return nil }
+            errno = 0
+            guard let record = Darwin.readdir(stream) else {
+                return errno == 0 ? DirectoryListing(entries: entries, unreadablePaths: unreadablePaths) : nil
+            }
+            var nameBytes = record.pointee.d_name
+            let name = withUnsafeBytes(of: &nameBytes) {
+                String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self))
+            }
+            if name == "." || name == ".." { continue }
             var sb = Darwin.stat()
-            guard Darwin.lstat(path + "/" + name, &sb) == 0 else {
+            guard Darwin.fstatat(directory.fd, name, &sb, AT_SYMLINK_NOFOLLOW) == 0 else {
                 unreadablePaths.append(path + "/" + name)
                 continue
             }
@@ -356,6 +368,5 @@ enum BulkDirScanner {
                 modTime: Int64(sb.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(sb.st_mtimespec.tv_nsec)
             ))
         }
-        return DirectoryListing(entries: entries, unreadablePaths: unreadablePaths)
     }
 }

@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <sys/attr.h>
 #include <sys/vnode.h>
 #include <sys/stat.h>
@@ -36,11 +37,39 @@ static inline uint64_t r64(const void *p) { uint64_t v; memcpy(&v, p, 8); return
 static inline int32_t  ri32(const void *p) { int32_t  v; memcpy(&v, p, 4); return v; }
 static inline int64_t  ri64(const void *p) { int64_t  v; memcpy(&v, p, 8); return v; }
 
+// Keep the single syscall for normal paths. Only paths beyond the kernel's
+// full-path limit need component-relative opens; no process-wide chdir is used.
+static int br_open_directory(const char *path) {
+    const int flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC;
+    int fd = open(path, flags | O_NOFOLLOW);
+    if (fd >= 0 || errno != ENAMETOOLONG) return fd;
+
+    char *components = strdup(path);
+    if (!components) return -1;
+    fd = open(path[0] == '/' ? "/" : ".", flags);
+    if (fd < 0) { free(components); return -1; }
+    char *state = NULL;
+    char *part = strtok_r(components, "/", &state);
+    while (part) {
+        char *next = strtok_r(NULL, "/", &state);
+        // Match the direct open: ancestors may be symlinks (e.g. macOS /var),
+        // but the directory being enumerated must never be a symlink.
+        int child = openat(fd, part, flags | (next ? 0 : O_NOFOLLOW));
+        int saved_errno = errno;
+        close(fd);
+        fd = child;
+        if (fd < 0) { free(components); errno = saved_errno; return -1; }
+        part = next;
+    }
+    free(components);
+    return fd;
+}
+
 int br_directory_open(const char *path, BRDirectory *directory) {
     directory->remaining = 0;
     directory->offset = 0;
     uint64_t t0 = br_timing_enabled ? br_now_ns() : 0;
-    directory->fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    directory->fd = br_open_directory(path);
     if (br_timing_enabled) br_open_ns += br_now_ns() - t0;
     return directory->fd < 0 ? -1 : 0;
 }

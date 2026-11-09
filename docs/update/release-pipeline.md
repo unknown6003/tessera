@@ -52,8 +52,8 @@ it. The original Mac checkout remains intact. See the two modes and exact
 commands in [RELEASING.md](../../RELEASING.md).
 
 Native status is still blocked. The `c052` campaign failed one EngineTests
-timeout case in five iterations. Parent diagnosis has not produced a source
-fix yet. An owned certificate probe timed out after 15 seconds; this may be a
+timeout case in five iterations. The session-scoped fix is committed at
+`949c930` and is under fresh native qualification. An owned certificate probe timed out after 15 seconds; this may be a
 keychain prompt and does not establish that the identity is unusable. No trust
 change is allowed. No native publisher run or publication is claimed.
 
@@ -109,7 +109,8 @@ step. The test stops before XcodeGen; it does not prove a native build.
 The source pass checks key substitution, runtime and nested identifiers,
 missing scan completion, wrong counts, changed preference files, stale CI,
 wrong tags, public release overwrite and draft asset changes. The Linux tests
-exercise the rejection paths. No independent agent review ran, per scope.
+exercise the rejection paths. Three independent source passes reviewed `c05278d..33e5439` on Standards,
+Spec and Risk. They retained no code finding. Native proof remains separate.
 
 GitHub has no transaction across tag creation, asset upload and publication.
 The publisher keeps the release a draft through byte verification and checks
