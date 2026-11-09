@@ -1,0 +1,12 @@
+{
+  "report": {
+    "revision": "bd1b47cfd9ac18d54e040739fa05e346940cee2a",
+    "lane": "native",
+    "policy": "a381cc8cc38957e93247813263a81220cc6f73c69dd60d21def1747db2f06780",
+    "result": "failure",
+    "failure": "ValueError",
+    "steps": [],
+    "finishedAt": 1794188316.266315
+  },
+  "signature": "6a0a406f007e1bcc84b1c0d021a112203bf932ebe32322176f04e9d20b8f4050"
+}
