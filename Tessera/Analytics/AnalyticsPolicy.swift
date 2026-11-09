@@ -80,7 +80,7 @@ enum AnalyticsPolicy {
     private static let categories: [String: Set<String>] = [
         "source_class": ["local_internal", "local_external", "local_unknown", "cloud", "remote", "unknown"],
         "scope": ["volume", "folder", "unknown"],
-        "coverage": ["complete", "partial", "unknown"],
+        "coverage": ["complete", "partial", "blocked", "unknown"],
         "phase": ["enumeration", "diagnosis", "publication"],
         "method": ["trash", "permanent"],
         "outcome": ["complete", "partial", "held", "failed", "cancelled", "superseded", "installed", "installing", "up_to_date"],

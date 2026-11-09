@@ -47,7 +47,6 @@ struct AnalyticsTests {
         config.errorTrackingConfig.autoCapture = false
         config.urlSessionConfiguration?.protocolClasses = [AnalyticsWireProbe.self]
         config.compression = .none
-        config.flushAt = 1
         AnalyticsWireProbe.requests.clear()
         let sdk = PostHogSDK.with(config)
         sdk.optIn()
@@ -64,9 +63,14 @@ struct AnalyticsTests {
             "coverage": "complete", "duration_ms": 121000, "path": sentinel, "$set": ["name": sentinel]])
         sdk.capture(sentinel, properties: [:])
         sdk.captureLog("scan_complete", level: .info, attributes: ["duration_ms": 121000, "path": sentinel])
+        let surveyID = UUID(uuidString: "01a1bcba-0111-0000-f2f4-c69e43fff048")!
+        let questionID = UUID(uuidString: "01a1bcba-0111-0000-f2f4-c69e43fff049")!
+        sdk.capture("survey shown", properties: AnalyticsSurvey.shown(surveyID: surveyID).mapValues(\.raw))
+        sdk.capture("survey sent", properties: AnalyticsSurvey.rating(surveyID: surveyID, questionID: questionID, rating: 4).mapValues(\.raw))
         sdk.flush()
         let deadline = Date().addingTimeInterval(8)
-        while Date() < deadline && !AnalyticsWireProbe.requests.hasEventAndLog {
+        while Date() < deadline && !(AnalyticsWireProbe.requests.hasEventAndLog
+            && AnalyticsWireProbe.requests.hasEvents(["survey shown", "survey sent"])) {
             try await Task.sleep(for: .milliseconds(50))
         }
         let bodies = AnalyticsWireProbe.requests.snapshot
@@ -83,6 +87,16 @@ struct AnalyticsTests {
         #expect(properties["application"] as? String == "Tessera")
         #expect(properties["$process_person_profile"] as? Bool == false)
         #expect(UUID(uuidString: event["distinct_id"] as? String ?? "") != nil)
+        for name in ["survey shown", "survey sent"] {
+            let survey = try #require(batches.first { $0["event"] as? String == name })
+            let values = try #require(survey["properties"] as? [String: Any])
+            #expect(values["$survey_id"] as? String == "01a1bcba-0111-0000-f2f4-c69e43fff048")
+            if name == "survey sent" {
+                #expect(values["$survey_response_01a1bcba-0111-0000-f2f4-c69e43fff049"] as? Int == 4)
+                #expect(values["$survey_response_01A1BCBA-0111-0000-F2F4-C69E43FFF049"] == nil)
+                #expect(UUID(uuidString: values["$survey_submission_id"] as? String ?? "") != nil)
+            }
+        }
     }
 
     @Test("Late progress cannot replace final scan telemetry")
@@ -93,6 +107,29 @@ struct AnalyticsTests {
         #expect(telemetry.progressSnapshot.isComplete)
         #expect(telemetry.progressSnapshot.filesScanned == 8)
         #expect(telemetry.progressSnapshot.providerReadAttempts == 2)
+    }
+
+    @Test("Telemetry reports the computed coverage even when enumeration has no gaps")
+    func computedCoverageTelemetry() throws {
+        let telemetry = ScanTelemetry()
+        let root = FileNode(url: URL(fileURLWithPath: "/owned-fixture"), name: "fixture", isDirectory: true, size: 0)
+        for kind in [FileNode.Kind.hiddenSpace, .cloudOnlyStorage, .crossVolume] {
+            root.setChildren([FileNode(name: "boundary", isDirectory: true, size: 1, kind: kind)])
+            let coverage = RescueCoverage.inspect(root: root, sourceIsReadable: true)
+            #expect(coverage.state == .partial && root.scanCoverageGaps.isEmpty)
+            let values = telemetry.properties(outcome: "partial", coverage: coverage.state, gaps: 0)
+            let safe = try #require(AnalyticsPolicy.sanitize(event: AnalyticsEvent.scanCompleted.rawValue, properties: values.mapValues(\.raw)))
+            #expect(safe["coverage"] as? String == "partial")
+            #expect(safe["coverage_gaps"] as? Int == 0)
+        }
+        root.setChildren([])
+        for readable in [false, true] {
+            let coverage = RescueCoverage.inspect(root: root, sourceIsReadable: readable)
+            let values = telemetry.properties(outcome: "complete", coverage: coverage.state, gaps: 0)
+            let safe = try #require(AnalyticsPolicy.sanitize(event: AnalyticsEvent.scanCompleted.rawValue, properties: values.mapValues(\.raw)))
+            #expect(safe["coverage"] as? String == (readable ? "complete" : "blocked"))
+        }
+        #expect(telemetry.properties(outcome: "complete", gaps: 0)["coverage"]?.raw as? String == "unknown")
     }
 
     @Test("Source telemetry uses cached mounts and distinguishes cloud paths")
@@ -253,6 +290,11 @@ private final class AnalyticsWireRequests: @unchecked Sendable {
     private var paths: Set<String> = []
     var snapshot: [Data] { lock.withLock { bodies } }
     var hasEventAndLog: Bool { lock.withLock { paths.contains("/batch") && paths.contains("/i/v1/logs") } }
+    func hasEvents(_ expected: Set<String>) -> Bool {
+        let events = snapshot.compactMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            .flatMap { $0["batch"] as? [[String: Any]] ?? [] }.compactMap { $0["event"] as? String }
+        return expected.isSubset(of: Set(events))
+    }
     func clear() { lock.withLock { bodies.removeAll(); paths.removeAll() } }
     func append(_ body: Data, path: String) { lock.withLock { bodies.append(body); paths.insert(path) } }
 }

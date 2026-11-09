@@ -70,7 +70,7 @@ enum PerformanceQualification {
                     let matches = vm.progress.filesScanned == trial.expectedFiles
                         && vm.progress.dirsScanned == trial.expectedDirectories
                     let outcome = timedOut ? "harness_deadline" : vm.errorMessage != nil ? "failed"
-                        : !matches ? "count_mismatch" : gaps != 0 ? "partial" : "complete"
+                        : !matches ? "count_mismatch" : gaps != 0 || vm.rescuePlan?.coverage.state != .complete ? "partial" : "complete"
                     results.append(Result(id: trial.id, durationMS: milliseconds,
                         files: vm.progress.filesScanned, directories: vm.progress.dirsScanned,
                         providerReads: vm.progress.providerReadAttempts, coverageGaps: gaps,

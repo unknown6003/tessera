@@ -25,7 +25,7 @@ final class ScanTelemetry: @unchecked Sendable {
     func finishEnumeration() { enumerationMS = durationMS }
     func finishDiagnosis() { diagnosisMS = max(0, durationMS - enumerationMS) }
 
-    func properties(outcome: String, gaps: Int? = nil) -> [String: AnalyticsValue] {
+    func properties(outcome: String, coverage: RescueCoverage.State? = nil, gaps: Int? = nil) -> [String: AnalyticsValue] {
         let progress = lock.withLock { latest }
         var properties: [String: AnalyticsValue] = [
             "source_class": .text(source.rawValue), "scope": .text(scope),
@@ -35,10 +35,8 @@ final class ScanTelemetry: @unchecked Sendable {
             "directories": .integer(progress.dirsScanned), "schema_version": .integer(1)
         ]
         properties["provider_reads"] = .integer(progress.providerReadAttempts)
-        if let gaps {
-            properties["coverage"] = .text(gaps == 0 ? "complete" : "partial")
-            properties["coverage_gaps"] = .integer(gaps)
-        } else { properties["coverage"] = .text("unknown") }
+        properties["coverage"] = .text(coverage?.rawValue ?? "unknown")
+        if let gaps { properties["coverage_gaps"] = .integer(gaps) }
         return properties
     }
 }

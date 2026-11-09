@@ -239,6 +239,7 @@ struct ScanRegressionTests {
     }
 
     @Test("Real paths beyond PATH_MAX retain every file in bulk and fallback scans")
+    @MainActor
     func overlongFilesystemPaths() async throws {
         let url = try fixture()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -304,6 +305,25 @@ struct ScanRegressionTests {
         let deepRoot = try await FileScanner.scan(url: URL(fileURLWithPath: path)) { _ in }
         #expect(Set(deepRoot.children.map(\.name)) == ["sentinel", "empty"])
         #expect(deepRoot.scanCoverageGaps.isEmpty)
+
+        let suite = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let vm = ScanViewModel(defaults: defaults)
+        for source in [URL(fileURLWithPath: path), URL(fileURLWithPath: path + "/empty")] {
+            vm.startScan(volumeURL: source)
+            let deadline = ContinuousClock.now + .seconds(15)
+            while vm.isScanning, .now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+            #expect(!vm.isScanning)
+            if vm.isScanning { vm.cancelScan() }
+            #expect(vm.errorMessage == nil)
+            #expect(vm.progress.rootReadSucceeded)
+            #expect(vm.rescuePlan?.coverage.state == .complete)
+            #expect(!vm.needsFullDiskAccess)
+            let scanned = try #require(vm.rootNode)
+            #expect(scanned.scanCoverageGaps.isEmpty)
+            #expect(scanned.children.count == (source.lastPathComponent == "empty" ? 0 : 2))
+        }
 
         try #require(Darwin.symlinkat(".", descriptors.last!, "shortcut") == 0)
         var directory = BRDirectory()

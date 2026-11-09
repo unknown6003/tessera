@@ -24,6 +24,8 @@ struct ScanProgress: Sendable {
     var dirsScanned: Int = 0
     var dirsDiscovered: Int = 1
     var providerReadAttempts: Int = 0
+    /// The root listing was read, independently of gaps beneath that root.
+    var rootReadSucceeded: Bool = false
     var currentPath: String = ""
     /// The volume's used-bytes figure, when scanning a whole volume (0 otherwise).
     /// Used for capacity reporting, not as a completion denominator.
@@ -141,6 +143,7 @@ struct FileScanner: Sendable {
     /// Per-directory enumeration result, computed on a worker before the worker
     /// takes the shared lock to merge it.
     private struct DirResult {
+        var readSucceeded = false
         var children: [FileNode] = []
         var subdirs: [DirWork] = []
         var fileCount = 0
@@ -576,6 +579,7 @@ struct FileScanner: Sendable {
                                                   shouldStop: { self.readSession.isCancelled },
                                                   onBatch: { self.noteRead() })
             result.coverageGapPaths = listing.unreadablePaths
+            result.readSucceeded = true
             return result
         }
 
@@ -594,6 +598,7 @@ struct FileScanner: Sendable {
             pending -= 1
 
             progress.filesScanned += result.fileCount
+            if work.node === rootNode { progress.rootReadSucceeded = result.readSucceeded }
             progress.bytesFound += result.bytes
             progress.dirsScanned += 1
             progress.dirsDiscovered += result.subdirs.count

@@ -234,7 +234,7 @@ final class ScanViewModel: ObservableObject {
                 let treeIsEmpty = node.children.isEmpty
                 let volumePath = volumeURL.path
                 let isVolumeRoot = volumePath == "/"
-                let isUnreadable = !FileManager.default.isReadableFile(atPath: volumePath)
+                let isUnreadable = !telemetry.progressSnapshot.rootReadSucceeded
                 // Classify cleanup suggestions off the main actor (pure CPU over the
                 // new tree, no I/O) BEFORE publishing it. The prior displayed tree
                 // is a separate object, retained so Cancel can restore the user's
@@ -259,13 +259,14 @@ final class ScanViewModel: ObservableObject {
                 try Task.checkCancellation()
                 DebugAutomation.recordScanPhase("diagnosis finished", startedAt: self.scanStartedAt)
                 telemetry.finishDiagnosis()
-                var diagnosisProperties = telemetry.properties(outcome: "complete")
+                let (coverage, report, measurement) = diagnosis
+                var diagnosisProperties = telemetry.properties(outcome: "complete", coverage: coverage.state,
+                                                                gaps: node.scanCoverageGaps.count)
                 diagnosisProperties["phase"] = .text("diagnosis")
                 Analytics.shared.capture(.scanPhaseFinished, values: diagnosisProperties)
                 if treeIsEmpty && (isVolumeRoot || isUnreadable) {
                     self.needsFullDiskAccess = true
                 }
-                let (coverage, report, measurement) = diagnosis
                 let plan = RescuePlan(sourceURL: volumeURL, report: report,
                                       measurement: measurement, coverage: coverage,
                                       goal: self.rescueGoal,
@@ -287,7 +288,8 @@ final class ScanViewModel: ObservableObject {
                 self.restoreSavedRescueCaseIfNeeded(plan: plan)
                 self.previousScan = nil
                 DebugAutomation.recordScanPhase("results published", startedAt: self.scanStartedAt)
-                Analytics.shared.capture(.scanCompleted, values: telemetry.properties(outcome: coverage.state == .complete ? "complete" : "partial", gaps: node.scanCoverageGaps.count))
+                Analytics.shared.capture(.scanCompleted, values: telemetry.properties(outcome: coverage.state == .complete ? "complete" : "partial",
+                                                                                     coverage: coverage.state, gaps: node.scanCoverageGaps.count))
             } catch is CancellationError {
                 // User stopped the current scan — not an error. A cancellation
                 // from a superseded scan must not change its replacement's state.

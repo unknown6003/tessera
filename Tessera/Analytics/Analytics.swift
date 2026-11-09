@@ -39,6 +39,18 @@ struct AnalyticsFlagSnapshot: Sendable {
     var surveyQuestionID: UUID?
 }
 
+enum AnalyticsSurvey {
+    static func shown(surveyID: UUID) -> [String: AnalyticsValue] {
+        ["$survey_id": .text(surveyID.uuidString.lowercased())]
+    }
+
+    static func rating(surveyID: UUID, questionID: UUID, rating: Int) -> [String: AnalyticsValue] {
+        ["$survey_id": .text(surveyID.uuidString.lowercased()),
+         "$survey_submission_id": .text(UUID().uuidString.lowercased()), "$survey_response": .integer(rating),
+         "$survey_response_\(questionID.uuidString.lowercased())": .integer(rating), "$survey_completed": .boolean(true)]
+    }
+}
+
 enum AnalyticsCrashStorage {
     /// Discard reports from builds before the current anonymous payload policy.
     static func purge(cacheRoot: URL, bundleIdentifier: String) throws {
@@ -266,16 +278,14 @@ final class Analytics: ObservableObject {
 
     func submitRating(_ rating: Int) {
         guard (1...5).contains(rating), let surveyID, let surveyQuestionID, isEnabled, !Self.isSuppressed else { return }
-        let values: [String: AnalyticsValue] = ["$survey_id": .text(surveyID.uuidString),
-            "$survey_submission_id": .text(UUID().uuidString), "$survey_response": .integer(rating),
-            "$survey_response_\(surveyQuestionID.uuidString)": .integer(rating), "$survey_completed": .boolean(true)]
+        let values = AnalyticsSurvey.rating(surveyID: surveyID, questionID: surveyQuestionID, rating: rating)
         Task { await backend.capture("survey sent", values: values); await backend.flush() }
         self.surveyID = nil
     }
 
     func surveyShown() {
         guard let surveyID, isEnabled, !Self.isSuppressed else { return }
-        Task { await backend.capture("survey shown", values: ["$survey_id": .text(surveyID.uuidString)]) }
+        Task { await backend.capture("survey shown", values: AnalyticsSurvey.shown(surveyID: surveyID)) }
     }
 
     func flush() { Task { await backend.flush() } }
