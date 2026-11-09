@@ -85,6 +85,16 @@ struct Sidebar: View {
                         .focusable(!vm.isDeleting && !vm.isScanning)
                         .focused($sourcesFocused)
                         .focusEffectDisabled()
+                        // With no listed source selected, ring the whole list
+                        // so its focus is still visible.
+                        .overlay {
+                            if sourcesFocused && !orderedSources.contains(where: { $0.url == selectedVolumeURL }) {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .inset(by: -4)
+                                    .strokeBorder(Theme.electricBlue, lineWidth: 1)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                         .onKeyPress(keys: [.upArrow, .downArrow, .return]) { press in
                             guard press.modifiers.isDisjoint(with: [.command, .option, .control]) else { return .ignored }
                             return handleSourceKey(press.key) ? .handled : .ignored
@@ -177,8 +187,10 @@ struct Sidebar: View {
                                isCached: vm.scannedURL != info.url && vm.hasCachedScan(for: info.url))
                 }
                 .buttonStyle(.plain)
-                // The selection fill marks the row; a 1 pt ring marks keyboard
-                // focus. The system ring would use the user's system accent.
+                // The list is one Tab stop and arrow keys move the selection,
+                // so a row is not a Tab stop of its own. The selection fill
+                // marks the row; a 1 pt ring marks list focus.
+                .focusable(false)
                 .focusEffectDisabled()
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -191,7 +203,7 @@ struct Sidebar: View {
                 // and the key handler also refuse while scanning or removing.
                 .allowsHitTesting(!sourcesBusy)
                 .accessibilityAddTraits(selectedVolumeURL == info.url ? [.isSelected] : [])
-                .accessibilityLabel(Text(info.name))
+                .accessibilityLabel(Text(sourceAccessibilityLabel(info)))
                 .accessibilityValue(Text(sourceAccessibilityValue(info)))
                 .accessibilityHint(sourcesBusy ? "Unavailable while a scan or cleanup runs"
                                                : "Select or display this storage source")
@@ -239,6 +251,14 @@ struct Sidebar: View {
             return false
         }
         return true
+    }
+
+    /// Sources that share a name ("Nextcloud" for each account) add their
+    /// abbreviated path so VoiceOver can tell them apart.
+    private func sourceAccessibilityLabel(_ info: VolumeInfo) -> String {
+        let sharesName = allSources.contains { $0.url != info.url && $0.name == info.name }
+        guard sharesName else { return info.name }
+        return "\(info.name), \((info.url.path as NSString).abbreviatingWithTildeInPath)"
     }
 
     private func sourceAccessibilityValue(_ info: VolumeInfo) -> String {

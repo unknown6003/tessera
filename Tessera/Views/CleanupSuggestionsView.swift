@@ -188,8 +188,6 @@ struct CleanupSuggestionsView: View {
                 }
             }
 
-            capacityNotes(plan)
-
             if let fraction {
                 ProgressView(value: fraction)
                     .tint(targetColor(plan))
@@ -225,6 +223,10 @@ struct CleanupSuggestionsView: View {
             Text("Measured locally · \(plan.measurement.primarySource)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            // Definitions follow the figures and the goal control, so the
+            // numbers and the one adjustable value come first.
+            capacityNotes(plan)
         }
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -373,43 +375,46 @@ struct CleanupSuggestionsView: View {
             }
             .padding(.top, 4)
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: group.category.symbol)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(color(for: group.risk))
-                        .frame(width: 24)
+            // One row: the disclosure arrow lines up with the title and the
+            // Add action, instead of sitting alone beside a second action row.
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: group.category.symbol)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(color(for: group.risk))
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(group.category.title)
-                            .font(.subheadline.weight(.semibold))
-                        Text("\(group.nodes.count) item\(group.nodes.count == 1 ? "" : "s") · \(group.category.explanation)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(group.category.title)
+                        .font(.subheadline.weight(.semibold))
+                    Text("\(group.nodes.count) item\(group.nodes.count == 1 ? "" : "s") · \(group.category.explanation)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text(Theme.format(group.totalBytes))
-                            .font(.subheadline.monospacedDigit().weight(.semibold))
-                        riskTag(group.risk)
-                    }
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(Theme.format(group.totalBytes))
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                    riskTag(group.risk)
                 }
 
-                HStack(spacing: 8) {
-                    if group.risk != .protected {
-                        Button(vm.isGroupStaged(group) ? "Added" : "Add") {
-                            vm.toggleCleanupGroup(group)
-                        }
-                        .tesseraButtonStyle(.flat)
-                        .controlSize(.small)
-                    } else {
-                        Text("Owner handoff")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                if group.risk != .protected {
+                    let staged = vm.isGroupStaged(group)
+                    Button(staged ? "Added" : "Add") {
+                        vm.toggleCleanupGroup(group)
                     }
-                    Spacer(minLength: 0)
+                    .tesseraButtonStyle(.flat)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .accessibilityLabel(staged ? "Remove \(group.category.title) from Cleanup List"
+                                               : "Add \(group.category.title) to Cleanup List")
+                } else {
+                    Text("Owner handoff")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
                 }
             }
             .padding(.vertical, 11)

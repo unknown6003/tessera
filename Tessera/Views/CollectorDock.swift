@@ -438,7 +438,11 @@ struct CleanupReviewSheet: View {
         var message = base
         if !parts.isEmpty { message += " " + parts.joined(separator: ", ") + "." }
         if let target = plan.targetSpace {
-            message += " Goal: under \(Int((plan.capacityGoal * 100).rounded()))% used, \(Theme.format(target)) free."
+            // Name both figures so the goal is not read as current free space.
+            message += " Goal: under \(Int((plan.capacityGoal * 100).rounded()))% used, which needs \(Theme.format(target)) free."
+            if let now = plan.measurement.primaryBytes {
+                message += " \(Theme.format(now)) is available now."
+            }
         }
         return message
     }

@@ -323,7 +323,7 @@ private struct FlatButtonSurface<Label: View>: View {
             }
             .contentShape(shape)
             .scaleEffect(reduceMotion ? 1.0 : scale)
-            .opacity(isEnabled ? 1.0 : 0.45)
+            .opacity(isEnabled ? 1.0 : 0.55)
             .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
             .animation(reduceMotion ? nil : Motion.press, value: isPressed)
             // A pointer cue makes "this is clickable" obvious before the click.
@@ -524,20 +524,50 @@ private struct TesseraButtonModifier<Style: TesseraButtonStyle>: ViewModifier {
     let style: Style
     @Environment(\.controlSize) private var controlSize
     @Environment(\.isEnabled) private var isEnabled
+    // A sheet or alert takes key status from the window behind it. Its
+    // opener keeps SwiftUI focus, so draw the ring only in the key window.
+    @Environment(\.controlActiveState) private var activeState
     @FocusState private var focused: Bool
+
+    private var showsRing: Bool { focused && isEnabled && activeState == .key }
 
     func body(content: Content) -> some View {
         content.buttonStyle(style)
             .focused($focused)
             .focusEffectDisabled()
+            .background(RevealWhenFocused(focused: showsRing))
             .overlay {
-                if focused && isEnabled {
+                if showsRing {
                     RoundedRectangle(cornerRadius: style.focusRadius(for: controlSize), style: .continuous)
                         .inset(by: -3)
                         .strokeBorder(Theme.electricBlue, lineWidth: 2)
                         .allowsHitTesting(false)
                 }
             }
+    }
+}
+
+/// Scrolls a control into view when keyboard focus arrives. SwiftUI scroll
+/// views on macOS do not follow Tab focus, so a focused control could sit
+/// below the fold. Scrolls only on the change to focused, so a user scroll
+/// away from a still-focused control is not undone by a later redraw.
+private struct RevealWhenFocused: NSViewRepresentable {
+    let focused: Bool
+
+    final class Coordinator { var wasFocused = false }
+
+    /// Scrolls on the next run-loop turn, after SwiftUI finishes this update.
+    final class RevealView: NSView {
+        @objc func reveal() { scrollToVisible(bounds.insetBy(dx: -8, dy: -16)) }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context: Context) -> RevealView { RevealView() }
+
+    func updateNSView(_ view: RevealView, context: Context) {
+        defer { context.coordinator.wasFocused = focused }
+        guard focused, !context.coordinator.wasFocused else { return }
+        view.perform(#selector(RevealView.reveal), with: nil, afterDelay: 0)
     }
 }
 
