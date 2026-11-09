@@ -1,5 +1,6 @@
 import copy
 import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -8,11 +9,93 @@ import unittest
 from unittest.mock import patch
 
 from ci.common import RECIPE_FILES, REQUIRED_STEPS, build_environment, policy_hash, run, seal, verify
-from ci.pipeline import execute, regression
+from ci.pipeline import execute, regression, remove_tree
 from ci.runner import trusted_pull
 
 
 class ExternalCITests(unittest.TestCase):
+    def test_cleanup_refuses_root_symlink_and_parent_component(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "outside").mkdir()
+            (root / "outside/keep").write_text("unchanged")
+            (root / "alias").symlink_to(root / "outside", target_is_directory=True)
+            with self.assertRaises(OSError):
+                remove_tree(root / "alias")
+            with self.assertRaises(ValueError):
+                remove_tree(root / "outside/..")
+            self.assertEqual((root / "outside/keep").read_text(), "unchanged")
+
+    def test_cleanup_handles_real_depth_under_a_low_descriptor_limit(self):
+        script = '''
+import errno, os, resource, shutil, tempfile
+from pathlib import Path
+from ci.pipeline import remove_tree
+with tempfile.TemporaryDirectory() as temporary:
+    base = Path(temporary)
+    (base / "real").mkdir()
+    (base / "alias").symlink_to(base / "real", target_is_directory=True)
+    root = base / "alias/owned"
+    root.mkdir()
+    outside = base / "outside"
+    outside.mkdir()
+    (outside / "keep").write_text("unchanged")
+    (root / "link").symlink_to(outside, target_is_directory=True)
+    cursor = root
+    for _ in range(280):
+        cursor = cursor / "d"
+        cursor.mkdir()
+    (cursor / "file").write_text("owned")
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (32, hard))
+    try:
+        try:
+            shutil.rmtree(root)
+        except OSError as error:
+            assert error.errno == errno.EMFILE, error
+        else:
+            raise AssertionError("Legacy removal must reproduce descriptor exhaustion")
+        (root / "link-after-red").symlink_to(outside, target_is_directory=True)
+        remove_tree(root)
+        assert not root.exists()
+        assert (outside / "keep").read_text() == "unchanged"
+    finally:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+'''
+        result = subprocess.run([sys.executable, "-B", "-c", script], capture_output=True,
+                                text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_cleanup_failure_keeps_original_step_and_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            (output / "DerivedData").mkdir(parents=True)
+            with patch("ci.pipeline.run", side_effect=RuntimeError("original heartbeat failure")), \
+                 patch("ci.pipeline.remove_tree", side_effect=OSError(24, "synthetic cleanup exhaustion")):
+                report = execute(root, output, "web", "a" * 40, root / "cache")
+            self.assertEqual(report["result"], "failure")
+            self.assertEqual(report["failure"], "RuntimeError")
+            self.assertEqual(report["steps"][0]["name"], "release-policy")
+            self.assertEqual(report["steps"][0]["result"], "failure")
+            self.assertEqual(report["cleanupFailures"], [
+                {"target": target, "error": "OSError", "errno": 24} for target in ("fixtures", "DerivedData")])
+
+    def test_cleanup_failure_also_rejects_otherwise_successful_job(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            assets = root / "web/dist/client/assets"
+            assets.mkdir(parents=True)
+            for extension in ("js", "css"):
+                (assets / ("index." + extension)).write_text("x")
+            with patch("ci.pipeline.run", return_value=""), \
+                 patch("ci.pipeline.remove_tree", side_effect=OSError(24, "synthetic cleanup exhaustion")):
+                report = execute(root, root / "output", "web", "a" * 40, root / "cache")
+            self.assertTrue(all(step["result"] == "success" for step in report["steps"]))
+            self.assertEqual(report["result"], "failure")
+            self.assertEqual(report["failure"], "CleanupError")
+            self.assertEqual(report["cleanupFailures"][0]["errno"], 24)
+
     def report(self):
         return {"revision": "a" * 40, "lane": "web", "policy": "pinned",
                 "result": "success", "finishedAt": time.time(),

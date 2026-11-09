@@ -6,13 +6,74 @@ import json
 import os
 from pathlib import Path
 import platform
-import shutil
 import signal
 import sys
 import tempfile
 import time
 
 from .common import build_environment, policy_hash, run, write_json
+
+
+def remove_tree(root):
+    """Remove an owned tree with bounded descriptors and no symlink traversal."""
+    root = Path(root)
+    if root.name in ("", ".", ".."):
+        raise ValueError("Cleanup requires one named owned root")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    # macOS /tmp is itself a symlink. Resolve only the root's containing path;
+    # the root and every entry inside it still require no-follow opens.
+    parent_fd = os.open(root.parent.resolve(strict=True), flags)
+    try:
+        try:
+            root_fd = os.open(root.name, flags, dir_fd=parent_fd)
+        except FileNotFoundError:
+            return
+        try:
+            identity = os.fstat(root_fd)
+
+            def directory(parts):
+                fd = os.dup(root_fd)
+                try:
+                    for part in parts:
+                        child = os.open(part, flags, dir_fd=fd)
+                        os.close(fd)
+                        fd = child
+                    return fd
+                except BaseException:
+                    os.close(fd)
+                    raise
+
+            pending = [((), False)]
+            while pending:
+                parts, visited = pending.pop()
+                fd = directory(parts)
+                try:
+                    if not visited:
+                        with os.scandir(fd) as entries:
+                            children = [(entry.name, entry.is_dir(follow_symlinks=False)) for entry in entries]
+                        pending.append((parts, True))
+                        for name, is_directory in children:
+                            if is_directory:
+                                pending.append((parts + (name,), False))
+                            else:
+                                os.unlink(name, dir_fd=fd)
+                    elif parts:
+                        ancestor = directory(parts[:-1])
+                        try:
+                            os.rmdir(parts[-1], dir_fd=ancestor)
+                        finally:
+                            os.close(ancestor)
+                    else:
+                        current = os.stat(root.name, dir_fd=parent_fd, follow_symlinks=False)
+                        if (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino):
+                            raise ValueError("Owned cleanup root changed")
+                        os.rmdir(root.name, dir_fd=parent_fd)
+                finally:
+                    os.close(fd)
+        finally:
+            os.close(root_fd)
+    finally:
+        os.close(parent_fd)
 
 
 def fixtures(output, root):
@@ -152,19 +213,22 @@ def execute(source, output, lane, revision, cache, baseline=None):
         report["failure"] = type(error).__name__
         print(str(error), file=sys.stderr)
     finally:
-        report["finishedAt"] = time.time()
-        try:
-            write_json(output / "report.json", report)
-        finally:
-            # A full disk must not prevent removal of rebuildable test data.
+        # Cleanup must neither exhaust descriptors on deep fixtures nor replace
+        # the original failure and step inventory in the signed report.
+        cleanup = [(name, output / name) for name in ("fixtures", "DerivedData")]
+        if fixture_root is not None:
+            cleanup.append(("fixture-root", fixture_root))
+        for name, path in cleanup:
             try:
-                for name in ("fixtures", "DerivedData"):
-                    path = output / name
-                    if path.is_dir() and not path.is_symlink():
-                        shutil.rmtree(path)
-            finally:
-                if fixture_root is not None:
-                    shutil.rmtree(fixture_root)
+                remove_tree(path)
+            except Exception as error:
+                report.setdefault("cleanupFailures", []).append(
+                    {"target": name, "error": type(error).__name__, "errno": getattr(error, "errno", None)})
+                report["result"] = "failure"
+                report.setdefault("failure", "CleanupError")
+                print(f"{name} cleanup: {error}", file=sys.stderr)
+        report["finishedAt"] = time.time()
+        write_json(output / "report.json", report)
     return report
 
 
