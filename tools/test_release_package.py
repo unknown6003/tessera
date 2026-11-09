@@ -3,14 +3,16 @@
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import plistlib
 import tempfile
+import tarfile
 import unittest
 from unittest.mock import patch
 
 from ci.release import (BUNDLE, CERTIFICATE, Release, appcast_metadata, release_identity,
-                        validate_requirement, validate_smoke, validate_tag)
+                        validate_requirement, validate_smoke, validate_tag, verify_archive, tree_hash)
 
 
 class ReleasePackageTests(unittest.TestCase):
@@ -255,6 +257,185 @@ class ReleasePackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "CI stale"):
                 release.publish(proof, {})
         self.assertFalse(any(c.kwargs.get("method") for c in api.call_args_list))
+
+
+class ArchiveReleaseTests(unittest.TestCase):
+    """Real Git objects and an archive, with no project checkout or worktree."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="tessera-archive-test-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.source, self.output, self.bare = [self.root / name for name in ("source", "output", "objects.git")]
+        self.source.mkdir()
+        self.output.mkdir()
+        self.release = Release(self.source, self.output, b"x" * 32)
+        self.release.command("init-objects", ["git", "init", "--bare", self.bare], 10)
+        imported = bytearray()
+        files = [("ordinary.txt", b"owned contents\x00binary\n", "100644"),
+                 ("release.sh", b"#!/bin/sh\nexit 0\n", "100755"),
+                 ("link", b"ordinary.txt", "120000"),
+                 ("nested/tab\tand\nnewline", b"raw Git filename", "100644")]
+        for number, (_, payload, _) in enumerate(files, 1):
+            imported.extend(f"blob\nmark :{number}\ndata {len(payload)}\n".encode() + payload + b"\n")
+        imported.extend(b"commit refs/heads/fixture\nmark :10\ncommitter Synthetic <test@example.invalid> 1 +0000\ndata 7\nfixture\n")
+        for number, (name, _, mode) in enumerate(files, 1):
+            imported.extend(f"M {mode} :{number} {json.dumps(name)}\n".encode())
+        imported.extend(b"\ncommit refs/heads/other\ncommitter Synthetic <test@example.invalid> 2 +0000\ndata 6\nsecond\nfrom :10\nM 100644 inline ordinary.txt\ndata 7\nchanged\n\ndone\n")
+        self.release.command("import-objects", ["git", "--git-dir", self.bare, "fast-import", "--quiet"], 10, data=bytes(imported))
+        self.revision = self.release.command("fixture-revision", ["git", "--git-dir", self.bare, "rev-parse", "refs/heads/fixture"], 10).strip()
+        self.other = self.release.command("other-revision", ["git", "--git-dir", self.bare, "rev-parse", "refs/heads/other"], 10).strip()
+        archive = self.root / "source.tar"
+        self.release.command("fixture-archive", ["git", "--git-dir", self.bare, "archive", "--output", archive, self.revision], 10)
+        with tarfile.open(archive) as stream:
+            stream.extractall(self.source, filter="data")
+        self.release.git_dir, self.release.revision = self.bare, self.revision
+
+    def test_exact_archive_accepts_git_blobs_modes_and_raw_names_without_repo_writes(self):
+        before = tree_hash(self.bare)
+        proof = self.release.archive_pin()
+        self.assertEqual(proof["revision"], self.revision)
+        self.assertEqual((proof["files"], proof["directories"], proof["symlinks"], proof["executables"]), (4, 1, 1, 1))
+        self.assertEqual(proof["blobHash"], "git-sha1")
+        self.assertEqual(tree_hash(self.bare), before)
+        self.assertNotIn(str(self.root), json.dumps(proof))
+        self.assertFalse((self.source / ".git").exists())
+        self.assertFalse((self.bare / "index").exists())
+
+    def test_changed_blob_is_rejected(self):
+        (self.source / "ordinary.txt").write_bytes(b"same filename, different content")
+        with self.assertRaisesRegex(ValueError, "blob hash differs"):
+            self.release.archive_pin()
+
+    def test_missing_blob_is_rejected(self):
+        (self.source / "ordinary.txt").unlink()
+        with self.assertRaisesRegex(ValueError, "missing"):
+            self.release.archive_pin()
+
+    def test_extra_files_including_bytecode_have_no_exemption(self):
+        for name in ("untracked.txt", ".DS_Store", "ignored.pyc"):
+            path = self.source / name
+            path.write_bytes(b"extra")
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "extra file"):
+                self.release.archive_pin()
+            path.unlink()
+        (self.source / "__pycache__").mkdir()
+        with self.assertRaisesRegex(ValueError, "extra directory"):
+            self.release.archive_pin()
+
+    def test_executable_mode_change_is_rejected(self):
+        (self.source / "release.sh").chmod(0o644)
+        with self.assertRaisesRegex(ValueError, "executable mode"):
+            self.release.archive_pin()
+
+    def test_file_replaced_with_symlink_is_rejected(self):
+        path = self.source / "ordinary.txt"
+        path.unlink()
+        path.symlink_to("release.sh")
+        with self.assertRaisesRegex(ValueError, "file type"):
+            self.release.archive_pin()
+
+    def test_tracked_symlink_changed_or_replaced_with_file_is_rejected(self):
+        path = self.source / "link"
+        path.unlink()
+        path.symlink_to("release.sh")
+        with self.assertRaisesRegex(ValueError, "blob hash"):
+            self.release.archive_pin()
+        path.unlink()
+        path.write_bytes(b"ordinary.txt")
+        with self.assertRaisesRegex(ValueError, "symlink type"):
+            self.release.archive_pin()
+
+    def test_different_full_commit_is_rejected(self):
+        self.release.revision = self.other
+        with self.assertRaisesRegex(ValueError, "blob hash"):
+            self.release.archive_pin()
+
+    def test_non_commit_object_or_missing_object_is_rejected(self):
+        blob = self.release.command("blob-object", ["git", "--git-dir", self.bare, "rev-parse", self.revision + ":ordinary.txt"], 10).strip()
+        self.release.revision = blob
+        with self.assertRaisesRegex(ValueError, "commit object"):
+            self.release.archive_pin()
+        self.release.revision = "0" * 40
+        with self.assertRaises(RuntimeError):
+            self.release.archive_pin()
+
+    def test_partial_or_named_revision_is_rejected_before_commands(self):
+        for revision in (self.revision[:12], "HEAD", self.revision + "^{commit}", "../fixture", "A" * 40):
+            self.release.revision = revision
+            with self.subTest(revision=revision), patch.object(self.release, "command") as command:
+                with self.assertRaisesRegex(ValueError, "full lowercase"):
+                    self.release.archive_pin()
+                command.assert_not_called()
+
+    def test_every_gate_repins_archive_before_shared_report_check(self):
+        from ci import release
+        with patch.object(release, "policy_hash", return_value="fixture-policy"), \
+             patch.object(release, "check_reports", return_value=self.revision) as reports, \
+             patch.object(release, "check") as worktree:
+            self.assertEqual(self.release.gate(), self.revision)
+            reports.assert_called_once()
+            self.assertEqual(reports.call_args.args[:3], (self.revision, "fixture-policy", b"x" * 32))
+            worktree.assert_not_called()
+        proof = json.loads((self.output / "source-archive-proof.json").read_text())
+        self.assertEqual(proof, self.release.source_proof)
+        (self.source / "ordinary.txt").write_bytes(b"changed after first gate")
+        with patch.object(release, "check_reports") as reports:
+            with self.assertRaises(ValueError):
+                self.release.gate(self.revision)
+            reports.assert_not_called()
+
+    def test_unsafe_manifest_paths_submodules_and_escaping_links_are_rejected(self):
+        for name in (b"../escape", b"/absolute", b"nested/../../escape", b"nested//file", b".git/config"):
+            manifest = b"100644 blob " + b"a" * 40 + b"\t" + name + b"\0"
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                verify_archive(self.source, manifest)
+        with self.assertRaisesRegex(ValueError, "submodule"):
+            verify_archive(self.source, b"160000 commit " + self.revision.encode() + b"\tsubmodule\0")
+        path = self.source / "link"
+        path.unlink()
+        path.symlink_to("../../escape")
+        target = b"../../escape"
+        blob = hashlib.sha1(b"blob " + str(len(target)).encode() + b"\0" + target).hexdigest().encode()
+        # Verify the link's escape check even with a matching Git blob identity.
+        for other in self.source.iterdir():
+            if other.is_file() and not other.is_symlink():
+                other.unlink()
+        import shutil
+        shutil.rmtree(self.source / "nested")
+        with self.assertRaisesRegex(ValueError, "escapes"):
+            verify_archive(self.source, b"120000 blob " + blob + b"\tlink\0")
+
+    def test_git_replacement_cannot_substitute_a_different_commit_tree(self):
+        self.release.command("fixture-replace", ["git", "--git-dir", self.bare, "replace", self.revision, self.other], 10)
+        self.assertEqual(self.release.archive_pin()["revision"], self.revision)
+
+    def test_build_reads_bare_archive_without_a_git_worktree(self):
+        original = self.release.command
+
+        def stop_before_native(name, command, *args, **kwargs):
+            if name == "xcodegen":
+                raise RuntimeError("native build intentionally not run")
+            if name == "source-archive":
+                self.assertEqual(command[:4], ["git", "--no-replace-objects", "--git-dir", self.bare])
+            return original(name, command, *args, **kwargs)
+
+        info = {"CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "12",
+                "SUPublicEDKey": base64.b64encode(bytes(range(32))).decode(), "PostHogProjectToken": "phc_public"}
+        with patch.object(self.release, "command", side_effect=stop_before_native):
+            with self.assertRaisesRegex(RuntimeError, "intentionally not run"):
+                self.release.build(self.revision, info, None, Path("/unused-cli"))
+        self.assertEqual(tree_hash(self.output / "source"), tree_hash(self.source))
+        self.assertFalse((self.output / "source/.git").exists())
+
+    def test_archive_cli_flags_are_required_together(self):
+        from ci import release
+        for flags in (("--git-dir", str(self.bare)), ("--revision", self.revision),
+                      ("--git-dir", str(self.bare), "--revision", "HEAD")):
+            with self.subTest(flags=flags), patch("sys.argv", ["release", *flags]):
+                with self.assertRaises(SystemExit) as error:
+                    release.main()
+                self.assertEqual(error.exception.code, 2)
 
 
 if __name__ == "__main__":

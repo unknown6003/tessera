@@ -12,6 +12,7 @@ import plistlib
 import re
 import shutil
 import signal
+import stat
 import sys
 import tarfile
 import tempfile
@@ -19,7 +20,7 @@ import time
 import xml.etree.ElementTree as ET
 
 from .common import REPOSITORY, build_environment, policy_hash, run, write_json
-from .verify_release import check
+from .verify_release import check, check_reports
 from tools.validate_release import validate
 
 CERTIFICATE = "da4569aa63dee7587d670dc4c685f128faacf4e5"
@@ -120,10 +121,83 @@ def tree_hash(root):
     return digest.hexdigest()
 
 
+def verify_archive(source, manifest):
+    """Compare the exact archive inventory with Git's raw recursive tree."""
+    entries, directories = {}, set()
+    records = manifest.split(b"\0")
+    if records[-1] != b"":
+        raise ValueError("Git tree manifest is not NUL terminated")
+    for record in records[:-1]:
+        metadata, name = record.split(b"\t", 1)
+        mode, kind, blob = metadata.split(b" ")
+        parts = name.split(b"/")
+        if (not name or any(part in (b"", b".", b"..") or part.lower() == b".git" for part in parts)
+                or name in entries or not re.fullmatch(b"[a-f0-9]{40}", blob)):
+            raise ValueError("Unsafe or duplicate path in Git tree manifest")
+        if kind != b"blob" or mode not in (b"100644", b"100755", b"120000"):
+            raise ValueError("Archive contains a submodule or unsupported Git mode")
+        entries[name] = (mode, blob)
+        directories.update(b"/".join(parts[:index]) for index in range(1, len(parts)))
+    if directories.intersection(entries):
+        raise ValueError("Git tree contains a file/directory collision")
+    seen = set()
+    pending = [(source, b"")]
+    while pending:
+        folder, prefix = pending.pop()
+        with os.scandir(folder) as children:
+            for child in children:
+                name = prefix + os.fsencode(child.name)
+                metadata = child.stat(follow_symlinks=False)
+                if stat.S_ISDIR(metadata.st_mode):
+                    if name not in directories:
+                        raise ValueError("Archive contains an extra directory")
+                    seen.add(name)
+                    pending.append((Path(child.path), name + b"/"))
+                    continue
+                if name not in entries:
+                    raise ValueError("Archive contains an extra file or symlink")
+                mode, expected_blob = entries[name]
+                if mode == b"120000":
+                    if not stat.S_ISLNK(metadata.st_mode):
+                        raise ValueError("Archive symlink type differs from Git")
+                    payload = os.fsencode(os.readlink(child.path))
+                    # A tracked link may stay inside the archive, never escape it.
+                    target = Path(child.path).parent / os.fsdecode(payload)
+                    if os.path.isabs(payload) or not target.resolve().is_relative_to(source.resolve()):
+                        raise ValueError("Archive symlink escapes the source tree")
+                    actual_blob = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\0" + payload).hexdigest()
+                else:
+                    executable = metadata.st_mode & 0o111
+                    if not stat.S_ISREG(metadata.st_mode) or executable != (0o111 if mode == b"100755" else 0):
+                        raise ValueError("Archive file type or executable mode differs from Git")
+                    digest = hashlib.sha1(b"blob " + str(metadata.st_size).encode() + b"\0")
+                    descriptor = os.open(child.path, os.O_RDONLY | os.O_NOFOLLOW)
+                    with os.fdopen(descriptor, "rb") as stream:
+                        opened = os.fstat(stream.fileno())
+                        if (opened.st_ino, opened.st_dev, opened.st_size) != (metadata.st_ino, metadata.st_dev, metadata.st_size):
+                            raise ValueError("Archive file changed during verification")
+                        for block in iter(lambda: stream.read(1024 * 1024), b""):
+                            digest.update(block)
+                    actual_blob = digest.hexdigest()
+                if actual_blob.encode() != expected_blob:
+                    raise ValueError("Archive Git blob hash differs from pinned commit")
+                seen.add(name)
+    if seen != set(entries) | directories:
+        raise ValueError("Archive is missing a tracked file or directory")
+    return {"manifestSHA256": hashlib.sha256(manifest).hexdigest(), "files": len(entries),
+            "directories": len(directories), "symlinks": sum(mode == b"120000" for mode, _ in entries.values()),
+            "executables": sum(mode == b"100755" for mode, _ in entries.values()), "blobHash": "git-sha1"}
+
+
 class Release:
-    def __init__(self, source, output, key):
+    def __init__(self, source, output, key, *, git_dir=None, revision=None):
         self.source, self.output, self.key = source, output, key
+        if (git_dir is None) != (revision is None):
+            raise ValueError("--git-dir and --revision must be supplied together")
+        self.git_dir, self.revision = git_dir, revision
+        self.source_proof = None
         self.env = build_environment("release")
+        self.env["PYTHONDONTWRITEBYTECODE"] = "1"
         self.index = 0
         (self.output / "logs").mkdir(exist_ok=True)
         self.logs = Path(tempfile.mkdtemp(prefix="run-", dir=self.output / "logs"))
@@ -150,12 +224,35 @@ class Release:
             raise
         return json.loads(result)
 
+    def archive_pin(self):
+        if not re.fullmatch(r"[a-f0-9]{40}", self.revision):
+            raise ValueError("Archive mode requires a full lowercase 40-character commit SHA")
+        if (not self.git_dir.is_dir() or self.git_dir.stat().st_uid != os.getuid()):
+            raise ValueError("Archive object source must be an owned bare repository")
+        git = ["git", "--no-replace-objects", "--git-dir", self.git_dir]
+        if self.command("bare-repository", [*git, "rev-parse", "--is-bare-repository"], 10).strip() != "true":
+            raise ValueError("Archive object source is not a bare repository")
+        if self.command("commit-type", [*git, "cat-file", "-t", self.revision], 10).strip() != "commit":
+            raise ValueError("Archive revision must name a commit object")
+        resolved = self.command("commit-resolve", [*git, "rev-parse", "--verify", self.revision + "^{commit}"], 10).strip()
+        if resolved != self.revision:
+            raise ValueError("Archive revision does not resolve to the exact pinned commit")
+        self.command("archive-tree", [*git, "ls-tree", "-rz", "--full-tree", self.revision], 30)
+        manifest = (self.logs / f"{self.index:03}-archive-tree.log").read_bytes()
+        return {"mode": "archive", "revision": self.revision, **verify_archive(self.source, manifest)}
+
     def gate(self, expected=None):
         logs = self.logs / f"gate-{self.index}"
         logs.mkdir(parents=True)
-        revision = check(self.source, self.key, logs)
+        if self.git_dir is None:
+            revision = check(self.source, self.key, logs)
+            self.source_proof = {"mode": "worktree", "revision": revision}
+        else:
+            self.source_proof = self.archive_pin()
+            write_json(self.output / "source-archive-proof.json", self.source_proof)
+            revision = check_reports(self.revision, policy_hash(self.source), self.key, logs, self.source)
         if expected is not None and revision != expected:
-            raise ValueError("Source HEAD changed during release")
+            raise ValueError("Source commit changed during release")
         self.index += 1
         return revision
 
@@ -281,7 +378,7 @@ class Release:
             raise ValueError("Binary and dSYM UUIDs differ")
         vault = Path.home() / ".local/bin/agent-access"
         self.command("posthog-symbols", [vault, "run", "--timeout", "210", "posthog-tessera", "--",
-                     sys.executable, "-c", "import os,runpy,sys; "
+                     sys.executable, "-B", "-c", "import os,runpy,sys; "
                      "sink=os.open(os.devnull,os.O_WRONLY); os.dup2(sink,1); os.dup2(sink,2); "
                      "sys.path.insert(0,os.path.dirname(sys.argv[1])); sys.argv=sys.argv[1:]; "
                      "runpy.run_path(sys.argv[0],run_name='__main__')",
@@ -294,7 +391,8 @@ class Release:
         snapshot = self.output / "source"
         snapshot.mkdir()
         archive = self.output / "source.tar"
-        self.command("source-archive", ["git", "archive", "--format=tar", "--output", archive, revision])
+        git = ["git", "--no-replace-objects", "--git-dir", self.git_dir] if self.git_dir is not None else ["git"]
+        self.command("source-archive", [*git, "archive", "--format=tar", "--output", archive, revision])
         with tarfile.open(archive) as stream:
             stream.extractall(snapshot, filter="data")
         self.command("xcodegen", ["xcodegen", "generate"], 120, cwd=snapshot)
@@ -352,6 +450,7 @@ class Release:
             reports[lane] = {"envelopeSHA256": hashlib.sha256(json.dumps(envelope, sort_keys=True).encode()).hexdigest(),
                              "finishedAt": envelope["report"]["finishedAt"], "result": "success"}
         proof = {"schema": 1, "revision": revision, "version": version, "build": build, "tag": "v" + version,
+                 "source": self.source_proof,
                  "recipe": policy_hash(self.source), "certificateSHA1": CERTIFICATE, "requirement": requirement,
                  "appTreeSHA256": tree_hash(app), "dmgStageTreeSHA256": tree_hash(stage),
                  "symbols": symbols, "smoke": smoke, "sparkle": signature, "assets": hashes, "ci": reports,
@@ -365,6 +464,8 @@ class Release:
         version, build = release_identity(info)
         if (proof["version"], proof["build"], proof["certificateSHA1"], proof["recipe"]) != (version, build, CERTIFICATE, policy_hash(self.source)):
             raise ValueError("Artifact proof differs from source release policy")
+        if proof.get("source") != self.source_proof:
+            raise ValueError("Artifact source proof differs from the current source mode or archive")
         updates = self.output / "updates"
         expected = {"Tessera.dmg", f"Tessera-{version}.dmg", "appcast.xml", "SHA256SUMS"}
         if set(proof["assets"]) != expected or {p.name for p in updates.iterdir() if p.is_file()} != expected:
@@ -445,11 +546,17 @@ class Release:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--publish", action="store_true")
+    parser.add_argument("--git-dir", type=Path, help="Owned bare object repository for exact archive mode")
+    parser.add_argument("--revision", help="Full lowercase 40-character commit SHA for archive mode")
     parser.add_argument("--artifacts", type=Path, help="Reuse a complete private output for explicit publication")
     parser.add_argument("--posthog-cli", type=Path)
     parser.add_argument("--spm-cache", type=Path)
     parser.add_argument("--key", type=Path, default=Path(os.environ.get("TESSERA_CI_KEY_FILE", str(Path.home() / ".local/share/tessera-ci/attestation.key"))))
     args = parser.parse_args()
+    if (args.git_dir is None) != (args.revision is None):
+        parser.error("--git-dir and --revision must be supplied together")
+    if args.revision is not None and not re.fullmatch(r"[a-f0-9]{40}", args.revision):
+        parser.error("--revision must be a full lowercase 40-character commit SHA")
     if platform.system() != "Darwin":
         parser.error("Release build and publication require the existing macOS toolchain")
     if args.artifacts and not args.publish:
@@ -462,7 +569,8 @@ def main():
     if output.is_relative_to(source) or output.is_symlink() or output.stat().st_uid != os.getuid() or output.stat().st_mode & 0o077:
         parser.error("Output must be an owned private directory outside the checkout")
     print("Private release output: " + str(output), flush=True)
-    job = Release(source, output, args.key.read_bytes())
+    job = Release(source, output, args.key.read_bytes(),
+                  git_dir=args.git_dir.resolve() if args.git_dir else None, revision=args.revision)
     # External qualification is the first gate, before signing, symbols or builds.
     revision = job.gate()
     with (source / "Tessera/Info.plist").open("rb") as stream:

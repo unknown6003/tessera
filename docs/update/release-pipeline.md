@@ -11,7 +11,7 @@ external CI lanes, no trust changes, no user-drive scan, no remote overwrite.
 
 ## Changed path
 
-`release.sh` runs `python3 -m ci.release` under a 2400-second guard. The default
+`release.sh` runs `python3 -B -m ci.release` under a 2400-second guard. The default
 builds a private candidate. `--publish --artifacts PATH` reuses a complete
 candidate and performs fresh gates. No environment flag can disable CI,
 signing, smoke, symbols or signature validation.
@@ -25,6 +25,37 @@ The symbol tool stays at `@posthog/cli@0.19.0`. Its subprocess output is
 suppressed within the vault child to keep private credentials out of logs.
 A nonzero upload still stops the publisher. Service-side receipt and symbol
 readback must come from the native live proof, not a mocked unit test.
+
+## Exact archive source
+
+The optional pair `--git-dir OWNED_BARE --revision FULL_40_SHA` lets the module
+run from Ops' pinned archive without a Mac checkout. The same bare commit is
+used to create build staging. All Git commands use bounded `Release.command`.
+Nothing fetches objects or writes Git HEAD, index, worktree or config.
+
+Each gate verifies bare status, commit type, exact full revision, then the raw
+NUL-separated tree inventory. The check hashes real Git blobs and checks types,
+executable bits and recorded symlink targets. It rejects untracked extras,
+missing files, unsafe paths, submodules and links outside the archive. A link
+to a different target fails even when it stays inside staging. Replacement refs
+are disabled. Expected safe symlinks are verified rather than followed.
+
+The private source proof records mode, full revision, manifest digest and counts.
+It contains no private source path and makes no CI claim. Only after the source
+match does the shared report helper verify both exact-commit HMAC reports and
+recipe. Build, reuse and final publication gates repeat these checks. Default
+worktree mode still calls the existing clean-HEAD checker.
+
+The wrapper and symbol child disable bytecode writes. There are no exceptions
+for ignored files. Run from the exact archive and keep all new output outside
+it. The original Mac checkout remains intact. See the two modes and exact
+commands in [RELEASING.md](../../RELEASING.md).
+
+Native status is still blocked. The `c052` campaign failed one EngineTests
+timeout case in five iterations. Parent diagnosis has not produced a source
+fix yet. An owned certificate probe timed out after 15 seconds; this may be a
+keychain prompt and does not establish that the identity is unusable. No trust
+change is allowed. No native publisher run or publication is claimed.
 
 ## Required native proof
 
@@ -55,14 +86,23 @@ readback must come from the native live proof, not a mocked unit test.
 
 ## Linux checks
 
-The full tool suite passed 49 tests under a 90-second process-group guard.
+The full tool suite passed 64 tests under a 90-second process-group guard.
 `bash -n release.sh`, Python compilation and `git diff --check` passed.
 These checks include malformed appcast metadata, signature-command failure,
 wrong public-key length, version/build rejection, unstable designated
 requirements, missing or partial smoke completion, production preference
 changes, missing symbol tooling, mismatched tags, public-release rejection,
-partial drafts, remote byte and size failure, and stale CI after asset readback. Existing helper tests print
-simulated upload success. No real symbol upload ran.
+partial drafts, remote byte and size failure, and stale CI after asset readback.
+Existing helper tests print simulated upload success. No real symbol upload ran.
+
+The archive tests create only temporary bare objects with `git init --bare`
+and `git fast-import`. They extract a real Git archive with ordinary, binary,
+executable and symlink entries, plus tab/newline filenames. They prove that a
+matching archive passes without repository writes, and reject changed/missing
+blobs, extra files and directories, wrong modes or types, changed links, unsafe
+paths, submodules, non-commit objects, wrong revisions and unpaired options.
+They also check repeat gates, replacement refs and the real bare archive build
+step. The test stops before XcodeGen; it does not prove a native build.
 
 ## Risk review
 

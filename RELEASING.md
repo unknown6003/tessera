@@ -32,9 +32,11 @@ changes trust, uses `sudo` or unlocks a keychain.
 
 Readiness remains pending. The Mac has the certificate and private key, but
 `security find-identity` reported `CSSMERR_TP_NOT_TRUSTED`. That listing alone
-is not an actual signing test. The parent must check a disposable owned binary
-with the exact certificate, without a trust change, then test the full app.
-Do not create a replacement key based only on the listing.
+is not an actual signing test. An owned `true` binary signing probe then timed
+out after 15 seconds. A keychain prompt may have caused that timeout. It does
+not prove that this identity is unusable. The parent must resolve the probe
+without a trust change, then test the full app. Do not replace the key based
+on the listing or timeout.
 
 ## Qualify the exact source first
 
@@ -52,18 +54,77 @@ python3 -m ci.install --state "$HOME/.local/share/tessera-ci" \
 
 Use `--lane web` on Linux. Install only when the recipe needs an update.
 The shared private attestation file is 32 bytes, mode `600`. Do not print it.
-Check the candidate from the clean release checkout:
+For a working Git checkout, check the candidate from the clean source:
 
 ```sh
 python3 -m ci.verify_release \
   --key "$HOME/.local/share/tessera-ci/attestation.key"
 ```
 
-Both `Tessera CI / native` and `Tessera CI / web` must pass this full HEAD.
+Both `Tessera CI / native` and `Tessera CI / web` must pass the full source
+commit. Worktree mode uses clean HEAD. Archive mode uses the pinned revision.
 The verifier checks HMAC reports, recipe, lane, step inventory, native cohort
 counts and age. A missing or stale report stops release before builds, signing
-or symbol upload. Changing HEAD, even for docs, requires new full-commit proof.
+or symbol upload. A new commit, even for docs, requires new full-commit proof.
 `TESSERA_CI_KEY_FILE` selects another key path. It cannot skip the gate.
+
+## Archive mode on the existing Mac
+
+The Mac can run the publisher without a Git checkout. Ops supplies an owned
+bare object repository and a clean `git archive` staging directory at the same
+full commit. The original Mac checkout at `a538` stays intact. This mode needs
+no new T3 space, worktree, index or fake `.git` directory. The publisher does
+not fetch objects. Ops must make the pinned commit available first.
+
+Run the publisher from that same archive. Both options are required together:
+
+```sh
+cd "$release_archive"
+./release.sh --git-dir "$release_bare" --revision "$release_revision" \
+  --posthog-cli "$symbol_tools/node_modules/.bin/posthog-cli" \
+  --spm-cache "$HOME/.local/share/tessera-ci/spm-cache"
+```
+
+`release_archive` is the owned source staging directory. `release_bare` is its
+owned bare object repository. `release_revision` must be the full lowercase
+40-character commit SHA. Do not use a branch name, tag or short SHA. The
+module and wrapper must come from that same pinned source archive.
+
+Each gate proves that the object repository is bare, the object is a commit
+and its full SHA resolves exactly. It then checks every source path against
+`git ls-tree -rz --full-tree`. It compares file type, executable bits and the
+Git SHA-1 blob hash, including the `blob N` header. Tracked symlinks must keep
+their exact target text and stay inside the archive. It rejects missing or
+extra files and directories, changed blobs, substituted symlinks, submodules
+and unsafe paths. Git replacement refs cannot substitute another tree.
+There are no ignored-file exceptions, including `.DS_Store` and `__pycache__`.
+
+The wrapper uses Python `-B` and `PYTHONDONTWRITEBYTECODE=1`. This keeps imports
+from adding bytecode to the archive. Keep source staging free of logs, keys,
+build output and shell notes. Output stays in a separate private directory.
+The publisher writes no Git HEAD, index, worktree or config and does not change
+`core.bare` or set `GIT_WORK_TREE`.
+
+After the archive matches, the shared `check_reports` helper checks both exact
+CI reports with the source recipe hash and private attestation key. Every later
+gate repeats the archive check and report checks. Build staging comes from
+`git --git-dir "$release_bare" archive` at the pinned commit. The private
+`source-archive-proof.json` records the revision, mode, manifest digest and
+file counts, without source paths. It proves the archive match only. Successful
+CI and build evidence remains in the final release proof.
+
+For an archive candidate, keep both options when publishing reviewed assets:
+
+```sh
+cd "$release_archive"
+./release.sh --git-dir "$release_bare" --revision "$release_revision" \
+  --publish --artifacts /private/printed/tessera-release-output
+```
+
+Without the pair, the existing clean-HEAD worktree checks still apply. Archive
+mode cannot skip CI. The `c052` native campaign failed one EngineTests timeout
+case in five iterations. Diagnosis is in progress. No full native publisher
+run is qualified until a final source commit passes both CI lanes.
 
 ## Keys and the pinned symbol tool
 
@@ -100,7 +161,8 @@ is not upload proof. Live upload and PostHog service readback remain pending.
 
 ## Build a reviewable candidate
 
-Run from the clean Mac checkout with both exact-commit CI reports available:
+In worktree mode, run from the clean Mac checkout with both exact-commit CI
+reports available. Use the paired options above for archive mode:
 
 ```sh
 ./release.sh --posthog-cli "$symbol_tools/node_modules/.bin/posthog-cli" \
@@ -151,7 +213,7 @@ step. Once the concrete candidate and native results pass review, run:
 ./release.sh --publish --artifacts /private/printed/tessera-release-output
 ```
 
-This command checks the clean source and fresh CI again. It rechecks the signed
+This command checks clean HEAD or the exact archive, then fresh CI again. It rechecks the signed
 app, image, signature, smoke evidence and asset hashes. It creates an annotated
 tag at the exact full commit, then a draft release. It uploads exactly:
 
