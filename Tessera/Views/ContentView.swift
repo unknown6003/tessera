@@ -1372,21 +1372,22 @@ private struct KeyboardShortcuts: View {
         ZStack {
             // Finder-style keys. Escape is not bound here: the map and list
             // handle it with onExitCommand, so text fields and dialogs keep it.
-            Button("Zoom Out") { vm.zoomOut() }.keyboardShortcut(.upArrow, modifiers: .command)
+            // These buttons carry shortcuts only. They are not Tab stops.
+            Button("Zoom Out") { vm.zoomOut() }.keyboardShortcut(.upArrow, modifiers: .command).focusable(false)
             Button("Open") {
                 if let node = vm.selectedNode, node.isDirectory, !node.isSynthetic, node.id != vm.currentRoot?.id {
                     vm.zoomIn(to: node)
                 }
             }
-            .keyboardShortcut(.downArrow, modifiers: .command)
+            .keyboardShortcut(.downArrow, modifiers: .command).focusable(false)
             Button("Add to Cleanup List") {
                 if let node = vm.selectedNode, !node.isSynthetic { vm.addToCollector(node) }
             }
-            .keyboardShortcut(.delete, modifiers: .command)
+            .keyboardShortcut(.delete, modifiers: .command).focusable(false)
             Button("Quick Look") {
                 if let node = vm.selectedNode, !node.isSynthetic { onQuickLook(node) }
             }
-            .keyboardShortcut("y", modifiers: .command)
+            .keyboardShortcut("y", modifiers: .command).focusable(false)
         }
         .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
     }

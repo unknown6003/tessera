@@ -25,6 +25,9 @@ struct Sidebar: View {
     /// The source list is one keyboard stop: ↑↓ move the selection, Return
     /// scans a source that is not on screen.
     @FocusState private var sourcesFocused: Bool
+    /// Launch focus goes to the source list once, after the first sources
+    /// load. Before that the list is empty and cannot take focus.
+    @State private var didSetLaunchFocus = false
 
     // Connect-to-server sheet
     @State private var showConnectSheet = false
@@ -125,6 +128,11 @@ struct Sidebar: View {
         }
         .onChange(of: customFolders.map(\.url)) { _, _ in saveCustomFolders() }
         .onChange(of: vm.selectedSourceURL) { _, _ in adoptSelectedSource() }
+        .onChange(of: allSources.isEmpty, initial: true) { _, empty in
+            guard !empty, !didSetLaunchFocus else { return }
+            didSetLaunchFocus = true
+            sourcesFocused = true
+        }
         // Observe names as well as URLs: a source can be renamed in place.
         .onChange(of: sourceNameLookup, initial: true) { _, names in sourceNames = names }
         .onChange(of: sourcesFocused) { _, focused in if focused { onKeyboardFocus() } }
