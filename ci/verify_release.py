@@ -5,6 +5,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -16,15 +17,21 @@ def check(source, key, log_root):
     dirty = run(["git", "status", "--porcelain"], cwd=source, log=log_root / "tree.log", timeout=10)
     if dirty.strip():
         raise ValueError("Release source is not clean")
-    policy = policy_hash(source)
+    return check_reports(revision, policy_hash(source), key, log_root, source)
+
+
+def check_reports(revision, policy, key, log_root, cwd):
+    """Verify both lanes after the caller establishes exact source identity."""
+    if not re.fullmatch("[a-f0-9]{40}", revision):
+        raise ValueError("A full source commit is required")
     statuses = json.loads(run(["gh", "api", f"repos/{REPOSITORY}/commits/{revision}/status?per_page=100"],
-                             cwd=source, log=log_root / "statuses.log", timeout=30))
+                             cwd=cwd, log=log_root / "statuses.log", timeout=30))
     for lane in LANES:
         matching = [s for s in statuses["statuses"] if s["context"] == "Tessera CI / " + lane]
         if not matching or matching[0]["state"] != "success":
             raise ValueError("External CI did not pass: " + lane)
         body = json.loads(run(["gh", "api", f"repos/{REPOSITORY}/contents/reports/{lane}/{revision}.json?ref=ci-reports"],
-                              cwd=source, log=log_root / (lane + ".log"), timeout=30))
+                              cwd=cwd, log=log_root / (lane + ".log"), timeout=30))
         envelope = json.loads(base64.b64decode(body["content"]))
         verify(envelope, key, revision, lane, policy)
     return revision
