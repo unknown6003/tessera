@@ -576,3 +576,21 @@ extension View {
         modifier(TesseraButtonModifier(style: style))
     }
 }
+
+/// The app icon as decoration. An AppKit image view that is never an
+/// accessibility element: a SwiftUI `Image` here stayed in the AX tree,
+/// because the sidebar's own `accessibilityHidden(false)` overrode it.
+struct DecorativeAppIcon: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSImageView {
+        let view = NSImageView(image: NSApplication.shared.applicationIconImage)
+        view.imageScaling = .scaleProportionallyUpOrDown
+        view.setAccessibilityElement(false)
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        return view
+    }
+
+    func updateNSView(_ view: NSImageView, context: Context) {}
+}

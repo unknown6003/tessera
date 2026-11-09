@@ -102,9 +102,22 @@ struct Sidebar: View {
                             guard press.modifiers.isDisjoint(with: [.command, .option, .control]) else { return .ignored }
                             return handleSourceKey(press.key) ? .handled : .ignored
                         }
-                        .accessibilityElement(children: .contain)
+                        // One element, so focus here is read as "Sources" and the
+                        // selected source, not as the first section label.
+                        // VoiceOver steps through sources with increment and
+                        // decrement, as the arrow keys do.
+                        .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Sources")
+                        .accessibilityValue(Text(sourcesAccessibilityValue))
                         .accessibilityHint("Use the up and down arrow keys to choose a source. Return scans it.")
+                        .accessibilityAdjustableAction { direction in
+                            switch direction {
+                            case .increment: _ = handleSourceKey(.downArrow)
+                            case .decrement: _ = handleSourceKey(.upArrow)
+                            @unknown default: break
+                            }
+                        }
+                        .accessibilityAction { _ = handleSourceKey(.return) }
                         addSourceRows
                     }
                     .padding(.horizontal, 10)
@@ -153,8 +166,8 @@ struct Sidebar: View {
 
     private var sidebarHeader: some View {
         HStack {
-            Image(nsImage: NSApplication.shared.applicationIconImage)
-                .resizable().frame(width: 30, height: 30)
+            DecorativeAppIcon()
+                .frame(width: 30, height: 30)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Tessera")
@@ -268,6 +281,17 @@ struct Sidebar: View {
         let sharesName = allSources.contains { $0.url != info.url && $0.name == info.name }
         guard sharesName else { return info.name }
         return "\(info.name), \((info.url.path as NSString).abbreviatingWithTildeInPath)"
+    }
+
+    /// The list's value: the selected source, its state and its place.
+    private var sourcesAccessibilityValue: String {
+        let sources = orderedSources
+        guard let index = sources.firstIndex(where: { $0.url == selectedVolumeURL }) else {
+            return sources.isEmpty ? "No sources" : "No source selected"
+        }
+        let info = sources[index]
+        let state = vm.scannedURL == info.url ? ", currently viewing" : ""
+        return "\(sourceAccessibilityLabel(info))\(state), \(index + 1) of \(sources.count)"
     }
 
     private func sourceAccessibilityValue(_ info: VolumeInfo) -> String {

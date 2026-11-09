@@ -430,13 +430,13 @@ struct CleanupReviewSheet: View {
         let base = "You can restore items from Trash. Space returns when you empty Trash."
         guard startedInRescue, let plan = vm.rescuePlan else { return base }
         let ids = Set(items.map(\.id))
-        let parts = [(CleanupRisk.safe, "safe"), (.review, "review"), (.protected, "protected")]
+        let parts = [(CleanupRisk.safe, "safe"), (.review, "marked Review first"), (.protected, "protected")]
             .compactMap { risk, title -> String? in
                 let count = plan.recommendations.filter { ids.contains($0.node.id) && $0.risk == risk }.count
                 return count > 0 ? "\(count) \(title)" : nil
             }
         var message = base
-        if !parts.isEmpty { message += " " + parts.joined(separator: ", ") + "." }
+        if !parts.isEmpty { message += " In this list: " + parts.joined(separator: ", ") + "." }
         if let target = plan.targetSpace {
             // Name both figures so the goal is not read as current free space.
             message += " Goal: under \(Int((plan.capacityGoal * 100).rounded()))% used, which needs \(Theme.format(target)) free."

@@ -931,8 +931,8 @@ struct ContentView: View {
 
     private var emptyContent: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Image(nsImage: NSApplication.shared.applicationIconImage)
-                .resizable().frame(width: 64, height: 64).accessibilityHidden(true)
+            DecorativeAppIcon()
+                .frame(width: 64, height: 64).accessibilityHidden(true)
             Text("See where your space goes").font(.title.weight(.semibold))
             Text("Choose a source, then scan it. Explore the map or use Rescue to review cleanup suggestions.")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

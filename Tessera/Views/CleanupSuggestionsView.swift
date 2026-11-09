@@ -298,6 +298,8 @@ struct CleanupSuggestionsView: View {
                   : (coverage.state == .complete ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"))
                 .font(.title3)
                 .foregroundStyle(color)
+                // The title names the state; the symbol is not read.
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(coverage.title)
@@ -385,20 +387,20 @@ struct CleanupSuggestionsView: View {
             }
         )
 
-        DisclosureGroup(isExpanded: expanded) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(group.recommendations) { recommendation in
-                    recommendationRow(recommendation)
-                    if recommendation.id != group.recommendations.last?.id {
-                        Divider().padding(.leading, 34)
-                    }
-                }
-            }
-            .padding(.top, 4)
-        } label: {
-            // One row: the disclosure arrow lines up with the title and the
-            // Add action, instead of sitting alone beside a second action row.
+        VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 10) {
+                // A Tessera button, not the system disclosure arrow: it shows
+                // the focus ring and scrolls into view on Tab.
+                Button { expanded.wrappedValue.toggle() } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0))
+                }
+                .tesseraButtonStyle(.icon)
+                .controlSize(.small)
+                .accessibilityLabel(expanded.wrappedValue ? "Hide items in \(group.category.title)"
+                                                          : "Show items in \(group.category.title)")
+
                 Image(systemName: group.category.symbol)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(color(for: group.risk))
@@ -414,6 +416,8 @@ struct CleanupSuggestionsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { expanded.wrappedValue.toggle() }
 
                 VStack(alignment: .trailing, spacing: 3) {
                     Text(Theme.format(group.totalBytes))
@@ -439,9 +443,18 @@ struct CleanupSuggestionsView: View {
                 }
             }
             .padding(.vertical, 11)
-            .contentShape(Rectangle())
+            if expanded.wrappedValue {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(group.recommendations) { recommendation in
+                        recommendationRow(recommendation)
+                        if recommendation.id != group.recommendations.last?.id {
+                            Divider().padding(.leading, 34)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
         }
-        .tint(.secondary)
         .padding(.vertical, 4)
         .overlay(alignment: .bottom) { Divider() }
     }
