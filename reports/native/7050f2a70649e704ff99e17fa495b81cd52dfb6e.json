@@ -1,0 +1,82 @@
+{
+  "report": {
+    "revision": "7050f2a70649e704ff99e17fa495b81cd52dfb6e",
+    "lane": "native",
+    "policy": "1119c5277f5130bc0fa1bd4f7b540b5464ef51b4eb1e93fb7ddb8640bb4befc0",
+    "startedAt": 1794220367.861245,
+    "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "steps": [
+      {
+        "name": "release-policy",
+        "result": "success",
+        "durationSeconds": 0.102
+      },
+      {
+        "name": "tool-regressions",
+        "result": "success",
+        "durationSeconds": 12.492
+      },
+      {
+        "name": "xcodegen",
+        "result": "success",
+        "durationSeconds": 0.107
+      },
+      {
+        "name": "debug-tests",
+        "result": "success",
+        "durationSeconds": 114.412
+      },
+      {
+        "name": "test-summary",
+        "result": "success",
+        "durationSeconds": 0.319
+      },
+      {
+        "name": "release-build",
+        "result": "success",
+        "durationSeconds": 64.415
+      },
+      {
+        "name": "scanner",
+        "result": "success",
+        "durationSeconds": 1.418
+      },
+      {
+        "name": "rescan",
+        "result": "success",
+        "durationSeconds": 0.754
+      },
+      {
+        "name": "hardware",
+        "result": "success",
+        "durationSeconds": 0.01
+      },
+      {
+        "name": "memory",
+        "result": "success",
+        "durationSeconds": 0.007
+      },
+      {
+        "name": "full-pipeline-400",
+        "result": "success",
+        "durationSeconds": 129.195
+      },
+      {
+        "name": "performance-goals",
+        "result": "success",
+        "durationSeconds": 0.142
+      }
+    ],
+    "result": "failure",
+    "tests": {
+      "totalTestCount": 94,
+      "passedTests": 94,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    "binarySHA256": "dfbec235f82ef5105cb0a40c159bcd0e998cb5c56bf5048e10316988ec8a6b9d",
+    "failure": "ValueError",
+    "finishedAt": 1794220728.6071901
+  },
+  "signature": "17d4bf1725c24aa2d48257ff54ccddc4285c8e159f42cdab0fb0b4defdfb03af"
+}
