@@ -13,6 +13,8 @@ REPOSITORY = "unknown6003/tessera"
 LANES = ("native", "web")
 RECIPE_FILES = ["ci/" + name for name in ("__init__.py", "common.py", "pipeline.py", "runner.py", "web_check.py")]
 RECIPE_FILES += ["tools/" + name for name in ("run_bounded.py", "analyze_scan_performance.py", "validate_release.py")]
+RECIPE_FILES.append("ci/install.py")
+NATIVE_LAUNCHD_POLICY = {"ProcessType": "Standard", "Nice": 10, "LowPriorityIO": True}
 REQUIRED_STEPS = {
     "native": {"release-policy", "tool-regressions", "xcodegen", "debug-tests", "test-summary", "release-build",
                "scanner", "rescan", "hardware", "memory", "full-pipeline-400", "performance-goals"},

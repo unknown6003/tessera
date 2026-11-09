@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 
-from .common import build_environment, policy_hash, run, write_json
+from .common import NATIVE_LAUNCHD_POLICY, build_environment, policy_hash, run, write_json
 
 
 def remove_tree(root):
@@ -104,7 +104,7 @@ def fixtures(output, root):
 
 
 def regression(current, baseline):
-    for field in ("hardware", "os", "memoryBytes", "cacheState", "workload", "xcode"):
+    for field in ("hardware", "os", "memoryBytes", "cacheState", "workload", "xcode", "runnerScheduling"):
         if current["metadata"].get(field) != baseline["metadata"].get(field):
             raise ValueError("Performance baseline has different " + field)
     if set(current["cohorts"]) != set(baseline["cohorts"]):
@@ -186,6 +186,7 @@ def execute(source, output, lane, revision, cache, baseline=None):
                     raise ValueError(f"{name} correctness proof missing")
             metadata = {"hardware": step("hardware", ["sysctl", "-n", "hw.model"], 10).strip(),
                         "os": platform.platform(), "memoryBytes": int(step("memory", ["sysctl", "-n", "hw.memsize"], 10)),
+                        "runnerScheduling": NATIVE_LAUNCHD_POLICY,
                         "cacheState": "warm; fixtures created before measurement; mixed cohort scanned earlier",
                         "workload": [{"cohort": name, "files": files, "directories": directories, "trials": 100}
                                      for name, _, files, directories in cohorts]}

@@ -8,7 +8,7 @@ import plistlib
 import shutil
 import sys
 
-from .common import LANES, policy_hash, run
+from .common import LANES, NATIVE_LAUNCHD_POLICY, policy_hash, run
 
 
 def main():
@@ -51,8 +51,7 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         definition = {"Label": label, "ProgramArguments": command, "WorkingDirectory": str(code),
                       "EnvironmentVariables": {"PATH": path_env, "HOME": str(Path.home())},
-                      "RunAtLoad": True, "StartInterval": 300, "ProcessType": "Background",
-                      "Nice": 10, "LowPriorityIO": True,
+                      "RunAtLoad": True, "StartInterval": 300, **NATIVE_LAUNCHD_POLICY,
                       "StandardOutPath": str(state / "timer.log"), "StandardErrorPath": str(state / "timer-error.log")}
         if path.exists():
             run(["launchctl", "bootout", f"gui/{os.getuid()}/{label}"], cwd=state,

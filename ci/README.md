@@ -46,6 +46,14 @@ not reach that host. App and test bundle IDs, plus test preference domains,
 contain the job ID. Only new domains in that exact namespace are removed.
 Interactive UI and accessibility proof remains a separate release review.
 
+The native LaunchAgent uses Standard scheduling, Nice 10 and low-priority I/O.
+Explicit Background policy distorted heartbeat measurements in controlled
+runs. The installer is part of the signed recipe. Metadata records its
+configured scheduling policy; installation checks the live plist. Use the
+installed service for native qualification. An explicitly backgrounded shell
+run is diagnostic evidence. Policy changes require a reviewed baseline reset.
+
+
 ## Trust and evidence
 
 Only PRs opened by `unknown6003` from `unknown6003/tessera`, and main, run

@@ -150,6 +150,9 @@ with tempfile.TemporaryDirectory() as temporary:
             original = policy_hash(root)
             (root / "tools/analyze_scan_performance.py").write_text("changed")
             self.assertNotEqual(original, policy_hash(root))
+            (root / "tools/analyze_scan_performance.py").write_text("original")
+            (root / "ci/install.py").write_text("changed scheduling")
+            self.assertNotEqual(original, policy_hash(root))
 
     def test_forks_and_other_pr_authors_never_run(self):
         valid = {"head": {"repo": {"full_name": "unknown6003/tessera"}},
@@ -191,6 +194,11 @@ with tempfile.TemporaryDirectory() as temporary:
         regression(after, before)
         after["metadata"]["hardware"] = "different"
         with self.assertRaises(ValueError): regression(after, before)
+        after["metadata"]["hardware"] = "M1"
+        before["metadata"]["runnerScheduling"] = {"ProcessType": "Background"}
+        after["metadata"]["runnerScheduling"] = {"ProcessType": "Standard"}
+        with self.assertRaisesRegex(ValueError, "runnerScheduling"):
+            regression(after, before)
 
     def test_partial_fixture_setup_is_removed_after_io_failure(self):
         with tempfile.TemporaryDirectory() as directory:
