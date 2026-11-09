@@ -577,13 +577,19 @@ extension View {
     }
 }
 
-/// The app icon as decoration. An AppKit image view that is never an
-/// accessibility element: a SwiftUI `Image` here stayed in the AX tree,
-/// because the sidebar's own `accessibilityHidden(false)` overrode it.
+/// The app icon as decoration. A plain AppKit view draws it and is never an
+/// accessibility element. A SwiftUI `Image` or an `NSImageView` stayed in the
+/// AX tree, because a parent's `accessibilityHidden(false)` overrode them.
 struct DecorativeAppIcon: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSImageView {
-        let view = NSImageView(image: NSApplication.shared.applicationIconImage)
-        view.imageScaling = .scaleProportionallyUpOrDown
+    final class IconView: NSView {
+        override func draw(_ dirtyRect: NSRect) {
+            NSApplication.shared.applicationIconImage.draw(in: bounds)
+        }
+        override func isAccessibilityElement() -> Bool { false }
+    }
+
+    func makeNSView(context: Context) -> IconView {
+        let view = IconView()
         view.setAccessibilityElement(false)
         view.setContentHuggingPriority(.defaultLow, for: .horizontal)
         view.setContentHuggingPriority(.defaultLow, for: .vertical)
@@ -592,5 +598,31 @@ struct DecorativeAppIcon: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: NSImageView, context: Context) {}
+    func updateNSView(_ view: IconView, context: Context) {}
+}
+
+/// Scrolls the top of its view into sight once, when the view appears. For
+/// content that opens below the fold, such as an expanded Rescue group.
+struct RevealOnAppear: NSViewRepresentable {
+    /// How much of the top to bring into sight, in points.
+    var height: CGFloat = 160
+
+    final class RevealView: NSView {
+        var height: CGFloat = 160
+        override var isFlipped: Bool { true }
+        override func isAccessibilityElement() -> Bool { false }
+        @objc func reveal() {
+            scrollToVisible(NSRect(x: 0, y: 0, width: bounds.width, height: min(bounds.height, height)))
+        }
+    }
+
+    func makeNSView(context: Context) -> RevealView {
+        let view = RevealView()
+        view.height = height
+        // After layout, so the view has its final frame.
+        view.perform(#selector(RevealView.reveal), with: nil, afterDelay: 0.05)
+        return view
+    }
+
+    func updateNSView(_ view: RevealView, context: Context) { view.height = height }
 }

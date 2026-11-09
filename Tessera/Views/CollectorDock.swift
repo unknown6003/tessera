@@ -221,6 +221,9 @@ struct CleanupReviewSheet: View {
     @State private var reviewedCollectorIDs: Set<ObjectIdentifier>
     @State private var showTrashConfirm: Bool
     @State private var showDeleteConfirm = false
+    /// Escape for the two alerts below. Their Cancel holds Return, the safe
+    /// default, so no alert button holds Escape.
+    @State private var escapeMonitor: Any?
     @State private var listHeight: CGFloat = 0
 
     /// Keeps header, footer and list inside the 820x600 minimum window.
@@ -303,10 +306,39 @@ struct CleanupReviewSheet: View {
         } message: {
             Text("This cannot be undone. Check every path first.")
         }
-        .onAppear { if showTrashConfirm { vm.beginTrashConfirmation() } }
+        .onAppear {
+            if showTrashConfirm { vm.beginTrashConfirmation() }
+            installEscapeMonitor()
+        }
+        .onDisappear { removeEscapeMonitor() }
         .onChange(of: vm.isScanning) { _, scanning in
             if scanning { showTrashConfirm = false; showDeleteConfirm = false }
         }
+    }
+
+    /// Escape closes an open alert as Cancel does; the sheet stays open.
+    private func installEscapeMonitor() {
+        guard escapeMonitor == nil else { return }
+        let trash = $showTrashConfirm, delete = $showDeleteConfirm, model = vm
+        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 53,
+                  event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]) else { return event }
+            let closed = MainActor.assumeIsolated { () -> Bool in
+                guard trash.wrappedValue || delete.wrappedValue else { return false }
+                if trash.wrappedValue {
+                    trash.wrappedValue = false
+                    model.cancelTrashConfirmation()
+                }
+                delete.wrappedValue = false
+                return true
+            }
+            return closed ? nil : event
+        }
+    }
+
+    private func removeEscapeMonitor() {
+        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+        escapeMonitor = nil
     }
 
     private var header: some View {

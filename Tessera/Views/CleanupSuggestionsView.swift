@@ -11,6 +11,9 @@ struct CleanupSuggestionsView: View {
     var onMoveToTrash: (() -> Void)? = nil
 
     @State private var expandedGroups = Set<String>()
+    /// The group the user just opened. Only that one scrolls into sight, so
+    /// returning to Rescue with open groups does not move the page.
+    @State private var revealedGroup: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -382,7 +385,7 @@ struct CleanupSuggestionsView: View {
         let expanded = Binding(
             get: { expandedGroups.contains(group.id) },
             set: { value in
-                if value { expandedGroups.insert(group.id) }
+                if value { expandedGroups.insert(group.id); revealedGroup = group.id }
                 else { expandedGroups.remove(group.id) }
             }
         )
@@ -453,6 +456,9 @@ struct CleanupSuggestionsView: View {
                     }
                 }
                 .padding(.top, 4)
+                // The items open at the bottom of the page; bring the first
+                // rows into sight.
+                .background { if revealedGroup == group.id { RevealOnAppear() } }
             }
         }
         .padding(.vertical, 4)
