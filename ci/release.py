@@ -432,7 +432,7 @@ class Release:
         cache_path = self.command("generator-cache", ["xcrun", "swift", "-e",
             'import Foundation; print(FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].path)'],
             120, env=generator_env).strip()
-        if not Path(cache_path).resolve().is_relative_to(generator_home):
+        if not Path(cache_path).resolve().is_relative_to(generator_home.resolve()):
             raise ValueError("Sparkle Foundation cache did not resolve inside its private output home")
         self.command("appcast", [candidates.pop(), "--account", "ed25519", "--maximum-deltas", "0", "--download-url-prefix",
                      f"https://github.com/{REPOSITORY}/releases/download/v{version}/", updates], 180,
@@ -565,7 +565,7 @@ def main():
         parser.error("A pinned --posthog-cli is required for the mandatory real symbol upload")
     source = Path(__file__).resolve().parent.parent
     os.umask(0o077)
-    output = args.artifacts.resolve() if args.artifacts else Path(tempfile.mkdtemp(prefix="tessera-release-", dir="/tmp"))
+    output = (args.artifacts or Path(tempfile.mkdtemp(prefix="tessera-release-", dir="/tmp"))).resolve()
     if output.is_relative_to(source) or output.is_symlink() or output.stat().st_uid != os.getuid() or output.stat().st_mode & 0o077:
         parser.error("Output must be an owned private directory outside the checkout")
     print("Private release output: " + str(output), flush=True)

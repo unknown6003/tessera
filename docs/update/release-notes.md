@@ -1,6 +1,7 @@
 # Tessera 0.2.1
 
-Keyboard, VoiceOver and Rescue fixes from native checks of 0.2.0.
+0.2.1 is the first public 0.2 release. It has all of 0.2.0 below, plus
+keyboard, VoiceOver and Rescue fixes from native checks of the 0.2.0 candidate.
 
 - Tab skips hidden shortcut buttons. Launch focus goes to the source list,
   which is one Tab stop; arrow keys move the selection.
