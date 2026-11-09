@@ -137,7 +137,7 @@ struct InspectorView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .buttonStyle(.interactive).focusEffectDisabled()
+                .tesseraButtonStyle(.interactive)
                 .contentShape(Rectangle())
                 .help(child.name)
             }
@@ -164,19 +164,20 @@ struct InspectorView: View {
                         Label("Add to Cleanup List", systemImage: "plus")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.flat).focusEffectDisabled()
+                    .tesseraButtonStyle(.flat)
                     .help("Add to Cleanup List (⌘⌫)")
                 }
                 HStack(spacing: 16) {
                     if node.isDirectory && node.id != vm.currentRoot?.id {
                         Button("Open on Map") { vm.zoomIn(to: node) }
+                            .tesseraButtonStyle(.interactive)
                             .help("Open this folder on the map (⌘↓)")
                     }
                     Button("Reveal in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([node.url])
                     }
+                    .tesseraButtonStyle(.interactive)
                 }
-                .buttonStyle(.interactive).focusEffectDisabled()
                 .font(.callout)
                 .foregroundStyle(Theme.electricBlue)
             }

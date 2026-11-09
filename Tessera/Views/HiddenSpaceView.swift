@@ -97,7 +97,7 @@ struct HiddenSpaceView: View {
                 Text("\(r.snapshots.count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 Spacer()
                 Button("Delete all…") { confirmDeleteAll = true }
-                    .buttonStyle(.flat).focusEffectDisabled().controlSize(.small)
+                    .tesseraButtonStyle(.flat).controlSize(.small)
                     .disabled(busyID != nil)
             }
             Text("Time Machine keeps recent backups on this disk itself. Deleting them frees space, but you lose the ability to roll back to those points in time — keeping the most recent one is usually wise.")
@@ -113,7 +113,7 @@ struct HiddenSpaceView: View {
                         Button { snapToDelete = snap } label: {
                             Image(systemName: "trash").font(.caption)
                         }
-                        .buttonStyle(.interactive).focusEffectDisabled().foregroundStyle(Theme.danger)
+                        .tesseraButtonStyle(.interactive).foregroundStyle(Theme.danger)
                         .help("Delete this snapshot — cannot be undone")
                         .disabled(busyID != nil)
                     }
@@ -131,7 +131,7 @@ struct HiddenSpaceView: View {
                 Label("Open Full Disk Access settings", systemImage: "gearshape")
                     .font(.caption.weight(.medium))
             }
-            .buttonStyle(.flat).focusEffectDisabled().controlSize(.small)
+            .tesseraButtonStyle(.flat).controlSize(.small)
         }
     }
 

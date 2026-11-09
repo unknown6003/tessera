@@ -124,7 +124,7 @@ struct CleanupActionBar: View {
 
                 Spacer(minLength: 0)
                 Button("Done") { presentedTool = nil }
-                    .buttonStyle(.flat).focusEffectDisabled()
+                    .tesseraButtonStyle(.flat)
                     .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 24)

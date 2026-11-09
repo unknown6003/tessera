@@ -47,7 +47,7 @@ struct DuplicateFinderView: View {
                 Label("Find Duplicates", systemImage: "doc.on.doc")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.flat).focusEffectDisabled()
+            .tesseraButtonStyle(.flat)
             .controlSize(.large)
         }
     }
@@ -59,7 +59,7 @@ struct DuplicateFinderView: View {
             Text("\(Int(vm.duplicateProgress.fraction * 100))%")
                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             Button("Stop") { vm.cancelDuplicates() }
-                .buttonStyle(.interactive).focusEffectDisabled()
+                .tesseraButtonStyle(.interactive)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.red)
         }
@@ -78,12 +78,12 @@ struct DuplicateFinderView: View {
                           systemImage: vm.allDuplicatesStaged ? "checkmark" : "tray.and.arrow.down.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.flatProminent).focusEffectDisabled()
+                .tesseraButtonStyle(.flatProminent)
                 .controlSize(.regular)
                 .disabled(vm.allDuplicatesStaged)
 
                 Button("Rescan") { vm.findDuplicates() }
-                    .buttonStyle(.flat).focusEffectDisabled()
+                    .tesseraButtonStyle(.flat)
                     .controlSize(.regular)
             }
         }
@@ -108,7 +108,7 @@ struct DuplicateFinderView: View {
                     Image(systemName: staged ? "checkmark.circle.fill" : "plus.circle")
                         .foregroundStyle(staged ? AnyShapeStyle(Theme.electricBlue) : AnyShapeStyle(.secondary))
                 }
-                .buttonStyle(.interactive).focusEffectDisabled()
+                .tesseraButtonStyle(.interactive)
                 .help(staged ? "Remove these copies from the collector" : "Add the redundant copies to the collector")
             }
 
@@ -125,7 +125,7 @@ struct DuplicateFinderView: View {
                 } label: {
                     Image(systemName: "magnifyingglass").font(.caption)
                 }
-                .buttonStyle(.interactive).focusEffectDisabled().foregroundStyle(.green)
+                .tesseraButtonStyle(.interactive).foregroundStyle(.green)
                 .help("Reveal the kept copy in Finder")
                 Spacer(minLength: 0)
             }
@@ -146,7 +146,7 @@ struct DuplicateFinderView: View {
                     } label: {
                         Image(systemName: "magnifyingglass").font(.caption)
                     }
-                    .buttonStyle(.interactive).focusEffectDisabled()
+                    .tesseraButtonStyle(.interactive)
                     .foregroundStyle(.tint)
                     .help("Reveal this copy in Finder")
                 }

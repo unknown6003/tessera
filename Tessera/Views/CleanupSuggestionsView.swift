@@ -335,12 +335,12 @@ struct CleanupSuggestionsView: View {
             if let action, let actionTitle {
                 if prominent {
                     Button(actionTitle, action: action)
-                        .buttonStyle(.flatProminent).focusEffectDisabled()
+                        .tesseraButtonStyle(.flatProminent)
                         .controlSize(.small)
                         .disabled(actionDisabled)
                 } else {
                     Button(actionTitle, action: action)
-                        .buttonStyle(.flat).focusEffectDisabled()
+                        .tesseraButtonStyle(.flat)
                         .controlSize(.small)
                         .disabled(actionDisabled)
                 }
@@ -402,7 +402,7 @@ struct CleanupSuggestionsView: View {
                         Button(vm.isGroupStaged(group) ? "Added" : "Add") {
                             vm.toggleCleanupGroup(group)
                         }
-                        .buttonStyle(.flat).focusEffectDisabled()
+                        .tesseraButtonStyle(.flat)
                         .controlSize(.small)
                     } else {
                         Text("Owner handoff")
@@ -436,7 +436,7 @@ struct CleanupSuggestionsView: View {
                         .foregroundStyle(vm.isCollected(recommendation.node)
                                          ? Theme.electricBlue : Theme.mutedForeground)
                 }
-                .buttonStyle(.interactive).focusEffectDisabled()
+                .tesseraButtonStyle(.interactive)
                 .disabled(recommendation.risk == .protected || vm.isDeleting || vm.isScanning)
                 .help(vm.isCollected(recommendation.node)
                       ? "Remove from the Cleanup List" : "Add to the Cleanup List")
@@ -642,7 +642,7 @@ struct CleanupSuggestionsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Button("Stage for review") { vm.stageRestoredRescueCase() }
-                        .buttonStyle(.flat).focusEffectDisabled()
+                        .tesseraButtonStyle(.flat)
                         .controlSize(.small)
                 }
                 Text("Nothing is staged until you choose this action.")
@@ -722,7 +722,7 @@ struct CleanupSuggestionsView: View {
             } label: {
                 Label("Review Cleanup List…", systemImage: "checklist")
             }
-            .buttonStyle(.flatProminent).focusEffectDisabled()
+            .tesseraButtonStyle(.flatProminent)
             .controlSize(.regular)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -788,11 +788,11 @@ struct CleanupSuggestionsView: View {
             // Flat: a saved case is a secondary path; the page keeps one
             // filled primary action.
             Button("Reopen and rescan") { vm.reopenSavedRescueCase() }
-                .buttonStyle(.flat).focusEffectDisabled()
+                .tesseraButtonStyle(.flat)
                 .controlSize(.small)
                 .disabled(vm.isScanning)
             Button("Forget") { vm.discardSavedRescueCase() }
-                .buttonStyle(.flat).focusEffectDisabled()
+                .tesseraButtonStyle(.flat)
                 .controlSize(.small)
         }
     }

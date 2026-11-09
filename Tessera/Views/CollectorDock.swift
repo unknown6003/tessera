@@ -127,10 +127,10 @@ struct CollectorDock: View {
                 if !summary.permanently && summary.moved > 0,
                    let trash = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first {
                     Button("Show Trash") { NSWorkspace.shared.open(trash) }
-                        .buttonStyle(.flat).focusEffectDisabled().controlSize(.small)
+                        .tesseraButtonStyle(.flat).controlSize(.small)
                 }
                 Button("Dismiss") { hiddenSummaryID = summary.id }
-                    .buttonStyle(.flat).focusEffectDisabled().controlSize(.small)
+                    .tesseraButtonStyle(.flat).controlSize(.small)
                     .accessibilityLabel("Dismiss removal result")
             }
             if vm.isDeleting {
@@ -142,11 +142,11 @@ struct CollectorDock: View {
                 // One filled accent control per view: the review CTA fills only
                 // when there is something to review.
                 Button("Review List…", action: onReview)
-                    .buttonStyle(.flat).focusEffectDisabled()
+                    .tesseraButtonStyle(.flat)
                     .disabled(true)
             } else {
                 Button("Review List…", action: onReview)
-                    .buttonStyle(.flatProminent).focusEffectDisabled()
+                    .tesseraButtonStyle(.flatProminent)
                     .disabled(vm.isScanning)
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                     .help("Review every path before anything moves (⇧⌘L)")
@@ -315,7 +315,7 @@ struct CleanupReviewSheet: View {
                 Text("Review Cleanup List").font(.title2.weight(.semibold))
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
-                    .buttonStyle(.flat).focusEffectDisabled()
+                    .tesseraButtonStyle(.flat)
             }
             Text("Check every path. Removing a row keeps its file in place.")
                 .font(.callout).foregroundStyle(Theme.mutedForeground)
@@ -350,7 +350,7 @@ struct CleanupReviewSheet: View {
                     items.removeAll { $0.id == item.id }
                     reviewedCollectorIDs.remove(item.id)
                 } label: { Image(systemName: "minus.circle") }
-                .buttonStyle(.icon(size: 24)).focusEffectDisabled()
+                .tesseraButtonStyle(.icon(size: 24))
                 .help("Remove from Cleanup List. The file stays in place.")
                 .accessibilityLabel("Remove \(item.node.name) from Cleanup List")
                 .disabled(!isCurrent)
@@ -406,7 +406,7 @@ struct CleanupReviewSheet: View {
                 .fixedSize()
                 Spacer()
                 Button("Move to Trash…") { requestTrash() }
-                    .buttonStyle(.flatProminent).focusEffectDisabled()
+                    .tesseraButtonStyle(.flatProminent)
             }
             .disabled(!isCurrent || items.isEmpty)
         }

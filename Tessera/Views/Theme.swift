@@ -275,14 +275,9 @@ private struct FlatButtonMetrics {
 // changed only on press and only slightly, and plain icon buttons did nothing at
 // all — so neither question was answered.
 //
-// Focus: macOS draws its system focus ring in the user's system accent. An
-// app's AccentColor asset applies only when the user picks the Multicolor
-// accent, so the ring could be mauve or pink beside Tessera's cyan. Buttons
-// that use these styles therefore turn the system effect off at the call site
-// with `.focusEffectDisabled()` (public, macOS 14) and the styles draw their
-// own 2 pt cyan ring from `EnvironmentValues.isFocused`. Focus stays visible
-// for Full Keyboard Access; only its colour changes. Text fields and other
-// system controls keep the system ring.
+// TesseraButtonModifier observes focus on the Button. A ButtonStyle child's
+// isFocused environment does not follow activation focus on this macOS path.
+// Text fields and other system controls keep their native focus indication.
 // Hover and press feedback add clarity without moving controls under the pointer.
 
 /// Timing shared by every interaction so the whole app feels like one surface.
@@ -291,7 +286,7 @@ enum Motion {
     static let press: Animation = .easeOut(duration: 0.09)
 }
 
-/// The hover / press / focus surface behind the flat button styles.
+/// The hover and press surface behind the flat button styles.
 private struct FlatButtonSurface<Label: View>: View {
     let label: Label
     let radius: CGFloat
@@ -305,7 +300,6 @@ private struct FlatButtonSurface<Label: View>: View {
     /// plain style must not repaint labels that style themselves.
     let foreground: Color?
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.isFocused) private var isFocused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
@@ -327,12 +321,6 @@ private struct FlatButtonSurface<Label: View>: View {
                     shape.strokeBorder(active ? (borderHovered ?? border) : border, lineWidth: 1)
                 }
             }
-            .overlay {
-                if isFocused {
-                    shape.inset(by: -3).strokeBorder(Theme.electricBlue, lineWidth: 2)
-                        .allowsHitTesting(false)
-                }
-            }
             .contentShape(shape)
             .scaleEffect(reduceMotion ? 1.0 : scale)
             .opacity(isEnabled ? 1.0 : 0.45)
@@ -348,10 +336,12 @@ private struct FlatButtonSurface<Label: View>: View {
 
 /// Filled accent button (primary action). Solid cyan, contrast-safe ink.
 /// Deliberately does not set a font — call sites' `.font()` still applies.
-struct FlatProminentButtonStyle: ButtonStyle {
+struct FlatProminentButtonStyle: TesseraButtonStyle {
     var tint: Color = Theme.electricBlue
     var ink: Color?
     @Environment(\.controlSize) private var controlSize
+
+    func focusRadius(for size: ControlSize) -> CGFloat { FlatButtonMetrics(size).radius }
 
     func makeBody(configuration: Configuration) -> some View {
         let m = FlatButtonMetrics(controlSize)
@@ -372,9 +362,11 @@ struct FlatProminentButtonStyle: ButtonStyle {
 }
 
 /// Neutral bordered button (secondary action). Transparent fill, hairline border.
-struct FlatButtonStyle: ButtonStyle {
+struct FlatButtonStyle: TesseraButtonStyle {
     var tint: Color = Theme.foreground
     @Environment(\.controlSize) private var controlSize
+
+    func focusRadius(for size: ControlSize) -> CGFloat { FlatButtonMetrics(size).radius }
 
     func makeBody(configuration: Configuration) -> some View {
         let m = FlatButtonMetrics(controlSize)
@@ -397,9 +389,11 @@ struct FlatButtonStyle: ButtonStyle {
 /// Bare icon button (sidebar refresh, inspector affordances). Previously
 /// `.buttonStyle(.plain)`, which gave no hover or press feedback at all and let
 /// macOS draw its system-accent focus ring — the stray pink halo in the sidebar.
-struct IconButtonStyle: ButtonStyle {
+struct IconButtonStyle: TesseraButtonStyle {
     var size: CGFloat = 28
     var tint: Color = Theme.mutedForeground
+
+    func focusRadius(for controlSize: ControlSize) -> CGFloat { size / 2 }
 
     func makeBody(configuration: Configuration) -> some View {
         FlatButtonSurface(
@@ -421,19 +415,19 @@ struct IconButtonStyle: ButtonStyle {
 /// padding, no background, so nothing shifts — and adds the two cues that were
 /// missing: the label brightens under the pointer and settles when clicked.
 /// Labels that colour themselves keep their colour.
-struct PlainInteractiveButtonStyle: ButtonStyle {
+struct PlainInteractiveButtonStyle: TesseraButtonStyle {
+    func focusRadius(for size: ControlSize) -> CGFloat { 6 }
+
     func makeBody(configuration: Configuration) -> some View {
         PlainInteractiveSurface(label: configuration.label, isPressed: configuration.isPressed)
     }
 }
 
-/// The view behind `PlainInteractiveButtonStyle`. A view, not the style, reads
-/// `isFocused`, so the ring follows the button that owns this label.
+/// The hover and press surface behind `PlainInteractiveButtonStyle`.
 private struct PlainInteractiveSurface<Label: View>: View {
     let label: Label
     let isPressed: Bool
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.isFocused) private var isFocused
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
@@ -441,13 +435,6 @@ private struct PlainInteractiveSurface<Label: View>: View {
         let active = isHovering && isEnabled
         return label
             .frame(minHeight: 22)
-            .overlay {
-                if isFocused {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous).inset(by: -3)
-                        .strokeBorder(Theme.electricBlue, lineWidth: 2)
-                        .allowsHitTesting(false)
-                }
-            }
             .brightness(active && !isPressed ? 0.12 : 0)
             .opacity(isPressed ? 0.85 : 1.0)
             // Scale down only on press: a hover-grow would reflow full-width rows.
@@ -527,4 +514,35 @@ extension ButtonStyle where Self == FlatButtonStyle {
     /// Secondary bordered button.
     static var flat: FlatButtonStyle { .init() }
     static func flat(tint: Color) -> FlatButtonStyle { .init(tint: tint) }
+}
+
+protocol TesseraButtonStyle: ButtonStyle {
+    func focusRadius(for size: ControlSize) -> CGFloat
+}
+
+private struct TesseraButtonModifier<Style: TesseraButtonStyle>: ViewModifier {
+    let style: Style
+    @Environment(\.controlSize) private var controlSize
+    @Environment(\.isEnabled) private var isEnabled
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        content.buttonStyle(style)
+            .focused($focused)
+            .focusEffectDisabled()
+            .overlay {
+                if focused && isEnabled {
+                    RoundedRectangle(cornerRadius: style.focusRadius(for: controlSize), style: .continuous)
+                        .inset(by: -3)
+                        .strokeBorder(Theme.electricBlue, lineWidth: 2)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
+extension View {
+    func tesseraButtonStyle<Style: TesseraButtonStyle>(_ style: Style) -> some View {
+        modifier(TesseraButtonModifier(style: style))
+    }
 }

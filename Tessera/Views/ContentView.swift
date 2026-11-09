@@ -366,7 +366,7 @@ struct ContentView: View {
                     Label(scanButtonTitle, systemImage: "arrow.clockwise")
                 }
                 .disabled(vm.selectedSourceURL == nil)
-                .buttonStyle(.flat).focusEffectDisabled()
+                .tesseraButtonStyle(.flat)
                 .controlSize(.small)
                 .keyboardShortcut("r", modifiers: .command)
                 .help(showsOtherSource ? "Scan \(sourceName) (⌘R)" : "Scan this source again (⌘R)")
@@ -898,14 +898,17 @@ struct ContentView: View {
                 if !node.isSynthetic {
                     if node.isDirectory {
                         Button("Open") { vm.zoomIn(to: node) }
+                            .tesseraButtonStyle(.flat)
                             .help("Open this folder on the map (⌘↓)")
                     }
                     Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+                        .tesseraButtonStyle(.flat)
                     if vm.isCollected(node) {
                         Label("In Cleanup List", systemImage: "checkmark")
                             .font(.callout).foregroundStyle(Theme.mutedForeground)
                     } else {
                         Button("Add to Cleanup List") { vm.addToCollector(node) }
+                            .tesseraButtonStyle(.flat)
                             .help("Add to Cleanup List (⌘⌫)")
                     }
                 }
@@ -916,7 +919,6 @@ struct ContentView: View {
             }
         }
         .controlSize(.small)
-        .buttonStyle(.flat).focusEffectDisabled()
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
         .disabled(removalBusy)
@@ -943,7 +945,7 @@ struct ContentView: View {
                         Label("Scan", systemImage: "magnifyingglass")
                     }
                     .accessibilityHint("Scans \(sourceName)")
-                    .buttonStyle(.flatProminent).focusEffectDisabled().controlSize(.large)
+                    .tesseraButtonStyle(.flatProminent).controlSize(.large)
                     // The header scan button is hidden in this state, so the
                     // body CTA carries ⌘R while it is on screen.
                     .keyboardShortcut("r", modifiers: .command)
@@ -959,7 +961,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             Label("Full Disk Access needed", systemImage: "lock.shield").font(.title2)
             Text("Grant access in System Settings, then scan again.").foregroundStyle(.secondary)
-            Button("Open System Settings") { vm.openFullDiskAccessSettings() }.buttonStyle(.flatProminent).focusEffectDisabled()
+            Button("Open System Settings") { vm.openFullDiskAccessSettings() }.tesseraButtonStyle(.flatProminent)
         }
     }
 
@@ -969,7 +971,7 @@ struct ContentView: View {
             Text(message).foregroundStyle(.secondary).textSelection(.enabled)
             if vm.canRetryLastScan {
                 Button("Try again") { vm.errorMessage = nil; vm.retryLastScan() }
-                    .buttonStyle(.flatProminent).focusEffectDisabled().disabled(removalBusy)
+                    .tesseraButtonStyle(.flatProminent).disabled(removalBusy)
             }
             Button("Dismiss") { vm.errorMessage = nil }
         }
@@ -1067,7 +1069,7 @@ struct ContentView: View {
                 ForEach(ancestors) { ancestor in
                     chevron
                     Button(crumbName(ancestor)) { selectBreadcrumbNode(ancestor) }
-                        .buttonStyle(.interactive).focusEffectDisabled()
+                        .tesseraButtonStyle(.interactive)
                         .font(.subheadline)
                         .foregroundStyle(Theme.mutedForeground)
                         .lineLimit(1)
@@ -1112,7 +1114,7 @@ struct ContentView: View {
             Image(systemName: "house.fill")
                 .font(.caption.weight(.semibold))
         }
-        .buttonStyle(.interactive).focusEffectDisabled()
+        .tesseraButtonStyle(.interactive)
         .help("Go to the top of this scan")
         .accessibilityLabel("Top of scan")
     }
@@ -1349,7 +1351,7 @@ private struct ScanningView: View {
                 .lineLimit(2).truncationMode(.middle).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Cancel scan", role: .cancel) { vm.cancelScan() }
-                .buttonStyle(.flat).focusEffectDisabled().keyboardShortcut(".", modifiers: .command)
+                .tesseraButtonStyle(.flat).keyboardShortcut(".", modifiers: .command)
         }
         .padding(32)
         .frame(maxWidth: 560, alignment: .leading)
@@ -1463,7 +1465,7 @@ private struct FullDiskAccessOnboarding: View {
                     Label("Open System Settings", systemImage: "gearshape.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.flatProminent).focusEffectDisabled()
+                .tesseraButtonStyle(.flatProminent)
                 .controlSize(.large)
 
                 Button("Not Now") {
@@ -1471,7 +1473,7 @@ private struct FullDiskAccessOnboarding: View {
                     vm.dismissFDAOnboarding()
                 }
                 .keyboardShortcut(.cancelAction)
-                .buttonStyle(.flat).focusEffectDisabled()
+                .tesseraButtonStyle(.flat)
                 .controlSize(.large)
             }
         }

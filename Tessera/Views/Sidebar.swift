@@ -151,7 +151,7 @@ struct Sidebar: View {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 12, weight: .semibold))
             }
-            .buttonStyle(.icon).focusEffectDisabled()
+            .tesseraButtonStyle(.icon)
             .help("Refresh sources")
             .disabled(isReloadingSources)
         }
@@ -279,7 +279,7 @@ struct Sidebar: View {
             .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.interactive).focusEffectDisabled()
+        .tesseraButtonStyle(.interactive)
         .allowsHitTesting(!sourcesBusy)
         .accessibilityHint(sourcesBusy ? "Unavailable while a scan or cleanup runs" : "")
     }
@@ -326,7 +326,7 @@ struct Sidebar: View {
                 .padding(.vertical, 7)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.interactive).focusEffectDisabled()
+            .tesseraButtonStyle(.interactive)
             .disabled(!updater.canCheckForUpdates || updater.status.isBusy)
             .help(updateRowHelp)
             .accessibilityLabel(Text("Tessera version \(updater.currentVersion)"))
@@ -384,7 +384,7 @@ struct Sidebar: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
             }
-            .buttonStyle(.icon(size: 18)).focusEffectDisabled()
+            .tesseraButtonStyle(.icon(size: 18))
             .help("Dismiss")
         }
         .padding(.horizontal, 10)
