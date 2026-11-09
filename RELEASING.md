@@ -1,8 +1,9 @@
 # Release Tessera from owned hardware
 
-Tessera releases stay in `0.x.x`. The next candidate is `0.2.0`, build `12`.
-It supersedes withdrawn `1.0.0`, build `11`. The public `0.1.9` release stays
-latest until a new candidate passes all gates and an operator publishes it.
+Tessera releases stay in `0.x.x`. The next candidate is `0.2.1`, build `13`.
+It follows `0.2.0`, build `12`. Withdrawn `1.0.0`, build `11`, stays a draft.
+The public release stays latest until a new candidate passes all gates and an
+operator publishes it.
 A major version needs Ammar's explicit permission and a policy change.
 
 The publisher uses the existing Mac, installed Xcode, XcodeGen, Python 3.12+
@@ -219,7 +220,7 @@ app, image, signature, smoke evidence and asset hashes. It creates an annotated
 tag at the exact full commit, then a draft release. It uploads exactly:
 
 - `Tessera.dmg`
-- `Tessera-0.2.0.dmg`
+- `Tessera-0.2.1.dmg`
 - `appcast.xml`
 - `SHA256SUMS`
 

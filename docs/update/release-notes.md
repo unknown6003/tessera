@@ -1,3 +1,21 @@
+# Tessera 0.2.1
+
+Keyboard, VoiceOver and Rescue fixes from native checks of 0.2.0.
+
+- Tab skips hidden shortcut buttons. Launch focus goes to the source list,
+  which is one Tab stop; arrow keys move the selection.
+- The source list reads as one Sources control with the selected source and
+  its place. Same-named sources are named by path. Decorative icons are hidden.
+- A focused Tessera button scrolls into view. The focus ring hides while a
+  sheet or alert covers the window.
+- Rescue opens with a summary of what this scan found. Each group has a
+  chevron button, an Add button on its title row, and scrolls its first rows
+  into view when opened.
+- Escape closes the Trash and delete alerts. Return still picks Cancel, so it
+  never trashes or deletes. The Trash alert names what in the list needs review.
+- A folder scanned from the Finder service, a restored session or automation
+  gets a sidebar row.
+
 # Tessera 0.2.0
 
 Tessera has a new workspace and a scanner that streams large folders without
