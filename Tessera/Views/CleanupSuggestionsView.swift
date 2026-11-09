@@ -121,8 +121,29 @@ struct CleanupSuggestionsView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
+            // The result for this folder leads; the drive-wide figures follow.
+            if let summary = resultSummary {
+                Text(summary)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             phaseBadge
         }
+    }
+
+    /// One line with what this scan found, in task order: what is safe to
+    /// add now, then what needs a closer look.
+    private var resultSummary: String? {
+        guard let report = vm.cleanupReport, !report.isEmpty else { return nil }
+        var parts: [String] = []
+        if report.safeTotalBytes > 0 {
+            parts.append("\(Theme.format(report.safeTotalBytes)) safe to review")
+        }
+        let review = report.reviewGroups.count
+        if review > 0 {
+            parts.append(review == 1 ? "1 group to check first" : "\(review) groups to check first")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private var phaseBadge: some View {
