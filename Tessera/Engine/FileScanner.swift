@@ -72,6 +72,7 @@ struct FileScanner: Sendable {
     static func scan(
         url: URL,
         cache: FileNode? = nil,
+        readSession: DirectoryReadSession = DirectoryReadSession(),
         onProgress: @Sendable @escaping (ScanProgress) -> Void
     ) async throws -> FileNode {
         let rootPath = url.path
@@ -104,6 +105,7 @@ struct FileScanner: Sendable {
             volumeUsed: volumeUsed,
             isVolumeRoot: isVolumeRoot,
             progress: progress,
+            readSession: readSession,
             onProgress: onProgress
         )
 
@@ -361,7 +363,7 @@ struct FileScanner: Sendable {
     private final class ScanCoordinator: @unchecked Sendable {
         private let cond = NSCondition()
         private static let workerSlots = DispatchSemaphore(value: 12)
-        private let readSession = DirectoryReadSession()
+        private let readSession: DirectoryReadSession
 
         // Shared mutable state — guarded by `cond`.
         private var queue: [DirWork] = []
@@ -401,6 +403,7 @@ struct FileScanner: Sendable {
         init(rootNode: FileNode, rootWork: DirWork, allowedDevices: Set<UInt32>,
              volumeUsed: Int64, isVolumeRoot: Bool,
              progress: ScanProgress,
+             readSession: DirectoryReadSession,
              onProgress: @escaping @Sendable (ScanProgress) -> Void) {
             self.rootNode = rootNode
             self.allowedDevices = allowedDevices
@@ -408,6 +411,7 @@ struct FileScanner: Sendable {
             self.isVolumeRoot = isVolumeRoot
             self.onProgress = onProgress
             self.progress = progress
+            self.readSession = readSession
             self.queue = [rootWork]
             if let override = ProcessInfo.processInfo.environment["SO_SCAN_WORKERS"],
                let n = Int(override), n > 0 {
@@ -644,6 +648,7 @@ struct FileScanner: Sendable {
         /// Runs exactly once (guarded by `finished`).
         private func finalizeAndResume() {
             claimWatchdog()?.cancel()
+            readSession.cancel()
 
             // Size cross-mounted volumes (Simulator runtimes, disk images, …) from
             // the mount table before re-aggregating, so their bytes flow up into
