@@ -1,0 +1,12 @@
+{
+  "report": {
+    "revision": "21252633611e13682f0f77ff8de8710a4d8a53de",
+    "lane": "native",
+    "policy": "a381cc8cc38957e93247813263a81220cc6f73c69dd60d21def1747db2f06780",
+    "result": "failure",
+    "failure": "OSError",
+    "steps": [],
+    "finishedAt": 1794187092.467617
+  },
+  "signature": "17a325beb87826f315c852292f2073c390ad623fcaf4461662c4c947c608c63c"
+}
