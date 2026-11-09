@@ -124,6 +124,7 @@ struct Sidebar: View {
             reloadVolumes()
         }
         .onChange(of: customFolders.map(\.url)) { _, _ in saveCustomFolders() }
+        .onChange(of: vm.selectedSourceURL) { _, _ in adoptSelectedSource() }
         // Observe names as well as URLs: a source can be renamed in place.
         .onChange(of: sourceNameLookup, initial: true) { _, names in sourceNames = names }
         .onChange(of: sourcesFocused) { _, focused in if focused { onKeyboardFocus() } }
@@ -517,16 +518,29 @@ struct Sidebar: View {
             let snapshot = await StorageSourceDiscovery.discover(checkingFolders: checkedFolders)
             volumes = snapshot.sources
             // Keep folders added while this request was reading metadata.
-            customFolders.removeAll { checkedFolderIDs.contains($0.id) && !snapshot.existingFolders.contains($0.url) }
+            let gone = Set(customFolders.filter { checkedFolderIDs.contains($0.id) && !snapshot.existingFolders.contains($0.url) }.map(\.url))
+            customFolders.removeAll { gone.contains($0.url) }
             if !vm.isDeleting, !vm.isScanning, selectedVolumeURL == nil {
                 selectedVolumeURL = defaultSelection
             }
             isReloadingSources = false
+            adoptSelectedSource(except: gone)
             if reloadSourcesAgain {
                 reloadSourcesAgain = false
                 reloadVolumes()
             }
         }
+    }
+
+    /// A scan can start outside this list: the Finder service, a restored
+    /// session or automation. Give that folder a row, so the source on screen
+    /// is always listed. The next reload drops it again if it is gone.
+    private func adoptSelectedSource(except gone: Set<URL> = []) {
+        guard !isReloadingSources, !volumes.isEmpty, let url = vm.selectedSourceURL,
+              !gone.contains(url) else { return }
+        let path = url.standardizedFileURL.path
+        guard !allSources.contains(where: { $0.url.standardizedFileURL.path == path }) else { return }
+        customFolders = Array(([VolumeInfo(folderURL: url)] + customFolders).prefix(Self.customFoldersLimit))
     }
 
     private var defaultSelection: URL? {
