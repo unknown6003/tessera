@@ -263,7 +263,14 @@ class Release:
         validate_tag(ref, tag, revision)
         if ref and (ref.get("ref") != "refs/tags/v" + version or tag.get("tag") != "v" + version):
             raise ValueError("Annotated tag name differs from the release version")
-        existing = self.api(base + f"/releases/tags/v{version}", missing=True)
+        # The by-tag endpoint returns 404 for a draft, so search the release list, which includes drafts.
+        releases = self.api(base + "/releases?per_page=100")
+        if len(releases) >= 100:
+            raise ValueError("Too many releases to search for the draft in one page")
+        matches = [r for r in releases if r["tag_name"] == "v" + version]
+        if len(matches) > 1:
+            raise ValueError("More than one release uses this tag; parent review required")
+        existing = matches[0] if matches else None
         if existing and (not existing["draft"] or existing["tag_name"] != "v" + version
                          or existing.get("target_commitish") != revision):
             raise ValueError("Release exists and is public or does not pin this exact draft commit")
@@ -532,10 +539,13 @@ class Release:
                 raise ValueError("Remote asset bytes differ")
         self.gate(revision)
         _, final_draft = self.remote_state(version, build, revision)
-        asset_identity = lambda assets: sorted((a["id"], a["name"], a["size"], a.get("digest")) for a in assets)
+        # GitHub can fill in an asset digest after the upload reply, so the digest is not part of the identity.
+        asset_identity = lambda assets: sorted((a["id"], a["name"], a["size"]) for a in assets)
         if (final_draft is None or final_draft["id"] != existing["id"]
                 or asset_identity(final_draft["assets"]) != asset_identity(existing["assets"])):
             raise ValueError("Draft assets changed after byte verification")
+        if any(a.get("digest") and a["digest"] != "sha256:" + proof["assets"][a["name"]] for a in final_draft["assets"]):
+            raise ValueError("Remote asset digest differs")
         # Recheck local bytes after network work before the public transition.
         for name, digest in proof["assets"].items():
             if sha256(self.output / "updates" / name) != digest:

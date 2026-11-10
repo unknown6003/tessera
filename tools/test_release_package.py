@@ -134,10 +134,25 @@ class ReleasePackageTests(unittest.TestCase):
         release = Release(Path.cwd(), self.root, b"x" * 32)
         for draft, commit in ((False, "a" * 40), (True, "b" * 40)):
             existing = {"draft": draft, "tag_name": "v0.2.0", "target_commitish": commit}
-            with patch.object(release, "api", side_effect=[None, existing]) as api:
+            with patch.object(release, "api", side_effect=[None, [existing]]) as api:
                 with self.assertRaises(ValueError):
                     release.remote_state("0.2.0", "12", "a" * 40)
                 self.assertFalse(any(call.kwargs.get("method") for call in api.call_args_list))
+
+    def test_a_draft_is_found_through_the_release_list(self):
+        release = Release(Path.cwd(), self.root, b"x" * 32)
+        draft = {"id": 7, "draft": True, "tag_name": "v0.2.0", "target_commitish": "a" * 40, "assets": []}
+        other = {"id": 8, "draft": False, "tag_name": "v0.1.9", "target_commitish": "c" * 40, "assets": []}
+        with patch.object(release, "api", side_effect=[None, [other, draft], None]) as api:
+            self.assertEqual(release.remote_state("0.2.0", "12", "a" * 40), (None, draft))
+        self.assertNotIn("/releases/tags/", " ".join(str(c.args[0]) for c in api.call_args_list))
+
+    def test_two_releases_with_one_tag_stop_for_review(self):
+        release = Release(Path.cwd(), self.root, b"x" * 32)
+        draft = {"id": 7, "draft": True, "tag_name": "v0.2.0", "target_commitish": "a" * 40, "assets": []}
+        with patch.object(release, "api", side_effect=[None, [draft, draft | {"id": 9}]]):
+            with self.assertRaisesRegex(ValueError, "More than one release"):
+                release.remote_state("0.2.0", "12", "a" * 40)
 
     def test_missing_or_wrong_symbol_cli_stops_before_vault(self):
         release = Release(Path.cwd(), self.root, b"x" * 32)
@@ -208,7 +223,7 @@ class ReleasePackageTests(unittest.TestCase):
         release = Release(Path.cwd(), self.root, b"x" * 32)
         for version, build in (("0.1.9", "12"), ("0.2.0", "10")):
             old = plistlib.dumps({"CFBundleShortVersionString": version, "CFBundleVersion": build})
-            with patch.object(release, "api", side_effect=[None, None, {"tag_name": "v" + version},
+            with patch.object(release, "api", side_effect=[None, [], {"tag_name": "v" + version},
                               {"content": base64.b64encode(old).decode()}]):
                 with self.assertRaises(ValueError):
                     release.remote_state("0.2.0", "12", "a" * 40)
@@ -258,6 +273,38 @@ class ReleasePackageTests(unittest.TestCase):
                 release.publish(proof, {})
         self.assertFalse(any(c.kwargs.get("method") for c in api.call_args_list))
 
+
+    def publish_with_final_digests(self, digest):
+        release = Release(Path.cwd(), self.root, b"x" * 32)
+        proof = self.publication_proof()
+        updates = self.root / "updates"
+        updates.mkdir()
+        for name in proof["assets"]:
+            (updates / name).write_bytes(b"x")
+            proof["assets"][name] = hashlib.sha256(b"x").hexdigest()
+        draft = self.draft(proof["assets"])
+        final = self.draft(proof["assets"])
+        for asset in final["assets"]:
+            asset["digest"] = digest
+
+        def valid_bytes(*args, **kwargs):
+            release.index += 1
+            (release.logs / f"{release.index:03}-remote-bytes.log").write_bytes(b"x")
+
+        with patch.object(release, "gate", return_value="a" * 40), patch.object(release, "verify_artifacts"), \
+             patch.object(release, "remote_state", side_effect=[({"tag": "exists"}, draft), ({"tag": "exists"}, final)]), \
+             patch.object(release, "api", return_value=draft) as api, \
+             patch.object(release, "command", side_effect=valid_bytes):
+            release.publish(proof, {})
+        return api
+
+    def test_a_digest_filled_in_after_upload_still_publishes(self):
+        api = self.publish_with_final_digests("sha256:" + hashlib.sha256(b"x").hexdigest())
+        self.assertEqual([c.kwargs.get("method") for c in api.call_args_list if c.kwargs.get("method")], ["PATCH"])
+
+    def test_a_wrong_remote_digest_cannot_make_draft_public(self):
+        with self.assertRaisesRegex(ValueError, "Remote asset digest differs"):
+            self.publish_with_final_digests("sha256:" + "0" * 64)
 
 class ArchiveReleaseTests(unittest.TestCase):
     """Real Git objects and an archive, with no project checkout or worktree."""
