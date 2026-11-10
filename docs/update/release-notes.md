@@ -1,4 +1,23 @@
-# Tessera 1.0.0
+# Tessera 0.2.1
+
+0.2.1 is the first public 0.2 release. It has all of 0.2.0 below, plus
+keyboard, VoiceOver and Rescue fixes from native checks of the 0.2.0 candidate.
+
+- Tab skips hidden shortcut buttons. Launch focus goes to the source list,
+  which is one Tab stop; arrow keys move the selection.
+- The source list reads as one Sources control with the selected source and
+  its place. Same-named sources are named by path. Decorative icons are hidden.
+- A focused Tessera button scrolls into view. The focus ring hides while a
+  sheet or alert covers the window.
+- Rescue opens with a summary of what this scan found. Each group has a
+  chevron button, an Add button on its title row, and scrolls its first rows
+  into view when opened.
+- Escape closes the Trash and delete alerts. Return still picks Cancel, so it
+  never trashes or deletes. The Trash alert names what in the list needs review.
+- A folder scanned from the Finder service, a restored session or automation
+  gets a sidebar row.
+
+# Tessera 0.2.0
 
 Tessera has a new workspace and a scanner that streams large folders without
 rereading them. Explore gives the disk map more room. Sources and item details
@@ -21,3 +40,7 @@ in the main workspace.
 Scan time depends on the device, filesystem, permissions and provider state.
 Partial coverage stays marked. This release does not promise a complete scan of
 every possible drive in two minutes.
+
+This release stays in the 0.x series. Anonymous PostHog diagnostics collect in normal
+configured builds with no in-app off switch. Tests and benchmarks stay excluded. Scan times include outcomes above the 120-second local-drive
+performance goal. That goal is not a scan timeout.

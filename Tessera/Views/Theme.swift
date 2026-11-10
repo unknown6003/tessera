@@ -18,7 +18,7 @@ extension Color {
 
 enum Theme {
     static func itemCount(_ count: Int) -> String {
-        "\(count) \(count == 1 ? "item" : "items")"
+        "\(count.formatted()) \(count == 1 ? "item" : "items")"
     }
 
     // MARK: - Flat design tokens
@@ -67,31 +67,66 @@ enum Theme {
 
     /// Categorical chart palette for the top ring — the site's sunburst family
     /// (cyan · teal · blue · violet · green · pink · amber), interleaved so
-    /// neighbours separate. Solid fills; the chart no longer uses glassy radial
-    /// shading.
-    static let sunburstColors: [Color] = [
-        Color(hex: 0x1BE6FF), Color(hex: 0x37E0C8), Color(hex: 0x5B8CFF),
-        Color(hex: 0x9E6BFF), Color(hex: 0x5BE36B), Color(hex: 0xFF5CC8),
-        Color(hex: 0xFFB13C),
+    /// neighbours separate. Each top-level branch keeps its hue at every depth.
+    private static let sunburstHex: [UInt32] = [
+        0x1BE6FF, 0x37E0C8, 0x5B8CFF, 0x9E6BFF, 0x5BE36B, 0xFF5CC8, 0xFFB13C,
     ]
+    static let sunburstColors: [Color] = sunburstHex.map { Color(hex: $0) }
+    /// Number of distinct branch hues. Top-level ranks at or past this count
+    /// draw in the neutral grey; the palette never repeats.
+    static let branchPaletteCount = sunburstHex.count
 
-    /// Hues retained for any HSB-based swatch use; the chart itself now pulls
-    /// solid colors from `sunburstColors` via `wedgeColor`.
-    static let topHues: [Double] = [
-        0.510, 0.575, 0.480, 0.620, 0.540, 0.500,
-        0.600, 0.490, 0.560, 0.530, 0.470, 0.590,
-    ]
+    /// Fixed share of `bg` mixed into each ring, by depth. Opaque sRGB mixes, not
+    /// opacity, so hover washes and hairline gaps stay clean and child rings
+    /// read as a deeper step of the same branch.
+    private static let depthMix: [Double] = [0, 0.12, 0.22, 0.30, 0.36]
+    /// Increase Contrast keeps every ring at 3:1 or more on `bg`. Measured:
+    /// the weakest default step (violet, depth 4) is 2.90:1; at 0.20 it is
+    /// above 3.5:1.
+    private static let depthMixHighContrast: [Double] = [0, 0.06, 0.12, 0.16, 0.20]
 
-    /// Solid categorical wedge color. `hue` selects into the flat palette (its
-    /// index derived from the hue) and `depth` deepens slightly with nesting so
-    /// child rings read as a shade of their parent.
-    static func wedgeColor(hue: Double, depth: Int) -> Color {
-        // Map the legacy hue into a stable palette index.
-        let idx = Int((hue * 1000).rounded()) % sunburstColors.count
-        let base = sunburstColors[(idx + sunburstColors.count) % sunburstColors.count]
-        guard depth > 0 else { return base }
-        // Deepen by compositing toward the void for nested rings.
-        return base.opacity(max(0.55, 1.0 - Double(depth) * 0.12))
+    /// Precomputed [palette][depth] tables. Drawing reads them per wedge; no
+    /// colour math runs per frame.
+    private static let wedgeShades: [[Color]] = sunburstHex.map { hex in
+        depthMix.map { mix(hex, toward: 0x0A0B0D, amount: $0) }
+    }
+    private static let wedgeShadesHighContrast: [[Color]] = sunburstHex.map { hex in
+        depthMixHighContrast.map { mix(hex, toward: 0x0A0B0D, amount: $0) }
+    }
+
+    /// Solid wedge colour for a top-level branch `palette` at ring `depth`.
+    /// `nil` palette marks a wedge too small to tell apart; it uses the
+    /// aggregate neutral, like DaisyDisk's grey "small items". An index
+    /// outside the palette is also neutral: hues never wrap and repeat.
+    static func wedgeColor(palette: Int?, depth: Int, highContrast: Bool = false) -> Color {
+        let table = highContrast ? wedgeShadesHighContrast : wedgeShades
+        guard let palette, table.indices.contains(palette) else {
+            return highContrast ? aggregateColorHighContrast : aggregateColor
+        }
+        let row = table[palette]
+        return row[min(max(0, depth), row.count - 1)]
+    }
+
+    /// Fixed colour for synthetic node kinds. `nil` for real files and folders.
+    static func syntheticColor(for kind: FileNode.Kind, highContrast: Bool = false) -> Color? {
+        switch kind {
+        case .hiddenSpace:      return highContrast ? Color(hex: 0x6A707A) : hiddenSpaceColor
+        case .aggregate:        return highContrast ? aggregateColorHighContrast : aggregateColor
+        case .cloudOnlyStorage: return highContrast ? Color(hex: 0x3F7A8A) : cloudColor
+        case .crossVolume:      return crossVolumeColor
+        case .regular, .package: return nil
+        }
+    }
+
+    /// 3.11:1 on `bg` (default aggregate is 1.86:1).
+    static let aggregateColorHighContrast = Color(hex: 0x5A606A)
+
+    private static func mix(_ hex: UInt32, toward other: UInt32, amount t: Double) -> Color {
+        func channel(_ v: UInt32, _ shift: UInt32) -> Double { Double((v >> shift) & 0xFF) / 255.0 }
+        func lerp(_ shift: UInt32) -> Double {
+            channel(hex, shift) * (1 - t) + channel(other, shift) * t
+        }
+        return Color(.sRGB, red: lerp(16), green: lerp(8), blue: lerp(0), opacity: 1)
     }
 
     // MARK: - Synthetic node colours (solid)
@@ -240,7 +275,9 @@ private struct FlatButtonMetrics {
 // changed only on press and only slightly, and plain icon buttons did nothing at
 // all — so neither question was answered.
 //
-// The native focus ring stays enabled so Full Keyboard Access remains visible.
+// TesseraButtonModifier observes focus on the Button. A ButtonStyle child's
+// isFocused environment does not follow activation focus on this macOS path.
+// Text fields and other system controls keep their native focus indication.
 // Hover and press feedback add clarity without moving controls under the pointer.
 
 /// Timing shared by every interaction so the whole app feels like one surface.
@@ -249,7 +286,7 @@ enum Motion {
     static let press: Animation = .easeOut(duration: 0.09)
 }
 
-/// The hover / press / focus surface behind the flat button styles.
+/// The hover and press surface behind the flat button styles.
 private struct FlatButtonSurface<Label: View>: View {
     let label: Label
     let radius: CGFloat
@@ -286,7 +323,7 @@ private struct FlatButtonSurface<Label: View>: View {
             }
             .contentShape(shape)
             .scaleEffect(reduceMotion ? 1.0 : scale)
-            .opacity(isEnabled ? 1.0 : 0.45)
+            .opacity(isEnabled ? 1.0 : 0.55)
             .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
             .animation(reduceMotion ? nil : Motion.press, value: isPressed)
             // A pointer cue makes "this is clickable" obvious before the click.
@@ -299,10 +336,12 @@ private struct FlatButtonSurface<Label: View>: View {
 
 /// Filled accent button (primary action). Solid cyan, contrast-safe ink.
 /// Deliberately does not set a font — call sites' `.font()` still applies.
-struct FlatProminentButtonStyle: ButtonStyle {
+struct FlatProminentButtonStyle: TesseraButtonStyle {
     var tint: Color = Theme.electricBlue
     var ink: Color?
     @Environment(\.controlSize) private var controlSize
+
+    func focusRadius(for size: ControlSize) -> CGFloat { FlatButtonMetrics(size).radius }
 
     func makeBody(configuration: Configuration) -> some View {
         let m = FlatButtonMetrics(controlSize)
@@ -323,9 +362,11 @@ struct FlatProminentButtonStyle: ButtonStyle {
 }
 
 /// Neutral bordered button (secondary action). Transparent fill, hairline border.
-struct FlatButtonStyle: ButtonStyle {
+struct FlatButtonStyle: TesseraButtonStyle {
     var tint: Color = Theme.foreground
     @Environment(\.controlSize) private var controlSize
+
+    func focusRadius(for size: ControlSize) -> CGFloat { FlatButtonMetrics(size).radius }
 
     func makeBody(configuration: Configuration) -> some View {
         let m = FlatButtonMetrics(controlSize)
@@ -348,9 +389,11 @@ struct FlatButtonStyle: ButtonStyle {
 /// Bare icon button (sidebar refresh, inspector affordances). Previously
 /// `.buttonStyle(.plain)`, which gave no hover or press feedback at all and let
 /// macOS draw its system-accent focus ring — the stray pink halo in the sidebar.
-struct IconButtonStyle: ButtonStyle {
+struct IconButtonStyle: TesseraButtonStyle {
     var size: CGFloat = 28
     var tint: Color = Theme.mutedForeground
+
+    func focusRadius(for controlSize: ControlSize) -> CGFloat { size / 2 }
 
     func makeBody(configuration: Configuration) -> some View {
         FlatButtonSurface(
@@ -372,21 +415,32 @@ struct IconButtonStyle: ButtonStyle {
 /// padding, no background, so nothing shifts — and adds the two cues that were
 /// missing: the label brightens under the pointer and settles when clicked.
 /// Labels that colour themselves keep their colour.
-struct PlainInteractiveButtonStyle: ButtonStyle {
+struct PlainInteractiveButtonStyle: TesseraButtonStyle {
+    func focusRadius(for size: ControlSize) -> CGFloat { 6 }
+
+    func makeBody(configuration: Configuration) -> some View {
+        PlainInteractiveSurface(label: configuration.label, isPressed: configuration.isPressed)
+    }
+}
+
+/// The hover and press surface behind `PlainInteractiveButtonStyle`.
+private struct PlainInteractiveSurface<Label: View>: View {
+    let label: Label
+    let isPressed: Bool
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
-    func makeBody(configuration: Configuration) -> some View {
+    var body: some View {
         let active = isHovering && isEnabled
-        return configuration.label
+        return label
             .frame(minHeight: 22)
-            .brightness(active && !configuration.isPressed ? 0.12 : 0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .brightness(active && !isPressed ? 0.12 : 0)
+            .opacity(isPressed ? 0.85 : 1.0)
             // Scale down only on press: a hover-grow would reflow full-width rows.
-            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.98 : 1.0))
+            .scaleEffect(reduceMotion ? 1.0 : (isPressed ? 0.98 : 1.0))
             .animation(reduceMotion ? nil : Motion.hover, value: isHovering)
-            .animation(reduceMotion ? nil : Motion.press, value: configuration.isPressed)
+            .animation(reduceMotion ? nil : Motion.press, value: isPressed)
             .pointerStyle(isEnabled ? .link : nil)
             .onHover { isHovering = $0 }
     }
@@ -460,4 +514,115 @@ extension ButtonStyle where Self == FlatButtonStyle {
     /// Secondary bordered button.
     static var flat: FlatButtonStyle { .init() }
     static func flat(tint: Color) -> FlatButtonStyle { .init(tint: tint) }
+}
+
+protocol TesseraButtonStyle: ButtonStyle {
+    func focusRadius(for size: ControlSize) -> CGFloat
+}
+
+private struct TesseraButtonModifier<Style: TesseraButtonStyle>: ViewModifier {
+    let style: Style
+    @Environment(\.controlSize) private var controlSize
+    @Environment(\.isEnabled) private var isEnabled
+    // A sheet or alert takes key status from the window behind it. Its
+    // opener keeps SwiftUI focus, so draw the ring only in the key window.
+    @Environment(\.controlActiveState) private var activeState
+    @FocusState private var focused: Bool
+
+    private var showsRing: Bool { focused && isEnabled && activeState == .key }
+
+    func body(content: Content) -> some View {
+        content.buttonStyle(style)
+            .focused($focused)
+            .focusEffectDisabled()
+            .background(RevealWhenFocused(focused: showsRing))
+            .overlay {
+                if showsRing {
+                    RoundedRectangle(cornerRadius: style.focusRadius(for: controlSize), style: .continuous)
+                        .inset(by: -3)
+                        .strokeBorder(Theme.electricBlue, lineWidth: 2)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
+/// Scrolls a control into view when keyboard focus arrives. SwiftUI scroll
+/// views on macOS do not follow Tab focus, so a focused control could sit
+/// below the fold. Scrolls only on the change to focused, so a user scroll
+/// away from a still-focused control is not undone by a later redraw.
+private struct RevealWhenFocused: NSViewRepresentable {
+    let focused: Bool
+
+    final class Coordinator { var wasFocused = false }
+
+    /// Scrolls on the next run-loop turn, after SwiftUI finishes this update.
+    final class RevealView: NSView {
+        @objc func reveal() { scrollToVisible(bounds.insetBy(dx: -8, dy: -16)) }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeNSView(context: Context) -> RevealView { RevealView() }
+
+    func updateNSView(_ view: RevealView, context: Context) {
+        defer { context.coordinator.wasFocused = focused }
+        guard focused, !context.coordinator.wasFocused else { return }
+        view.perform(#selector(RevealView.reveal), with: nil, afterDelay: 0)
+    }
+}
+
+extension View {
+    func tesseraButtonStyle<Style: TesseraButtonStyle>(_ style: Style) -> some View {
+        modifier(TesseraButtonModifier(style: style))
+    }
+}
+
+/// The app icon as decoration. A plain AppKit view draws it and is never an
+/// accessibility element. A SwiftUI `Image` or an `NSImageView` stayed in the
+/// AX tree, because a parent's `accessibilityHidden(false)` overrode them.
+struct DecorativeAppIcon: NSViewRepresentable {
+    final class IconView: NSView {
+        override func draw(_ dirtyRect: NSRect) {
+            NSApplication.shared.applicationIconImage.draw(in: bounds)
+        }
+        override func isAccessibilityElement() -> Bool { false }
+    }
+
+    func makeNSView(context: Context) -> IconView {
+        let view = IconView()
+        view.setAccessibilityElement(false)
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        return view
+    }
+
+    func updateNSView(_ view: IconView, context: Context) {}
+}
+
+/// Scrolls the top of its view into sight once, when the view appears. For
+/// content that opens below the fold, such as an expanded Rescue group.
+struct RevealOnAppear: NSViewRepresentable {
+    /// How much of the top to bring into sight, in points.
+    var height: CGFloat = 160
+
+    final class RevealView: NSView {
+        var height: CGFloat = 160
+        override var isFlipped: Bool { true }
+        override func isAccessibilityElement() -> Bool { false }
+        @objc func reveal() {
+            scrollToVisible(NSRect(x: 0, y: 0, width: bounds.width, height: min(bounds.height, height)))
+        }
+    }
+
+    func makeNSView(context: Context) -> RevealView {
+        let view = RevealView()
+        view.height = height
+        // After layout, so the view has its final frame.
+        view.perform(#selector(RevealView.reveal), with: nil, afterDelay: 0.05)
+        return view
+    }
+
+    func updateNSView(_ view: RevealView, context: Context) { view.height = height }
 }

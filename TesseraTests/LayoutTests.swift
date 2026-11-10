@@ -57,6 +57,61 @@ struct LayoutTests {
                 "The 300 tiny children must collapse into an 'Other' wedge, not vanish")
     }
 
+    @Test("A capped nested ring keeps equal-size order and every omitted byte")
+    func cappedNestedRingPreservesRemainder() {
+        let base = URL(fileURLWithPath: "/tmp/layout-capped-nested")
+        let root = FileNode(url: base, name: "root", isDirectory: true, size: 0)
+        let folder = FileNode(url: base.appendingPathComponent("wide"),
+                              name: "wide", isDirectory: true, size: 0)
+        let large = (0..<64).map { index in
+            let name = "large-" + String(format: "%03d", index)
+            return FileNode(url: folder.url.appendingPathComponent(name),
+                            name: name, isDirectory: false, size: 100)
+        }
+        let small = (0..<200).map { index in
+            let name = "small-\(index)"
+            return FileNode(url: folder.url.appendingPathComponent(name),
+                            name: name, isDirectory: false, size: 1)
+        }
+        folder.setChildren(Array(large.reversed()) + small)
+        root.setChildren([folder])
+        root.recomputeDirectorySizes()
+
+        let ring = SunburstChart.buildLayout(root: root).filter { $0.depth == 1 }
+        let real = ring.filter { !$0.node.isSynthetic }
+        #expect(real.map(\.node.id) == Array(large.prefix(60)).map(\.id))
+        #expect(ring.filter { $0.node.kind == .aggregate }.map(\.node.size) == [600])
+        #expect(ring.reduce(Int64(0)) { $0 + $1.node.size } == folder.size)
+        #expect(folder.children.count == 264)
+        #expect(SunburstChart.layoutWork(of: root, exceeds: 264))
+        #expect(!SunburstChart.layoutWork(of: root, exceeds: 265))
+    }
+
+    @Test("Top-level hues stay unique while small and extra branches stay visible")
+    func branchHuesDoNotRepeat() {
+        let base = URL(fileURLWithPath: "/tmp/layout-branch-hues")
+        let root = FileNode(url: base, name: "root", isDirectory: true, size: 0)
+        let branches = (0..<8).map { index in
+            let name = "branch-\(index)"
+            return FileNode(url: base.appendingPathComponent(name), name: name,
+                            isDirectory: false, size: 100)
+        }
+        let small = FileNode(url: base.appendingPathComponent("small"), name: "small",
+                             isDirectory: false, size: 10)
+        root.setChildren(Array(branches.reversed()) + [small])
+        root.recomputeDirectorySizes()
+
+        let ring = SunburstChart.buildLayout(root: root).filter { $0.depth == 0 }
+        let hues = ring.compactMap(\.palette)
+        #expect(ring.count == 9)
+        #expect(Set(ring.map(\.node.id)) == Set((branches + [small]).map(\.id)))
+        #expect(hues.count == Theme.branchPaletteCount)
+        #expect(Set(hues).count == hues.count)
+        #expect(ring.first { $0.node.id == branches[7].id }?.palette == nil)
+        #expect(ring.first { $0.node.id == small.id }?.palette == nil)
+        #expect(ring.reduce(Int64(0)) { $0 + $1.node.size } == root.size)
+    }
+
     /// All wedge angles must be finite and ordered; no NaN/inf can reach Canvas.
     @Test("Every wedge has finite, ordered angles")
     func wedgeAnglesAreFinite() {
@@ -80,9 +135,43 @@ struct LayoutTests {
 
     // MARK: - Hit-testing
 
-    private func chartGeometry(for size: CGSize)
+    @Test("Shallow maps fill the chart and their outer ring stays selectable")
+    func shallowMapsUseAvailableRadius() throws {
+        for rings in 1...SunburstChart.maxRings {
+            let root = FileNode(url: URL(fileURLWithPath: "/tmp/layout-radius-\(rings)"),
+                                name: "root", isDirectory: true, size: 0)
+            var parent = root
+            for depth in 1..<rings {
+                let folder = FileNode(name: "folder-\(depth)", isDirectory: true, size: 0)
+                parent.setChildren([folder])
+                parent = folder
+            }
+            let leaf = FileNode(name: "leaf", isDirectory: false, size: 100)
+            parent.setChildren([leaf])
+            root.recomputeDirectorySizes()
+
+            let snapshot = try #require(MapSnapshot.build(folder: root,
+                revision: ScanTreeRevision(rootID: root.id, revision: 1)))
+            #expect(snapshot.ringCount == rings)
+            let geometry = try #require(SunburstChart.chartGeometry(for: CGSize(width: 640, height: 480),
+                                                                   ringCount: snapshot.ringCount))
+            #expect(abs(geometry.hubRadius + CGFloat(rings) * geometry.ringSpan - geometry.chartRadius) < 0.00001)
+            let wedge = try #require(snapshot.wedges.first { $0.node.id == leaf.id })
+            let angle = (wedge.startAngle + wedge.endAngle) / 2 * .pi / 180
+            let radius = geometry.chartRadius * 0.95
+            let point = CGPoint(x: geometry.center.x + cos(angle) * radius,
+                                y: geometry.center.y + sin(angle) * radius)
+            let hit = SunburstChart.hitTest(in: snapshot.wedges, at: point, center: geometry.center,
+                                            chartRadius: geometry.chartRadius, hubRadius: geometry.hubRadius,
+                                            ringCount: snapshot.ringCount)
+            #expect(hit?.node.id == leaf.id, "The visible rim must select its file at \(rings) rings")
+        }
+    }
+
+    private func chartGeometry(for size: CGSize, wedges: [SunburstChart.Wedge])
         -> (center: CGPoint, chartRadius: CGFloat, hubRadius: CGFloat, ringSpan: CGFloat) {
-        guard let geometry = SunburstChart.chartGeometry(for: size) else {
+        guard let geometry = SunburstChart.chartGeometry(for: size,
+            ringCount: SunburstChart.renderedRingCount(in: wedges)) else {
             Issue.record("Expected renderable chart geometry for \(size)")
             return (.zero, 0, 0, 0)
         }
@@ -147,7 +236,7 @@ struct LayoutTests {
         let wedges = SunburstChart.buildLayout(root: root)
         #expect(!wedges.isEmpty)
 
-        let g = chartGeometry(for: CGSize(width: 800, height: 800))
+        let g = chartGeometry(for: CGSize(width: 800, height: 800), wedges: wedges)
 
         for w in wedges {
             let midDeg = (w.startAngle + w.endAngle) / 2
@@ -168,7 +257,7 @@ struct LayoutTests {
     func hitTestMissesHubAndBeyondRim() {
         let root = multiRingRoot()
         let wedges = SunburstChart.buildLayout(root: root)
-        let g = chartGeometry(for: CGSize(width: 800, height: 800))
+        let g = chartGeometry(for: CGSize(width: 800, height: 800), wedges: wedges)
 
         // Dead centre — inside the hub hole.
         #expect(SunburstChart.hitTest(in: wedges, at: g.center, center: g.center,

@@ -4,6 +4,8 @@ import SwiftUI
 /// open in a roomy sheet instead of a cramped popover.
 struct CleanupActionBar: View {
     @ObservedObject var vm: ScanViewModel
+    /// The screen to record again when a tool sheet closes.
+    var returnScreen: AnalyticsScreen
     var onRescue: () -> Void
 
     private enum Tool: String, Identifiable, CaseIterable {
@@ -42,11 +44,48 @@ struct CleanupActionBar: View {
         }
 
         var sheetWidth: CGFloat { 720 }
+
+        /// Fixed analytics screen name. No search text or results.
+        var screen: AnalyticsScreen {
+            switch self {
+            case .apps: return .uninstaller
+            case .duplicates: return .duplicates
+            case .byKind: return .byKind
+            case .largeOld: return .bigOld
+            case .search: return .search
+            }
+        }
     }
 
     @State private var presentedTool: Tool?
 
+    private var unavailable: Bool { vm.isScanning || vm.isDeleting || vm.rootNode == nil }
+
     var body: some View {
+        HStack(spacing: 6) {
+            Button { presentedTool = .search } label: {
+                Label("Search", systemImage: "magnifyingglass")
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .help("Search this scan (⌘F)")
+            .disabled(unavailable)
+            toolsMenu
+        }
+        .sheet(item: $presentedTool) { tool in
+            toolSheet(tool)
+        }
+        .onChange(of: presentedTool) { _, tool in
+            if let tool {
+                Analytics.shared.start()
+                Analytics.shared.screen(tool.screen)
+                Analytics.shared.capture(.toolOpened, values: ["tool": .text(tool.screen.rawValue)])
+            } else {
+                Analytics.shared.screen(returnScreen)
+            }
+        }
+    }
+
+    private var toolsMenu: some View {
         Menu {
             Section("Explore this scan") {
                 ForEach(Tool.allCases) { tool in
@@ -59,12 +98,10 @@ struct CleanupActionBar: View {
             Button("Open Rescue", action: onRescue)
         } label: {
             Label("Tools", systemImage: "wrench.and.screwdriver")
+                .labelStyle(.titleAndIcon)
         }
         .help("Search, duplicates, apps, file types and old files")
-        .disabled(vm.isScanning || vm.isDeleting || vm.rootNode == nil)
-        .sheet(item: $presentedTool) { tool in
-            toolSheet(tool)
-        }
+        .disabled(unavailable)
     }
 
     @ViewBuilder
@@ -87,6 +124,7 @@ struct CleanupActionBar: View {
 
                 Spacer(minLength: 0)
                 Button("Done") { presentedTool = nil }
+                    .tesseraButtonStyle(.flat)
                     .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 24)
@@ -110,7 +148,8 @@ struct CleanupActionBar: View {
                 .disabled(vm.isDeleting || vm.isScanning)
             }
         }
-        .frame(width: tool.sheetWidth, height: 680)
+        // 500 pt keeps the header, content and Done inside the 820x600 window.
+        .frame(width: tool.sheetWidth, height: 500)
         .background(Theme.bg)
     }
 }

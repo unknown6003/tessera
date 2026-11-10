@@ -122,7 +122,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Retained for the app's lifetime — `NSApp.servicesProvider` holds it weakly.
     private let serviceProvider = FinderServiceProvider()
 
+    @MainActor
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        if ProcessInfo.processInfo.environment["SO_CI"] == "1" {
+            NSApp.setActivationPolicy(.prohibited)
+        }
+    }
+
+    @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Analytics.shared.start()
         NSApp.servicesProvider = serviceProvider
         // Refresh the Services menu so our entry is available immediately rather
         // than only after the next registration cycle.

@@ -85,12 +85,45 @@ struct RemovalRegressionTests {
         #expect(!FileManager.default.fileExists(atPath: file.path))
     }
 
+    @Test("An Explore removal summary excludes unrelated held Rescue recommendations")
+    func removalSummaryIsOperationScoped() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(repeating: 1, count: 4096).write(to: url.appendingPathComponent("owned-disposable.bin"))
+        let protectedFolder = url.appendingPathComponent(".docker", isDirectory: true)
+        try FileManager.default.createDirectory(at: protectedFolder, withIntermediateDirectories: true)
+        try Data(repeating: 2, count: 8192).write(to: protectedFolder.appendingPathComponent("keep.qcow2"))
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
+        vm.startScan(volumeURL: url)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(!vm.isScanning)
+        let target = try #require(vm.rootNode?.children.first { $0.name == "owned-disposable.bin" })
+        let unrelated = try #require(vm.rootNode?.children.first { $0.name == ".docker" })
+        try #require(vm.rescuePlan?.recommendations.contains { $0.node.id == unrelated.id && $0.risk == .protected } == true)
+        let bytes = target.physicalSize
+        vm.addToCollector(target)
+        vm.addToCollector(target)
+        try #require(vm.collectorNotice != nil)
+        try await vm.deletePermanently([target])
+        let summary = try #require(vm.lastRemovalSummary)
+        #expect(vm.collectorNotice == nil)
+        #expect(summary.moved == 1 && summary.movedBytes == bytes)
+        #expect(summary.held == 0 && summary.failed == 0)
+        #expect(summary.permanently)
+        #expect(vm.rescueVerification?.heldPaths?.contains(unrelated.url.path) == true)
+        #expect(FileManager.default.fileExists(atPath: unrelated.url.path))
+    }
+
     @Test("A cancelled background tree read holds cleanup until the worker returns")
     func treeReadExcludesRemoval() async throws {
         let url = try fixture()
         defer { try? FileManager.default.removeItem(at: url) }
         try Data([1]).write(to: url.appendingPathComponent("data"))
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)
@@ -131,7 +164,7 @@ struct RemovalRegressionTests {
         for index in 0..<128 {
             try Data(repeating: 1, count: 4096).write(to: url.appendingPathComponent("file-\(index)"))
         }
-        let suiteName = "TesseraTests." + UUID().uuidString
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let vm = ScanViewModel(defaults: defaults)

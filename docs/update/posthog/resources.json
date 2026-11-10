@@ -1,0 +1,57 @@
+{
+  "project": 340688,
+  "resources": {
+    "Tessera health and product use": {
+      "collection": "dashboards",
+      "id": 1095962
+    },
+    "Local scan p99, samples and coverage": {
+      "collection": "insights",
+      "id": 7201917
+    },
+    "Cloud and remote scan durations": {
+      "collection": "insights",
+      "id": 7201918
+    },
+    "Scan outcomes including failure and cancellation": {
+      "collection": "insights",
+      "id": 7201919
+    },
+    "Cleanup outcomes and held items": {
+      "collection": "insights",
+      "id": 7201920
+    },
+    "Screen and tool use": {
+      "collection": "insights",
+      "id": 7201921
+    },
+    "Native crashes and update outcomes": {
+      "collection": "insights",
+      "id": 7201922
+    },
+    "Anonymous weekly return use": {
+      "collection": "insights",
+      "id": 7201923
+    },
+    "Explore to reviewed cleanup funnel": {
+      "collection": "insights",
+      "id": 7201924
+    },
+    "Tessera native satisfaction": {
+      "collection": "surveys",
+      "id": "01a1bcba-0111-0000-f2f4-c69e43fff048"
+    },
+    "Tessera native rating in Settings": {
+      "collection": "feature_flags",
+      "id": 351484
+    },
+    "Tessera compact child browser variants": {
+      "collection": "feature_flags",
+      "id": 351487
+    },
+    "Tessera compact child browser": {
+      "collection": "experiments",
+      "id": 111796
+    }
+  }
+}

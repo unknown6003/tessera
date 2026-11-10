@@ -18,13 +18,29 @@ import AppKit
 ///
 /// (Name kept for existing call sites; it no longer makes the window transparent.)
 struct TransparentWindowConfigurator: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { WindowReachingView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    /// Reports the window this view lives in, from `viewDidMoveToWindow`.
+    /// Callers use it to compare identity with `NSApp.keyWindow`.
+    var onWindow: (NSWindow) -> Void = { _ in }
+
+    func makeNSView(context: Context) -> NSView { WindowReachingView(onWindow: onWindow) }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? WindowReachingView)?.onWindow = onWindow
+    }
 
     private final class WindowReachingView: NSView {
+        var onWindow: (NSWindow) -> Void
+
+        init(onWindow: @escaping (NSWindow) -> Void) {
+            self.onWindow = onWindow
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
+            onWindow(window)
             window.isOpaque = true
             window.backgroundColor = NSColor(Theme.bg)
             window.titlebarAppearsTransparent = true

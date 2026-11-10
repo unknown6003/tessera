@@ -1,0 +1,8 @@
+{
+  "head": "02c6a3485df4fb353d38a056164360925f2036ce",
+  "testedPullRequestMerge": "e21b62f214c9967d27606a2dce0f540115ab219d",
+  "bothGitTrees": "1afca45fdf0474df00005dd9723e5e66f8a9f5ba",
+  "nativeRun": 42512151056,
+  "qualificationRun": 42512151055,
+  "validation": "GitHub commit API reports equal tree SHA for the branch head and tested merge commit; local artifact recomputation matches all cohort summaries and exact400trial inventory."
+}

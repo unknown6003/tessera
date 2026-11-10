@@ -329,15 +329,12 @@ struct EngineTests {
         try fm.createDirectory(at: onlineDir, withIntermediateDirectories: true)
         try Data(repeating: 0xDD, count: 16384).write(to: onlineDir.appendingPathComponent("hidden.bin"))
 
-        // The seam matches a single suffix; both the online file and the online
-        // directory end in ".online", so one seam covers both.
-        BulkDirScanner._testDatalessSuffix = ".online"
-        defer { BulkDirScanner._testDatalessSuffix = nil }
+        let session = DirectoryReadSession(testDatalessSuffix: ".online")
 
         let expectedKeptFile = allocatedSize(at: keptFile.path)
         let expectedInner = allocatedSize(at: inner.path)
 
-        let root = try await FileScanner.scan(url: base) { _ in }
+        let root = try await FileScanner.scan(url: base, readSession: session) { _ in }
 
         func find(_ node: FileNode, named name: String) -> FileNode? {
             if node.name == name { return node }
@@ -491,13 +488,12 @@ struct EngineTests {
         // A file so the directory is not empty
         try Data(repeating: 0x01, count: 512).write(to: base.appendingPathComponent("file.dat"))
 
-        // Point the delay at the last path component of our temp dir
-        let suffix = base.lastPathComponent
-        BulkDirScanner._testDelay = (pathSuffix: suffix, seconds: 1.0)
-        defer { BulkDirScanner._testDelay = nil }
+        let session = DirectoryReadSession(testReads: [
+            base.path: .init(delaySeconds: 1.0, timeoutSeconds: 0.2)
+        ])
 
         let start = ContinuousClock.now
-        let result = await BulkDirScanner.timedEntries(atPath: base.path, timeoutSeconds: 0.2)
+        let result = await BulkDirScanner.timedEntries(atPath: base.path, session: session)
         let elapsed = ContinuousClock.now - start
 
         #expect(result == nil, "Expected nil (timeout) for delayed directory")
@@ -507,7 +503,7 @@ struct EngineTests {
         let other = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: other) }
         try Data(repeating: 0x02, count: 512).write(to: other.appendingPathComponent("f.dat"))
-        let normalResult = await BulkDirScanner.timedEntries(atPath: other.path, timeoutSeconds: 5)
+        let normalResult = await BulkDirScanner.timedEntries(atPath: other.path, session: session)
         #expect(normalResult != nil, "Non-delayed path should return entries")
     }
 
@@ -536,12 +532,9 @@ struct EngineTests {
         let expectedAlpha = allocatedSize(at: alphaFile.path)
         let expectedGamma = allocatedSize(at: gammaFile.path)
 
-        BulkDirScanner._testDelay = (pathSuffix: "slowdir", seconds: 1.5)
-        BulkDirScanner._timeoutSecondsOverride = 0.3
-        defer {
-            BulkDirScanner._testDelay = nil
-            BulkDirScanner._timeoutSecondsOverride = nil
-        }
+        let session = DirectoryReadSession(testReads: [
+            slowdir.path: .init(delaySeconds: 1.5, timeoutSeconds: 0.3)
+        ])
 
         final class ProgressBox: @unchecked Sendable {
             var last = ScanProgress()
@@ -551,7 +544,7 @@ struct EngineTests {
         }
         let box = ProgressBox()
 
-        let root = try await FileScanner.scan(url: base) { p in box.update(p) }
+        let root = try await FileScanner.scan(url: base, readSession: session) { p in box.update(p) }
 
         // alpha and gamma must have the right sizes
         guard let alphaNode = root.children.first(where: { $0.name == "alpha" }) else {
@@ -572,11 +565,20 @@ struct EngineTests {
         #expect(slowNode.children.isEmpty, "slowdir should have no children after timeout")
         #expect(root.scanCoverageGaps.contains(slowdir.path),
                 "Timed-out directories must remain visible as coverage gaps")
+        #expect(Set(root.scanCoverageGaps) == Set([slowdir.path]),
+                "Healthy siblings must not inherit the artificial deadline")
 
         // Progress fraction must reach 1.0
         let finalProg = box.read()
         if let frac = finalProg.fraction {
             #expect(frac == 1.0, "Final fraction should be 1.0, got \(frac)")
+        }
+    }
+
+    @Test("Repeated abandoned reads never put healthy local siblings on a provider deadline")
+    func repeatedTimeoutsKeepHealthySiblings() async throws {
+        for _ in 0..<12 {
+            try await scanSkipsTimedOutDirectory()
         }
     }
 
@@ -782,7 +784,7 @@ struct EngineTests {
 
     @Test("RescueCaseStore saves and clears a local case without network state")
     func rescueCaseRoundTrip() throws {
-        let suiteName = "TesseraTests.RescueCase.\(UUID().uuidString)"
+        let suiteName = TestPreferenceDomain.prefix + "RescueCase." + UUID().uuidString
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             Issue.record("Could not create test defaults")
             return

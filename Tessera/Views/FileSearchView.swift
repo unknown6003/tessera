@@ -39,8 +39,6 @@ struct FileSearchView: View {
     var body: some View {
         if vm.rootNode != nil {
             VStack(alignment: .leading, spacing: 12) {
-                FeatureSectionLabel("Search Files")
-
                 Text("Describe what you're looking for — type, size, age, name, or location.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -86,12 +84,12 @@ struct FileSearchView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                .buttonStyle(.interactive)
+                .tesseraButtonStyle(.interactive)
             }
             Button(action: run) {
                 Image(systemName: "arrow.right.circle.fill")
             }
-            .buttonStyle(.interactive)
+            .tesseraButtonStyle(.interactive)
             .foregroundStyle(Theme.electricBlue)
             .disabled(query.trimmingCharacters(in: .whitespaces).isEmpty)
         }
@@ -120,7 +118,7 @@ struct FileSearchView: View {
                         .background(Capsule().fill(Theme.surface))
                         .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
                 }
-                .buttonStyle(.interactive)
+                .tesseraButtonStyle(.interactive)
                 .foregroundStyle(.secondary)
             }
         }
@@ -177,7 +175,7 @@ struct FileSearchView: View {
             } label: {
                 Label("Add all", systemImage: "tray.and.arrow.down.fill")
             }
-            .buttonStyle(.flatProminent)
+            .tesseraButtonStyle(.flatProminent)
             .controlSize(.small)
             .disabled(result.nodes.allSatisfy { vm.isCollected($0) })
         }
@@ -213,7 +211,7 @@ struct FileSearchView: View {
             } label: {
                 Image(systemName: "magnifyingglass").font(.caption)
             }
-            .buttonStyle(.interactive).foregroundStyle(.tint)
+            .tesseraButtonStyle(.interactive).foregroundStyle(.tint)
             .help("Reveal in Finder")
 
             Button {
@@ -222,7 +220,7 @@ struct FileSearchView: View {
                 Image(systemName: collected ? "checkmark.circle.fill" : "plus.circle")
                     .foregroundStyle(collected ? AnyShapeStyle(Theme.electricBlue) : AnyShapeStyle(.secondary))
             }
-            .buttonStyle(.interactive)
+            .tesseraButtonStyle(.interactive)
             .help(collected ? "Remove from the collector" : "Add to the collector")
         }
     }

@@ -3,8 +3,8 @@
 A fast, private, native macOS disk visualizer and cleaner. Scan any disk, cloud
 folder, or network share; see what's using space in an interactive sunburst;
 and review cleanup with duplicate detection, an app
-uninstaller, dev-junk cleanup, and hidden-space tools. **Everything runs
-on-device. No user data ever leaves your Mac.**
+uninstaller, dev-junk cleanup, and hidden-space tools. Disk analysis runs on your
+Mac. Anonymous diagnostics contain no file names, paths or contents.
 
 **Free and open source** under the [GPL-3.0](LICENSE).
 
@@ -14,7 +14,7 @@ on-device. No user data ever leaves your Mac.**
 
 ![Explore with a selected folder and its details](docs/update/screenshots/explore-details.webp)
 
-[Tessera 1.0 native results and limits](docs/update/qualification.md)
+[Native scan evidence and limits](docs/update/qualification.md)
 
 ## Features
 
@@ -27,7 +27,7 @@ on-device. No user data ever leaves your Mac.**
   the device and its access rules. Rescans read fresh metadata.
 - **Cleanup suggestions** — rule-based detection of caches, dev junk (DerivedData,
   node_modules, package caches), Adobe media cache, logs, installers, and more.
-  Everything is staged for you to review; nothing is deleted automatically.
+  Add the suggestions you want to review. Nothing is added or deleted automatically.
 - **Duplicate finder** — content-verified duplicates via a fast bounded fingerprint.
 - **Large & Old Files** — filter by size, age, and kind.
 - **By Kind lens** — see space grouped by Video / Photo / App / Archive / Code / …
@@ -43,10 +43,16 @@ on-device. No user data ever leaves your Mac.**
 
 ## Privacy
 
-Tessera makes **no network calls related to your files**. The only outbound
-traffic is Sparkle auto-update checks, plus any network shares *you* choose to
-mount and scan. There is no account, no telemetry, no analytics, and no cloud
-processing — and because the source is open, you can verify all of that yourself.
+Disk contents and file paths stay on your Mac. Sparkle checks for signed updates.
+Tessera also reads any network shares you choose to scan.
+
+Tessera sends anonymous usage and performance data through PostHog in normal
+app runs. Collection is enabled in the build and has no in-app off switch.
+It includes fixed screen names, scan times, counts, source type and cleanup
+outcomes. No file names, paths, contents, searches or account names enter those
+payloads. Crash reports omit error text and file paths. Location enrichment is
+off. PostHog receives the network connection. There is no screen recording or
+account. Automated tests and benchmarks do not send production analytics.
 
 ## Requirements
 
@@ -58,7 +64,7 @@ processing — and because the source is open, you can verify all of that yourse
 Download the latest `Tessera.dmg` from
 [Releases](https://github.com/unknown6003/tessera/releases/latest),
 drag Tessera to Applications, then right-click it and choose **Open** the first
-time (the current build is unsigned; you only approve it once).
+time (the current channel uses a stable self-signed certificate).
 
 ## Building from source
 

@@ -1,219 +1,267 @@
-# Releasing Tessera
+# Release Tessera from owned hardware
 
-The app ships **directly** (not the Mac App Store): Developer ID–signed, notarized,
-packaged as a **.dmg**, and auto-updated via **Sparkle**. This is the full runbook.
-You need an Apple Developer account (for the Developer ID certificate + notarization)
-and a one-time Sparkle signing key.
+Tessera releases stay in `0.x.x`. `0.2.1`, build `13`, is the latest public
+release, from `9006d19`. A later release must raise both numbers. `0.2.0`,
+build `12`, was a candidate that was not published. Withdrawn `1.0.0`, build
+`11`, stays a draft.
+The public release stays latest until a new candidate passes all gates and an
+operator publishes it.
+A major version needs Ammar's explicit permission and a policy change.
 
-> The app is hard-coded to be on-device only. The only network it performs is the
-> optional model download and Sparkle update checks — keep it that way.
+The publisher uses the existing Mac, installed Xcode, XcodeGen, Python 3.12+
+and GitHub CLI auth. It uses no GitHub Actions runner, paid CI service or new
+Apple membership. The Mac must be awake with its user session available.
 
-## 0. One-time setup
+## Stable signing and its limits
 
-### Sparkle EdDSA signing key — ✅ generated locally; CI secret required
-Already generated. The **private** key is in this Mac's login Keychain and the
-**public** key is in `Tessera/Info.plist` (`SUPublicEDKey`). Don't commit the private
-key or leave exported copies behind. To re-print the public key:
-`<DerivedData>/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -p`.
-⚠️ Back up the private key (Keychain item "ed25519" / account
-`https://sparkle-project.org`) — if it's lost you can't sign updates that existing
-installs will accept.
+The app uses the same self-signed code certificate as `0.1.9`:
 
-GitHub's tag-driven release workflow needs the *same* key as the Actions secret
-`SPARKLE_PRIVATE_KEY`. Export it once on the Mac that created the key, upload the
-file directly to GitHub, then securely delete the exported copy:
+```text
+SHA-1 da4569aa63dee7587d670dc4c685f128faacf4e5
+identifier "com.abdwy.Tessera" and certificate root = H"da4569aa63dee7587d670dc4c685f128faacf4e5"
+```
+
+This pins the app's identity across builds for Full Disk Access continuity.
+It does not grant Full Disk Access or prove an OS permission migration.
+This is not Developer ID signing. The app and DMG are not notarized. Gatekeeper
+can block a first install. Do not advertise notarization or Gatekeeper approval.
+
+Signing uses the exact certificate fingerprint. It never substitutes ad-hoc,
+Apple Development or another certificate. It does not set hardened runtime or
+an explicit signing identifier. Sparkle must keep `org.sparkle-project.Sparkle`.
+A self-signed identity lacks the shared Team ID needed for runtime library
+validation. The publisher stops on signing failure. It never imports keys,
+changes trust, uses `sudo` or unlocks a keychain.
+
+Readiness remains pending. The Mac has the certificate and private key, but
+`security find-identity` reported `CSSMERR_TP_NOT_TRUSTED`. That listing alone
+is not an actual signing test. An owned `true` binary signing probe then timed
+out after 15 seconds. A keychain prompt may have caused that timeout. It does
+not prove that this identity is unusable. The parent must resolve the probe
+without a trust change, then test the full app. Do not replace the key based
+on the listing or timeout.
+
+## Qualify the exact source first
+
+See [the owned CI runbook](ci/README.md) for installation, recipe hashes, report
+signatures, host limits, baselines and stop commands. Review a recipe before
+installation. A publisher-only change does not change that recipe hash, but
+its full source commit still needs fresh successful native and web reports.
+
+From the reviewed source on each host:
+
 ```sh
-TOOLS="<DerivedData>/SourcePackages/artifacts/sparkle/Sparkle/bin"
-"$TOOLS/generate_keys" -x /tmp/tessera-sparkle-private-key
-gh secret set SPARKLE_PRIVATE_KEY < /tmp/tessera-sparkle-private-key
-rm -P /tmp/tessera-sparkle-private-key
-```
-Never generate a replacement key for this workflow: existing installations trust
-the public key already embedded in 0.1.1.
-
-### Stable code-signing identity — ✅ configured (why permissions now persist)
-macOS ties a Full Disk Access grant to the app's **designated requirement**.
-Ad-hoc signing (`codesign -s -`) derives that requirement from the binary's
-cdhash:
-
-```
-designated => cdhash H"70f4979094…" or cdhash H"cdb57616d7…"
+python3 -m ci.install --state "$HOME/.local/share/tessera-ci" \
+  --lane native --key "$HOME/.local/share/tessera-ci/attestation.key"
 ```
 
-That hash changes on *every* build, so each Sparkle update looked like a
-different app to TCC and the user had to re-grant Full Disk Access after every
-update. Releases are therefore signed with one long-lived certificate, which
-makes the requirement certificate-based and stable.
+Use `--lane web` on Linux. Install only when the recipe needs an update.
+The shared private attestation file is 32 bytes, mode `600`. Do not print it.
+For a working Git checkout, check the candidate from the clean source:
 
-The identity lives in two Actions secrets, `MACOS_CERT_P12` (base64 of the .p12)
-and `MACOS_CERT_PASSWORD`. A copy of the identity is also in this Mac's login
-Keychain ("Tessera Code Signing") — GitHub secrets are write-only, so that is the
-only recoverable copy. **Back it up.** If the certificate is ever lost or
-replaced, permissions reset once more for every existing install.
-
-The release workflow asserts the resulting requirement is certificate-based and
-pins the bundle id; if signing ever silently falls back to ad-hoc the release
-fails rather than shipping the regression.
-
-> This certificate is self-signed, so it fixes *permissions*, not Gatekeeper —
-> the app is still "unidentified developer" on first launch, exactly as before.
-> Developer ID below is what removes that warning; switching to it costs one
-> final permission re-grant.
-
-### Apple Developer ID — ⛔ STILL NEEDED (enroll personal account first)
-`security find-identity -v -p codesigning` currently shows **0 identities**. Being
-signed into your Apple account in Xcode is not enough.
-
-**Decision (2026-06-19):** ship under your **personal** name, not a company. The
-Apple ID `unknown6003@gmail.com` currently has access to two teams:
-- `W6X7YJF8ZQ` — *Ammar Badawy (Personal Team)* — **free**; cannot notarize or make
-  Developer ID certs.
-- `YYN7R25WT5` — *AL BURSA E TICARET ANONIM SIRKETI* — paid Company team (declined,
-  to avoid publishing under the company's name).
-
-Notarized direct distribution requires a **paid** membership, so the personal Apple
-ID must be enrolled in the Apple Developer Program first.
-
-1. **Enroll** the personal Apple ID as an *Individual* at
-   <https://developer.apple.com/account> → Enroll ($99/yr; approval can take 1–2
-   days). Accept the Program License Agreement.
-2. **Find your new personal Team ID:** developer.apple.com/account → Membership
-   details (an Individual enrollment shows a personal Team ID, e.g. `ABCDE12345`).
-3. **Create the cert** (one time): Xcode → Settings → Accounts → (your now-paid
-   personal team) → Manage Certificates → + → **Developer ID Application**.
-4. **Create the notarytool credential profile** (stores the app-specific password in
-   the Keychain only — never in a file):
-   ```sh
-   xcrun notarytool store-credentials "TESSERA_NOTARY" \
-     --apple-id "unknown6003@gmail.com" --team-id "<YOUR-PERSONAL-TEAM-ID>" \
-     --password "<app-specific-password>"
-   ```
-   > Verified the app-specific password authenticates; the only thing missing is a
-   > paid membership on a team you want to publish under. With the free personal team
-   > this returns HTTP 403 "a required agreement is missing"; the Company team works
-   > but was declined for branding.
-
-### Then: one command
 ```sh
-./release.sh            # build → sign → notarize → staple → .dmg → Sparkle-sign → appcast
-./release.sh --publish  # ...and create the GitHub Release (serves the appcast)
+python3 -m ci.verify_release \
+  --key "$HOME/.local/share/tessera-ci/attestation.key"
 ```
-`release.sh` auto-detects the Developer ID identity and the Sparkle tools and reads
-the version from Info.plist. The manual steps below (1–6) are what it automates,
-kept for reference / troubleshooting.
 
-For the current ad-hoc distribution channel, pushing a version tag runs the guarded
-GitHub release workflow after the qualification checks have passed:
+Both `Tessera CI / native` and `Tessera CI / web` must pass the full source
+commit. Worktree mode uses clean HEAD. Archive mode uses the pinned revision.
+The verifier checks HMAC reports, recipe, lane, step inventory, native cohort
+counts and age. A missing or stale report stops release before builds, signing
+or symbol upload. A new commit, even for docs, requires new full-commit proof.
+`TESSERA_CI_KEY_FILE` selects another key path. It cannot skip the gate.
+
+## Archive mode on the existing Mac
+
+The Mac can run the publisher without a Git checkout. Ops supplies an owned
+bare object repository and a clean `git archive` staging directory at the same
+full commit. The original Mac checkout at `a538` stays intact. This mode needs
+no new T3 space, worktree, index or fake `.git` directory. The publisher does
+not fetch objects. Ops must make the pinned commit available first.
+
+Run the publisher from that same archive. Both options are required together:
+
 ```sh
-git tag v0.1.2
-git push origin v0.1.2
+cd "$release_archive"
+./release.sh --git-dir "$release_bare" --revision "$release_revision" \
+  --posthog-cli "$symbol_tools/node_modules/.bin/posthog-cli" \
+  --spm-cache "$HOME/.local/share/tessera-ci/spm-cache"
 ```
-It refuses a tag/plist mismatch or missing Sparkle key, runs the native suite again,
-creates `Tessera.dmg`, EdDSA-signs the archive in `appcast.xml`, and publishes the
-draft only after every asset has been validated. Developer ID signing/notarization
-remains the production-distribution upgrade described below.
 
-### Appcast feed URL
-`SUFeedURL` in Info.plist currently points at:
-`https://github.com/unknown6003/tessera/releases/latest/download/appcast.xml`
-That works if you attach `appcast.xml` (and the `.dmg`) as assets on each GitHub
-Release. Change it if you host the appcast elsewhere.
+`release_archive` is the owned source staging directory. `release_bare` is its
+owned bare object repository. `release_revision` must be the full lowercase
+40-character commit SHA. Do not use a branch name, tag or short SHA. The
+module and wrapper must come from that same pinned source archive.
 
-## 1. Bump the version
-In `Tessera/Info.plist`: set `CFBundleShortVersionString` (e.g. `0.1.1`) and
-increment `CFBundleVersion` (monotonic build number). Sparkle compares these.
+Each gate proves that the object repository is bare, the object is a commit
+and its full SHA resolves exactly. It then checks every source path against
+`git ls-tree -rz --full-tree`. It compares file type, executable bits and the
+Git SHA-1 blob hash, including the `blob N` header. Tracked symlinks must keep
+their exact target text and stay inside the archive. It rejects missing or
+extra files and directories, changed blobs, substituted symlinks, submodules
+and unsafe paths. Git replacement refs cannot substitute another tree.
+There are no ignored-file exceptions, including `.DS_Store` and `__pycache__`.
 
-**v1 launch guard:** `release.sh --publish` refuses every `1.x` version unless
-the owner has explicitly directed the v1 launch and the command is rerun with
-`CONFIRM_V1_RELEASE=YES`. Do not set that override preemptively.
+The wrapper uses Python `-B` and `PYTHONDONTWRITEBYTECODE=1`. This keeps imports
+from adding bytecode to the archive. Keep source staging free of logs, keys,
+build output and shell notes. Output stays in a separate private directory.
+The publisher writes no Git HEAD, index, worktree or config and does not change
+`core.bare` or set `GIT_WORK_TREE`.
 
-## 2. Build, sign, notarize, staple the app
+After the archive matches, the shared `check_reports` helper checks both exact
+CI reports with the source recipe hash and private attestation key. Every later
+gate repeats the archive check and report checks. Build staging comes from
+`git --git-dir "$release_bare" archive` at the pinned commit. The private
+`source-archive-proof.json` records the revision, mode, manifest digest and
+file counts, without source paths. It proves the archive match only. Successful
+CI and build evidence remains in the final release proof.
+
+For an archive candidate, keep both options when publishing reviewed assets:
+
 ```sh
-# Fresh machines: xcodebuild -downloadComponent MetalToolchain
-xcodebuild -project Tessera.xcodeproj -scheme Tessera \
-  -configuration Release -derivedDataPath dist/build clean build
-
-APP="dist/build/Build/Products/Release/Tessera.app"
-
-# Sign with Developer ID + hardened runtime (required for notarization).
-codesign --force --deep --options runtime --timestamp \
-  --sign "Developer ID Application: Your Name (YOURTEAMID)" "$APP"
-
-# Notarize + staple the app itself so it verifies offline after drag-install.
-ditto -c -k --keepParent "$APP" "Tessera.zip"
-xcrun notarytool submit "Tessera.zip" --keychain-profile "TESSERA_NOTARY" --wait
-xcrun stapler staple "$APP"
+cd "$release_archive"
+./release.sh --git-dir "$release_bare" --revision "$release_revision" \
+  --publish --artifacts /private/printed/tessera-release-output
 ```
-> Sparkle's own helper tools inside the bundle (Autoupdate, Updater.app,
-> Installer/Downloader XPC services) are signed by the `--deep` pass; verify with
-> `codesign -dv --deep --strict "$APP"` and `spctl -a -vvv "$APP"` (should say
-> "accepted, source=Notarized Developer ID").
 
-## 3. Package the .dmg, then sign + notarize it
+Without the pair, the existing clean-HEAD worktree checks still apply. Archive
+mode cannot skip CI. The `c052` native campaign failed one EngineTests timeout
+case in five iterations. The session-scoped fix is in `949c930`; fresh native
+qualification is running. No full native publisher
+run is qualified until a final source commit passes both CI lanes.
+
+## Keys and the pinned symbol tool
+
+The stable signing private key stays in the existing Mac keychain. Sparkle's
+existing `ed25519` account stays in that keychain too. The source public key is
+`Tessera/Info.plist:SUPublicEDKey`. Do not export or regenerate either key.
+The publisher discovers `generate_appcast` only in its resolved SPM artifact
+cache. It sets only `CFFIXED_USER_HOME` to a new private home and checks that
+Foundation resolves the generator cache inside it. It keeps the real `HOME`:
+a private `HOME` empties the keychain search list, and the generator then
+cannot find the `ed25519` key (`-25300`). It does not search unrelated user DerivedData folders.
+
+The vault credential is `posthog-tessera`, used through
+`$HOME/.local/bin/agent-access`. It supplies `POSTHOG_API_KEY`,
+`POSTHOG_PROJECT_ID=340688` and `POSTHOG_API_ENDPOINT=https://eu.posthog.com`.
+The existing symbol helper maps them to the CLI aliases. The private API key
+never enters the build environment, plist, command arguments or release proof.
+The upload child's output goes to `/dev/null` so CLI diagnostics cannot put the
+key in logs. Failure still returns a nonzero status and stops the publisher.
+Logs record the command's result, not the service's private error body.
+
+Install the pinned CLI in an owned directory outside the checkout if needed:
+
 ```sh
-STAGE="$(mktemp -d)"; cp -R "$APP" "$STAGE/"; ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "Tessera" -srcfolder "$STAGE" -ov -format UDZO "Tessera-0.1.1.dmg"
-
-codesign --force --sign "Developer ID Application: Your Name (YOURTEAMID)" --timestamp "Tessera-0.1.1.dmg"
-xcrun notarytool submit "Tessera-0.1.1.dmg" --keychain-profile "TESSERA_NOTARY" --wait
-xcrun stapler staple "Tessera-0.1.1.dmg"
+symbol_tools="$(mktemp -d /tmp/tessera-symbol-tools.XXXXXX)"
+python3 tools/run_bounded.py --timeout 180 --log "$symbol_tools/install.log" -- \
+  npm install --prefix "$symbol_tools" --no-audit --no-fund --save-exact @posthog/cli@0.19.0
 ```
-Sparkle delivers this `.dmg` directly (it mounts it and installs the `.app` inside).
 
-## 4. Generate the appcast
-Put the signed `Tessera-*.dmg` builds in one folder and run Sparkle's tool — it
-EdDSA-signs each archive and writes the appcast for you:
+Pass `"$symbol_tools/node_modules/.bin/posthog-cli"`. The publisher checks the
+package version, app/dSYM UUID match and successful real upload. It uses
+`tools/upload_posthog_symbols.py` without source-file upload. Mock test success
+is not upload proof. Live upload and PostHog service readback remain pending.
+
+## Build a reviewable candidate
+
+In worktree mode, run from the clean Mac checkout with both exact-commit CI
+reports available. Use the paired options above for archive mode:
+
 ```sh
-./bin/generate_appcast /path/to/updates_folder/   # produces appcast.xml
+./release.sh --posthog-cli "$symbol_tools/node_modules/.bin/posthog-cli" \
+  --spm-cache "$HOME/.local/share/tessera-ci/spm-cache"
 ```
-Add release notes (an HTML `<description>` or `<sparkle:releaseNotesLink>`) per item.
 
-## 5. Publish the GitHub Release
+The SPM cache option is optional and must point outside the checkout. No SDK
+or toolchain is installed. The default command builds artifacts and performs
+the mandatory symbol upload. It creates no GitHub tag or release.
+
+`release.sh` gives the whole operation 2400 seconds. Each external command has
+its own deadline, process group, log and PID file. The wrapper prints its log path. That log names the new
+private output directory outside the checkout. It copies the pinned Git tree
+there, generates the Xcode project there, builds unsigned Release, then signs.
+Generated project files and products never dirty the release source.
+
+The signed app scans only an owned nine-file, four-directory fixture. It must
+exit `0` within 120 seconds, report the full scan with exact counts, complete
+coverage and zero gaps, then publish cleanup classification. The fixture hashes
+must stay unchanged. `SO_CI`, `SO_AUTOSCAN`, `SO_AUTOQUIT` and
+`SO_PRIVATE_SUMMARY` keep this run out of analytics and the updater, without
+app activation. This is a launch check, not p99 qualification.
+
+The run uses a new empty `HOME` and `CFFIXED_USER_HOME`. It copies no keychain
+or private app data. CFPreferences isolation with those overrides is not proved.
+The publisher snapshots the production preference domain and its plist files
+before and after, and stops on a change. It never restores those files over a
+concurrent user's writes. A native run must prove that this guard works.
+
+The DMG contains `Tessera.app` and an `Applications` symlink. The publisher
+creates UDZO, runs `hdiutil verify`, generates a keychain-signed appcast and
+verifies the Ed25519 signature with public CryptoKit against the source key.
+It checks the one enclosure's URL, version, build and byte length. See
+[Sparkle publishing](https://sparkle-project.org/documentation/publishing/)
+and the [official generator source](https://github.com/sparkle-project/Sparkle/blob/2.x/generate_appcast/main.swift).
+
+Review `release-proof.json` in the printed output. It records the commit,
+recipe, CI report hashes, stable requirement, app/stage hashes, smoke result,
+symbol UUIDs, public signature proof and four asset hashes. It contains no
+private key or raw private path. Raw logs stay private beside it.
+
+## Publish only after review
+
+This implementation task does not publish a release. The parent owns that
+step. Once the concrete candidate and native results pass review, run:
+
 ```sh
-gh release create v0.1.1 \
-  Tessera-0.1.1.dmg appcast.xml \
-  --repo unknown6003/tessera --title "0.1.1" --notes "…"
+./release.sh --publish --artifacts /private/printed/tessera-release-output
 ```
-Because `SUFeedURL` uses `…/releases/latest/download/appcast.xml`, the newest
-release's `appcast.xml` is what installed apps read on their next check.
 
-## 6. Verify the update path
-On a machine running the *previous* version, wait for a scheduled check or use the
-app-menu item **Check for Updates Now** — Sparkle should find 0.1.1, verify the
-EdDSA signature against `SUPublicEDKey`, download the `.dmg`, install it, and
-relaunch the app by itself. If it reports a signature error, the archive wasn't
-signed with the key whose public half is in Info.plist.
+This command checks clean HEAD or the exact archive, then fresh CI again. It rechecks the signed
+app, image, signature, smoke evidence and asset hashes. It creates an annotated
+tag at the exact full commit, then a draft release. It uploads exactly:
 
-## 7. How updates behave for users (fully automatic)
+- `Tessera.dmg`
+- `Tessera-0.2.1.dmg`
+- `appcast.xml`
+- `SHA256SUMS`
 
-Updates are **hands-off**: the app checks on a schedule, downloads in the
-background, installs, and **relaunches itself**. The user is never prompted and
-never clicks anything.
+Both DMGs have equal bytes. The appcast URL uses the versioned DMG. All four
+remote assets must download with the expected sizes and SHA-256 values before
+the publisher checks CI again and makes the draft public and latest.
 
-- Implemented by a custom `SPUUserDriver` (`SilentUserDriver` in
-  `Tessera/Engine/Updater.swift`) that auto-approves every decision Sparkle would
-  normally show a dialog for.
-- Defaults come from Info.plist: `SUEnableAutomaticChecks` (no first-launch
-  permission prompt), `SUAutomaticallyUpdate` + `SUAllowsAutomaticUpdates`
-  (download+install without asking), `SUScheduledCheckInterval` = 6h.
-- **The self-relaunch is held back while the app is busy** — mid-scan, or with
-  files staged in the Cleanup List (a relaunch would discard that list). The
-  queued update installs the moment the app goes idle, and lands on next launch
-  regardless, since Sparkle installs a downloaded update on quit.
-- The app-menu item doubles as status: *Checking… / Downloading Update… 42% /
-  Installing Update… / Tessera is Up to Date*.
-- Safety is unchanged: Sparkle verifies each update's EdDSA signature against
-  `SUPublicEDKey` before installing, so **silent ≠ unverified** — an unsigned or
-  tampered build cannot install. Guard the private key accordingly (§1).
+An existing tag must be annotated at the same commit. An existing release must
+be a draft with that exact tag and full target commit. Resume accepts an empty
+draft or the full four-asset set only after byte checks. A partial, extra,
+changed or public release stops for parent review. Nothing overwrites or
+deletes remote assets. No failure path moves `0.1.9` or edits its assets.
 
----
+The app checks for updates every six hours. Its custom Sparkle driver reports
+status in the app. It holds a pending relaunch while the app's busy barrier is
+set, including scan and staged cleanup work, then installs when that barrier
+clears. Do not promise that every OS or installation path can never prompt.
 
-### Notes
-- **Icon:** done — `Tessera/Assets.xcassets/AppIcon.appiconset` is generated from the
-  one brand vector (`cd web && npm run icons`), the same source as the site favicon.
-- **License:** GPL-3.0 (`LICENSE`).
-- **Windows / Linux:** see [DISTRIBUTION.md](DISTRIBUTION.md) for the cross-platform
-  packaging plan (winget/MSI, apt/dnf/AUR/Flatpak). Those are future work — today's
-  release is macOS-only.
-- **`backend/`** (the old Cloudflare Worker) is gitignored and unused; the app is
-  fully on-device.
+## Stop and retain owned work
+
+To stop an active publisher, send `TERM` to its wrapper's PID. The wrapper log
+has a sibling `.pid` file for the owned group. Each active external command
+also has a `.log.pid` file. The publisher handles `TERM` by unwinding its active
+command and stopping that owned group. Never use a process-name-wide kill.
+For the path printed by the wrapper, stop its owned release process with:
+
+```sh
+kill -TERM "$(cat /tmp/tessera-release-wrapper-PRINTED/release.log.pid)"
+```
+
+Replace `PRINTED` with that run's unique suffix. A deadline is a failure.
+Keep the private output for diagnosis and review.
+The publisher does not delete output or shared cache directories.
+
+Stop the Mac CI timer with
+`launchctl bootout gui/$(id -u)/com.abdwy.tessera-ci.native`.
+Stop Linux with `systemctl --user disable --now tessera-ci-web.timer`, then
+`systemctl --user stop tessera-ci-web.service`.
+
+The [pipeline proof checklist](docs/update/release-pipeline.md) lists the native
+gates still required before release. Linux tests do not prove a Mac compile,
+keychain access, successful signing, service upload or an installed update.

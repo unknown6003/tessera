@@ -6,6 +6,10 @@ import Combine
 
 struct Sidebar: View {
     @ObservedObject var vm: ScanViewModel
+    /// Display names for the window header, keyed by source URL.
+    @Binding var sourceNames: [URL: String]
+    /// Called when the source list gains keyboard focus (click or Tab).
+    var onKeyboardFocus: () -> Void = {}
     /// Injected by TesseraApp; drives the version/update row in the footer.
     @EnvironmentObject private var updater: UpdaterController
 
@@ -18,6 +22,12 @@ struct Sidebar: View {
         nonmutating set { vm.selectedSourceURL = newValue }
     }
     @State private var showFolderPicker = false
+    /// The source list is one keyboard stop: ↑↓ move the selection, Return
+    /// scans a source that is not on screen.
+    @FocusState private var sourcesFocused: Bool
+    /// Launch focus goes to the source list once, after the first sources
+    /// load. Before that the list is empty and cannot take focus.
+    @State private var didSetLaunchFocus = false
 
     // Connect-to-server sheet
     @State private var showConnectSheet = false
@@ -28,6 +38,27 @@ struct Sidebar: View {
     private let workspaceCenter = NSWorkspace.shared.notificationCenter
 
     private var allSources: [VolumeInfo] { volumes + customFolders }
+
+    /// Chosen folders survive relaunch. Local preferences only (the app is not
+    /// sandboxed, so a plain path is enough); never sent anywhere.
+    private static let customFoldersKey = "Tessera.customFolderPaths"
+    private static let customFoldersLimit = 12
+
+    private func loadCustomFolders() {
+        guard customFolders.isEmpty else { return }
+        let paths = DebugAutomation.defaults.stringArray(forKey: Self.customFoldersKey) ?? []
+        customFolders = paths.prefix(Self.customFoldersLimit).compactMap { path in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else { return nil }
+            return VolumeInfo(folderURL: URL(fileURLWithPath: path, isDirectory: true))
+        }
+    }
+
+    private func saveCustomFolders() {
+        let paths = customFolders.prefix(Self.customFoldersLimit).map(\.url.path)
+        DebugAutomation.defaults.set(Array(paths), forKey: Self.customFoldersKey)
+    }
 
     /// Sources grouped into ordered sections for display.
     private var sections: [(kind: StorageSourceKind, items: [VolumeInfo])] {
@@ -46,16 +77,56 @@ struct Sidebar: View {
         VStack(spacing: 0) {
             sidebarHeader
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(sections, id: \.kind) { section in
-                        sectionView(title: section.kind.sectionTitle, items: section.items)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(sections, id: \.kind) { section in
+                                sectionView(title: section.kind.sectionTitle, items: section.items)
+                            }
+                        }
+                        .focusable(!vm.isDeleting && !vm.isScanning)
+                        .focused($sourcesFocused)
+                        .focusEffectDisabled()
+                        // With no listed source selected, ring the whole list
+                        // so its focus is still visible.
+                        .overlay {
+                            if sourcesFocused && !orderedSources.contains(where: { $0.url == selectedVolumeURL }) {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .inset(by: -4)
+                                    .strokeBorder(Theme.electricBlue, lineWidth: 1)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .onKeyPress(keys: [.upArrow, .downArrow, .return]) { press in
+                            guard press.modifiers.isDisjoint(with: [.command, .option, .control]) else { return .ignored }
+                            return handleSourceKey(press.key) ? .handled : .ignored
+                        }
+                        // One element, so focus here is read as "Sources" and the
+                        // selected source, not as the first section label.
+                        // VoiceOver steps through sources with increment and
+                        // decrement, as the arrow keys do.
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Sources")
+                        .accessibilityValue(Text(sourcesAccessibilityValue))
+                        .accessibilityHint("Use the up and down arrow keys to choose a source. Return scans it.")
+                        .accessibilityAdjustableAction { direction in
+                            switch direction {
+                            case .increment: _ = handleSourceKey(.downArrow)
+                            case .decrement: _ = handleSourceKey(.upArrow)
+                            @unknown default: break
+                            }
+                        }
+                        .accessibilityAction { _ = handleSourceKey(.return) }
+                        addSourceRows
                     }
-                    addSourceRows
+                    .padding(.horizontal, 10)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
                 }
-                .padding(.horizontal, 10)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
+                .onChange(of: vm.selectedSourceURL) { _, url in
+                    if let url { proxy.scrollTo(url) }
+                }
             }
 
             Divider()
@@ -64,7 +135,20 @@ struct Sidebar: View {
             updateRow.padding(.vertical, 10)
         }
         .background(Theme.surface)
-        .onAppear { reloadVolumes() }
+        .onAppear {
+            loadCustomFolders()
+            reloadVolumes()
+        }
+        .onChange(of: customFolders.map(\.url)) { _, _ in saveCustomFolders() }
+        .onChange(of: vm.selectedSourceURL) { _, _ in adoptSelectedSource() }
+        .onChange(of: allSources.isEmpty, initial: true) { _, empty in
+            guard !empty, !didSetLaunchFocus else { return }
+            didSetLaunchFocus = true
+            sourcesFocused = true
+        }
+        // Observe names as well as URLs: a source can be renamed in place.
+        .onChange(of: sourceNameLookup, initial: true) { _, names in sourceNames = names }
+        .onChange(of: sourcesFocused) { _, focused in if focused { onKeyboardFocus() } }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didMountNotification)) { _ in reloadVolumes() }
         .onReceive(workspaceCenter.publisher(for: NSWorkspace.didUnmountNotification)) { _ in reloadVolumes() }
         .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
@@ -82,15 +166,15 @@ struct Sidebar: View {
 
     private var sidebarHeader: some View {
         HStack {
-            Image(nsImage: NSApplication.shared.applicationIconImage)
-                .resizable().frame(width: 30, height: 30)
+            DecorativeAppIcon()
+                .frame(width: 30, height: 30)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Tessera")
                     .font(.headline.weight(.semibold))
                 Text("Sources")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Theme.mutedForeground)
             }
             Spacer()
             Button {
@@ -99,7 +183,7 @@ struct Sidebar: View {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 12, weight: .semibold))
             }
-            .buttonStyle(.icon)
+            .tesseraButtonStyle(.icon)
             .help("Refresh sources")
             .disabled(isReloadingSources)
         }
@@ -116,11 +200,8 @@ struct Sidebar: View {
             sectionLabel(title)
             ForEach(items) { info in
                 Button {
-                    guard !vm.isDeleting, !vm.isScanning else { return }
-                    selectedVolumeURL = info.url
-                    vm.selectedSourceURL = info.url
-                    // If we've already scanned this source, switch to it instantly.
-                    vm.showCachedScanIfAvailable(for: info.url)
+                    sourcesFocused = true
+                    selectSource(info)
                 } label: {
                     VolumeCard(info: info,
                                isSelected: selectedVolumeURL == info.url,
@@ -128,13 +209,89 @@ struct Sidebar: View {
                                isCached: vm.scannedURL != info.url && vm.hasCachedScan(for: info.url))
                 }
                 .buttonStyle(.plain)
-                .disabled(vm.isDeleting || vm.isScanning)
+                // The list is one Tab stop and arrow keys move the selection,
+                // so a row is not a Tab stop of its own. The selection fill
+                // marks the row; a 1 pt ring marks list focus.
+                .focusable(false)
+                .focusEffectDisabled()
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Theme.electricBlue, lineWidth: 1)
+                        .opacity(sourcesFocused && selectedVolumeURL == info.url ? 1 : 0)
+                        .allowsHitTesting(false)
+                )
+                .id(info.url)
+                // Busy: the action is off, the text stays readable. `selectSource`
+                // and the key handler also refuse while scanning or removing.
+                .allowsHitTesting(!sourcesBusy)
                 .accessibilityAddTraits(selectedVolumeURL == info.url ? [.isSelected] : [])
-                .accessibilityLabel(Text(info.name))
+                .accessibilityLabel(Text(sourceAccessibilityLabel(info)))
                 .accessibilityValue(Text(sourceAccessibilityValue(info)))
-                .accessibilityHint("Select or display this storage source")
+                .accessibilityHint(sourcesBusy ? "Unavailable while a scan or cleanup runs"
+                                               : "Select or display this storage source")
             }
         }
+    }
+
+    private var sourcesBusy: Bool { vm.isDeleting || vm.isScanning }
+
+    private func selectSource(_ info: VolumeInfo) {
+        guard !vm.isDeleting, !vm.isScanning else { return }
+        selectedVolumeURL = info.url
+        vm.selectedSourceURL = info.url
+        // If we've already scanned this source, switch to it instantly.
+        vm.showCachedScanIfAvailable(for: info.url)
+    }
+
+    /// URL to display name for every listed source, under both its URL and its
+    /// standardized URL. Built from data already in memory; no file I/O.
+    /// Later entries win on a repeated key, so duplicates cannot trap.
+    private var sourceNameLookup: [URL: String] {
+        Dictionary(allSources.flatMap { source in
+            [(source.url, source.name), (source.url.standardizedFileURL, source.name)]
+        }, uniquingKeysWith: { _, latest in latest })
+    }
+
+    /// Sources in on-screen order, across sections.
+    private var orderedSources: [VolumeInfo] { sections.flatMap(\.items) }
+
+    private func handleSourceKey(_ key: KeyEquivalent) -> Bool {
+        guard !vm.isDeleting, !vm.isScanning else { return false }
+        let sources = orderedSources
+        guard !sources.isEmpty else { return false }
+        let index = sources.firstIndex { $0.url == selectedVolumeURL }
+        switch key {
+        case .downArrow:
+            selectSource(sources[min(sources.count - 1, (index ?? -1) + 1)])
+        case .upArrow:
+            selectSource(sources[max(0, (index ?? sources.count) - 1)])
+        case .return:
+            // ⌘R rescans the source on screen. Return only scans a new one.
+            guard let index, vm.scannedURL != sources[index].url else { return false }
+            vm.startScan(volumeURL: sources[index].url)
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// Sources that share a name ("Nextcloud" for each account) add their
+    /// abbreviated path so VoiceOver can tell them apart.
+    private func sourceAccessibilityLabel(_ info: VolumeInfo) -> String {
+        let sharesName = allSources.contains { $0.url != info.url && $0.name == info.name }
+        guard sharesName else { return info.name }
+        return "\(info.name), \((info.url.path as NSString).abbreviatingWithTildeInPath)"
+    }
+
+    /// The list's value: the selected source, its state and its place.
+    private var sourcesAccessibilityValue: String {
+        let sources = orderedSources
+        guard let index = sources.firstIndex(where: { $0.url == selectedVolumeURL }) else {
+            return sources.isEmpty ? "No sources" : "No source selected"
+        }
+        let info = sources[index]
+        let state = vm.scannedURL == info.url ? ", currently viewing" : ""
+        return "\(sourceAccessibilityLabel(info))\(state), \(index + 1) of \(sources.count)"
     }
 
     private func sourceAccessibilityValue(_ info: VolumeInfo) -> String {
@@ -158,7 +315,10 @@ struct Sidebar: View {
 
     @ViewBuilder
     private func addRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button {
+            guard !sourcesBusy else { return }
+            action()
+        } label: {
             HStack(spacing: 9) {
                 Image(systemName: icon)
                     .foregroundStyle(.secondary)
@@ -172,8 +332,9 @@ struct Sidebar: View {
             .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .disabled(vm.isDeleting || vm.isScanning)
+        .tesseraButtonStyle(.interactive)
+        .allowsHitTesting(!sourcesBusy)
+        .accessibilityHint(sourcesBusy ? "Unavailable while a scan or cleanup runs" : "")
     }
 
     @ViewBuilder
@@ -205,12 +366,10 @@ struct Sidebar: View {
                     Image(systemName: updater.status.symbol)
                         .font(.caption.weight(.semibold))
 
-                    Text("Version \(updater.currentVersion)")
-                        .font(.caption)
-                    Text("·")
-                        .font(.caption)
-                        .foregroundStyle(.quaternary)
-                    Text(updater.status.shortTitle)
+                    // One short label that fits the 210 pt sidebar: the version
+                    // at rest, the update state while one is in progress. The
+                    // full action name is in the tooltip and the app menu.
+                    Text(updateRowTitle)
                         .font(.caption)
                         .lineLimit(1)
                     Spacer(minLength: 0)
@@ -220,7 +379,7 @@ struct Sidebar: View {
                 .padding(.vertical, 7)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.interactive)
+            .tesseraButtonStyle(.interactive)
             .disabled(!updater.canCheckForUpdates || updater.status.isBusy)
             .help(updateRowHelp)
             .accessibilityLabel(Text("Tessera version \(updater.currentVersion)"))
@@ -228,6 +387,14 @@ struct Sidebar: View {
             .accessibilityHint("Check for updates now")
         }
         .padding(.horizontal, 10)
+    }
+
+    private var updateRowTitle: String {
+        switch updater.status {
+        case .idle, .upToDate: return "Version \(updater.currentVersion)"
+        case .failed: return "Update check failed"
+        default: return updater.status.shortTitle
+        }
     }
 
     private var updateRowTint: Color {
@@ -270,7 +437,7 @@ struct Sidebar: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
             }
-            .buttonStyle(.icon(size: 18))
+            .tesseraButtonStyle(.icon(size: 18))
             .help("Dismiss")
         }
         .padding(.horizontal, 10)
@@ -383,16 +550,29 @@ struct Sidebar: View {
             let snapshot = await StorageSourceDiscovery.discover(checkingFolders: checkedFolders)
             volumes = snapshot.sources
             // Keep folders added while this request was reading metadata.
-            customFolders.removeAll { checkedFolderIDs.contains($0.id) && !snapshot.existingFolders.contains($0.url) }
+            let gone = Set(customFolders.filter { checkedFolderIDs.contains($0.id) && !snapshot.existingFolders.contains($0.url) }.map(\.url))
+            customFolders.removeAll { gone.contains($0.url) }
             if !vm.isDeleting, !vm.isScanning, selectedVolumeURL == nil {
                 selectedVolumeURL = defaultSelection
             }
             isReloadingSources = false
+            adoptSelectedSource(except: gone)
             if reloadSourcesAgain {
                 reloadSourcesAgain = false
                 reloadVolumes()
             }
         }
+    }
+
+    /// A scan can start outside this list: the Finder service, a restored
+    /// session or automation. Give that folder a row, so the source on screen
+    /// is always listed. The next reload drops it again if it is gone.
+    private func adoptSelectedSource(except gone: Set<URL> = []) {
+        guard !isReloadingSources, !volumes.isEmpty, let url = vm.selectedSourceURL,
+              !gone.contains(url) else { return }
+        let path = url.standardizedFileURL.path
+        guard !allSources.contains(where: { $0.url.standardizedFileURL.path == path }) else { return }
+        customFolders = Array(([VolumeInfo(folderURL: url)] + customFolders).prefix(Self.customFoldersLimit))
     }
 
     private var defaultSelection: URL? {
@@ -422,7 +602,8 @@ private struct VolumeCard: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(info.name)
                         .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .help(info.name)
                     if let subtitle = info.subtitle, info.totalBytes == nil {
                         Text(subtitle)
                             .font(.caption)
@@ -441,14 +622,12 @@ private struct VolumeCard: View {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.caption)
                         .foregroundStyle(.tint)
-                } else if let total = info.totalBytes {
-                    Text(Theme.format(total))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                } else if info.subtitle != nil {
+                } else if info.totalBytes == nil, info.subtitle != nil {
+                    // The capacity line below already shows the total.
                     Image(systemName: "chevron.right")
                         .font(.caption)
-                        .foregroundStyle(.quaternary)
+                        .foregroundStyle(Theme.mutedForeground)
+                        .accessibilityHidden(true)
                 }
             }
 
@@ -492,9 +671,10 @@ private struct VolumeCard: View {
             }
             .frame(height: 5)
 
+            // Muted, not tertiary: 7:1 on the sidebar surface (tertiary was 2.2:1).
             Text("\(usedStr) used of \(totalStr)")
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Theme.mutedForeground)
         }
     }
 }

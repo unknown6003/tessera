@@ -25,8 +25,8 @@ import Sparkle
 //    out from under work in progress or silently discard a staged list. Once the
 //    app goes idle, the queued install proceeds.
 //
-// The update check is the ONLY network traffic the app performs on its own.
-// No user data is ever sent.
+// Update requests carry no file data. Anonymous diagnostics use the payload
+// filters in Analytics/.
 
 /// What the updater is currently doing — surfaced in the app menu.
 enum UpdateStatus: Equatable {
@@ -100,7 +100,18 @@ final class UpdaterController: ObservableObject {
     /// Whether a manual check can run right now. Drives the menu item.
     @Published var canCheckForUpdates = false
     /// What the updater is doing, for the menu item's title.
-    @Published var status: UpdateStatus = .idle
+    @Published var status: UpdateStatus = .idle {
+        didSet {
+            guard oldValue != status else { return }
+            switch status {
+            case .upToDate: Analytics.shared.recordUpdate(.upToDate)
+            case .failed: Analytics.shared.recordUpdate(.failed)
+            case .installing: Analytics.shared.recordUpdate(.installing)
+            case .readyToInstall: Analytics.shared.recordUpdate(.held)
+            default: break
+            }
+        }
+    }
     /// Set on the first launch after an update landed, so the app can tell the
     /// user what just changed. Updates install silently and relaunch on their
     /// own, which otherwise happens with no acknowledgement at all.
@@ -124,6 +135,7 @@ final class UpdaterController: ObservableObject {
         // when the version is unchanged.
         if let previous, previous != currentVersion {
             justUpdatedFrom = previous
+            Analytics.shared.recordUpdate(.installed)
         }
     }
 
@@ -152,7 +164,7 @@ final class UpdaterController: ObservableObject {
     private let driver: SilentUserDriver?
 
     init() {
-        guard !DebugAutomation.isAutomated else {
+        guard AppRunPolicy.allowsExternalServices(environment: ProcessInfo.processInfo.environment) else {
             updater = nil
             driver = nil
             return

@@ -2,6 +2,9 @@ import SwiftUI
 
 struct InspectorView: View {
     @ObservedObject var vm: ScanViewModel
+    /// The map's colour for a node, from the shared `MapSnapshot`.
+    var mapColor: (FileNode) -> Color? = { _ in nil }
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var largestRows: [FileNode] = []
 
     private var inspectedNode: FileNode? {
@@ -15,11 +18,15 @@ struct InspectorView: View {
             VStack(alignment: .leading, spacing: 16) {
                 detailsSection
             }
-            .padding(16)
+            // 12 pt top inset: the same line as the "In this folder" header.
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // No panel fill: the window background shows through, so empty space
+        // below short content does not read as a large filled box.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.bg)
         .disabled(vm.isDeleting || vm.isScanning)
         .onChange(of: inspectedNode?.id, initial: true) { _, _ in refreshLargestRows() }
         .onChange(of: vm.chartRevision) { _, _ in refreshLargestRows() }
@@ -67,19 +74,23 @@ struct InspectorView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
+                // Long names wrap; a narrow column must not hide the name.
                 Text(node.name)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(4)
+                    .truncationMode(.middle)
                     .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .help(node.name)
 
                 Text(Theme.format(node.size))
-                    .font(.system(.title3, design: .monospaced).weight(.semibold))
+                    .font(.title2.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.primary)
 
                 if node.isDirectory {
-                    Text("\(node.children.count) item\(node.children.count == 1 ? "" : "s")")
+                    Text(Theme.itemCount(node.children.count))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.mutedForeground)
                 }
             }
         }
@@ -88,8 +99,8 @@ struct InspectorView: View {
     @ViewBuilder
     private func pathRow(_ node: FileNode) -> some View {
         Text(node.url.path)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.caption.monospaced())
+            .foregroundStyle(Theme.mutedForeground)
             .lineLimit(3)
             .truncationMode(.middle)
             .textSelection(.enabled)
@@ -99,7 +110,7 @@ struct InspectorView: View {
     @ViewBuilder
     private func topChildrenList(_ node: FileNode) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Largest Items")
+            Text("Largest items")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 6)
@@ -114,55 +125,70 @@ struct InspectorView: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 14)
                         Text(child.name)
-                            .font(.caption)
-                            .lineLimit(1)
+                            .font(.callout)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Text(Theme.format(child.size))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(Theme.mutedForeground)
+                            .fixedSize()
                     }
                     .padding(.vertical, 4)
                 }
-                .buttonStyle(.interactive)
+                .tesseraButtonStyle(.interactive)
                 .contentShape(Rectangle())
+                .help(child.name)
             }
         }
         .padding(.top, 4)
     }
 
+    /// The one place for selection actions while Details is open. Primary
+    /// action on top at full width; Finder actions below it.
     @ViewBuilder
     private func actionButtons(_ node: FileNode) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([node.url])
-            } label: {
-                Label("Reveal", systemImage: "arrow.right.circle")
-                    .font(.subheadline)
-            }
-            .buttonStyle(.flat)
-            .disabled(node.isSynthetic)
-
-            Spacer()
-
-            if !node.isSynthetic {
-                let alreadyCollected = vm.collector.contains(where: { $0.id == node.id })
-                Button {
-                    vm.addToCollector(node)
-                } label: {
-                    Label("Add to list", systemImage: alreadyCollected ? "checkmark.circle" : "plus.circle")
-                        .font(.subheadline)
+        if !node.isSynthetic {
+            VStack(alignment: .leading, spacing: 8) {
+                if vm.isCollected(node) {
+                    Label("In Cleanup List", systemImage: "checkmark")
+                        .font(.callout)
+                        .foregroundStyle(Theme.mutedForeground)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                } else {
+                    Button {
+                        vm.addToCollector(node)
+                    } label: {
+                        Label("Add to Cleanup List", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .tesseraButtonStyle(.flat)
+                    .help("Add to Cleanup List (⌘⌫)")
                 }
-                .buttonStyle(.flat)
-                .disabled(alreadyCollected)
+                HStack(spacing: 16) {
+                    if node.isDirectory && node.id != vm.currentRoot?.id {
+                        Button("Open on Map") { vm.zoomIn(to: node) }
+                            .tesseraButtonStyle(.interactive)
+                            .help("Open this folder on the map (⌘↓)")
+                    }
+                    Button("Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([node.url])
+                    }
+                    .tesseraButtonStyle(.interactive)
+                }
+                .font(.callout)
+                .foregroundStyle(Theme.electricBlue)
             }
+            .padding(.top, 4)
         }
-        .padding(.top, 4)
     }
 
     private var emptyDetailsPlaceholder: some View {
         Text("Nothing selected yet")
             .font(.subheadline)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(Theme.mutedForeground)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
             .multilineTextAlignment(.center)
@@ -172,20 +198,18 @@ struct InspectorView: View {
 
     @ViewBuilder
     private func sectionLabel(_ text: String) -> some View {
+        // One column-header style across Details and the browser.
         Text(text)
-            .font(.headline.weight(.semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
     }
 
+    /// The same colour as the node's wedge, at any depth. A folder with no
+    /// wedge (the folder on screen) uses a stable neutral.
     private func iconCircleColor(_ node: FileNode) -> Color {
-        switch node.kind {
-        case .hiddenSpace: return Theme.hiddenSpaceColor
-        case .aggregate:   return Theme.aggregateColor
-        case .cloudOnlyStorage: return Theme.cloudColor
-        case .crossVolume: return Theme.crossVolumeColor
-        default:
-            let hue = Theme.topHues[abs(node.name.hashValue) % Theme.topHues.count]
-            return Theme.wedgeColor(hue: hue, depth: 0)
-        }
+        mapColor(node)
+            ?? Theme.syntheticColor(for: node.kind, highContrast: contrast == .increased)
+            ?? Theme.elevated
     }
 }

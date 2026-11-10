@@ -38,15 +38,33 @@ struct DirectoryListing: Sendable {
 }
 
 final class DirectoryReadSession: @unchecked Sendable {
+    struct TestRead: Sendable {
+        let delaySeconds: Double
+        let timeoutSeconds: Double
+    }
+
+    let testReads: [String: TestRead]
+    let testDatalessSuffix: String?
     private let lock = NSLock()
     private var stopped = false
     private var failedProviders = Set<String>()
+    private var providerAttempts = 0
+
+    init(testReads: [String: TestRead] = [:], testDatalessSuffix: String? = nil) {
+        self.testReads = testReads
+        self.testDatalessSuffix = testDatalessSuffix
+    }
 
     var isCancelled: Bool { lock.withLock { stopped } }
+    var providerReadAttempts: Int { lock.withLock { providerAttempts } }
     func cancel() { lock.withLock { stopped = true } }
 
     func canRead(_ provider: String?) -> Bool {
-        lock.withLock { !stopped && (provider.map { !failedProviders.contains($0) } ?? true) }
+        lock.withLock {
+            guard !stopped, provider.map({ !failedProviders.contains($0) }) ?? true else { return false }
+            if provider != nil { providerAttempts += 1 }
+            return true
+        }
     }
 
     func hold(_ provider: String?) {
@@ -93,43 +111,6 @@ final class BulkScratch {
 
 enum BulkDirScanner {
 
-    // MARK: - Test seams (test-only)
-    //
-    // Read through a lock. These seams exist to exercise the timeout path, which
-    // deliberately ABANDONS a sacrificial enumeration thread — that thread outlives
-    // the test and keeps reading these globals after the test's `defer` clears them,
-    // so an unsynchronized `nonisolated(unsafe)` read/write here is a genuine data
-    // race (TSan flags it). The lock is uncontended in production (nothing ever sets
-    // these) and costs ~20ns per directory, far below the enumeration syscall it
-    // guards. They must not be touched by production code.
-    private static let seamLock = NSLock()
-
-    /// When set, `entries(atPath:)` sleeps for `seconds` if the path ends with
-    /// `pathSuffix` — used to exercise the timeout/sacrificial-thread path.
-    nonisolated(unsafe) private static var _testDelayStorage: (pathSuffix: String, seconds: Double)?
-    static var _testDelay: (pathSuffix: String, seconds: Double)? {
-        get { seamLock.lock(); defer { seamLock.unlock() }; return _testDelayStorage }
-        set { seamLock.lock(); _testDelayStorage = newValue; seamLock.unlock() }
-    }
-
-    /// When set, `timedEntries` uses this timeout instead of its default.
-    nonisolated(unsafe) private static var _timeoutSecondsOverrideStorage: Double?
-    static var _timeoutSecondsOverride: Double? {
-        get { seamLock.lock(); defer { seamLock.unlock() }; return _timeoutSecondsOverrideStorage }
-        set { seamLock.lock(); _timeoutSecondsOverrideStorage = newValue; seamLock.unlock() }
-    }
-
-    /// When set, any entry whose `name` ends with this suffix is treated as
-    /// dataless (SF_DATALESS bit forced on) — lets the cloud/dataless logic be
-    /// tested without a real iCloud/FileProvider mount. Applied in
-    /// `entries(atPath:)` after the listing is built, so both the C bridge and
-    /// the FileManager fallback honor it.
-    nonisolated(unsafe) private static var datalessSuffixStorage: String?
-    static var _testDatalessSuffix: String? {
-        get { seamLock.withLock { datalessSuffixStorage } }
-        set { seamLock.withLock { datalessSuffixStorage = newValue } }
-    }
-
     private static let helperSlots = DispatchSemaphore(value: 4)
 
     /// Holds the syscall result across the sacrificial-thread / waiter boundary.
@@ -168,30 +149,25 @@ enum BulkDirScanner {
     /// it). Crucially there is no per-directory Swift `Task`/timer: an uncancelled
     /// timer per directory accumulates into hundreds of thousands of live timers
     /// on a large scan and throttles the whole concurrency runtime.
-    static func timedEntries(atPath path: String, timeoutSeconds: Double = 5) async -> [EntryInfo]? {
-        // Fast path: local directory, read inline. Test seams force the guarded
-        // path so the timeout/abandon logic stays exercised by the suite.
-        if _testDelay == nil, _timeoutSecondsOverride == nil, !isHangProne(path) {
-            return entriesResult(atPath: path)?.entries
+    static func timedEntries(atPath path: String, timeoutSeconds: Double = 5,
+                             session: DirectoryReadSession = DirectoryReadSession()) async -> [EntryInfo]? {
+        let testRead = session.testReads[path]
+        if testRead == nil, !isHangProne(path) {
+            return entriesResult(atPath: path, scratch: BulkScratch(session: session))?.entries
         }
 
-        let timeout = _timeoutSecondsOverride ?? timeoutSeconds
+        let timeout = testRead?.timeoutSeconds ?? timeoutSeconds
         return await withCheckedContinuation { (cont: CheckedContinuation<[EntryInfo]?, Never>) in
             DispatchQueue.global(qos: .utility).async {
-                cont.resume(returning: entriesWithDeadline(atPath: path, timeoutSeconds: timeout))
+                cont.resume(returning: listingWithDeadline(atPath: path, timeoutSeconds: timeout,
+                                                          session: session, onBatch: {})?.entries)
             }
         }
     }
 
-    /// Whether the test seams are active. When they are, EVERY directory must go
-    /// through the deadline path so the timeout/abandon logic stays exercised (and
-    /// the `_testDelay`/`_timeoutSecondsOverride` semantics tests 10 & 11 rely on
-    /// keep working).
-    static var seamsActive: Bool { _testDelay != nil || _timeoutSecondsOverride != nil }
-
     /// Worker-thread enumeration of a directory. Reads inline (fast, zero
     /// dispatch) for local directories; for hang-prone cloud/FileProvider
-    /// directories — or whenever a test seam is active — it goes through a hard
+    /// directories, or an exact path with a session-owned test read, uses a hard
     /// deadline and returns nil if the directory blows it (caller skips it).
     ///
     /// MUST be called from a dedicated worker thread, never the Swift cooperative
@@ -203,17 +179,13 @@ enum BulkDirScanner {
     static func workerListing(atPath path: String, scratch: BulkScratch) -> DirectoryListing? {
         let provider = providerRoot(path)
         guard scratch.session.canRead(provider) else { return nil }
-        if seamsActive || provider != nil {
-            let timeout = _timeoutSecondsOverride ?? (provider != nil ? 10 : 5)
+        let testRead = scratch.session.testReads[path]
+        if testRead != nil || provider != nil {
+            let timeout = testRead?.timeoutSeconds ?? 10
             return listingWithDeadline(atPath: path, timeoutSeconds: timeout,
                                        session: scratch.session, onBatch: scratch.onBatch)
         }
         return entriesResult(atPath: path, scratch: scratch)
-    }
-
-    static func entriesWithDeadline(atPath path: String, timeoutSeconds: Double) -> [EntryInfo]? {
-        listingWithDeadline(atPath: path, timeoutSeconds: timeoutSeconds,
-                            session: DirectoryReadSession(), onBatch: {})?.entries
     }
 
     private static func listingWithDeadline(atPath path: String, timeoutSeconds: Double,
@@ -273,18 +245,13 @@ enum BulkDirScanner {
     }
 
     private static func entriesResult(atPath path: String, scratch: BulkScratch) -> DirectoryListing? {
-        // Test-only delay hook (see `_testDelay`).
-        if let delay = _testDelay, path.hasSuffix(delay.pathSuffix) {
-            Thread.sleep(forTimeInterval: delay.seconds)
+        if let delay = scratch.session.testReads[path] {
+            Thread.sleep(forTimeInterval: delay.delaySeconds)
         }
 
         guard !scratch.session.isCancelled, var list = rawEntries(atPath: path, scratch: scratch) else { return nil }
 
-        // Test-only dataless hook (see `_testDatalessSuffix`): force the
-        // SF_DATALESS bit on any entry whose name matches, so the cloud logic can
-        // be exercised without a real online-only mount. Applied uniformly here so
-        // both the C bridge and the FileManager fallback honor it.
-        guard let suffix = _testDatalessSuffix else { return list }
+        guard let suffix = scratch.session.testDatalessSuffix else { return list }
         list.entries = list.entries.map { entry in
             guard entry.name.hasSuffix(suffix) else { return entry }
             var e = entry
@@ -349,18 +316,30 @@ enum BulkDirScanner {
 
     // MARK: - Fallback
 
-    private static func fallbackEntries(atPath path: String, session: DirectoryReadSession) -> DirectoryListing? {
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else {
+    static func fallbackEntries(atPath path: String, session: DirectoryReadSession) -> DirectoryListing? {
+        var directory = BRDirectory()
+        guard br_directory_open(path, &directory) == 0 else { return nil }
+        guard let stream = Darwin.fdopendir(directory.fd) else {
+            br_directory_close(&directory)
             return nil
         }
-
+        // fdopendir owns the descriptor until closedir.
+        defer { Darwin.closedir(stream) }
         var entries: [EntryInfo] = []
-        entries.reserveCapacity(names.count)
         var unreadablePaths: [String] = []
-        for name in names {
+        while true {
             guard !session.isCancelled else { return nil }
+            errno = 0
+            guard let record = Darwin.readdir(stream) else {
+                return errno == 0 ? DirectoryListing(entries: entries, unreadablePaths: unreadablePaths) : nil
+            }
+            var nameBytes = record.pointee.d_name
+            let name = withUnsafeBytes(of: &nameBytes) {
+                String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self))
+            }
+            if name == "." || name == ".." { continue }
             var sb = Darwin.stat()
-            guard Darwin.lstat(path + "/" + name, &sb) == 0 else {
+            guard Darwin.fstatat(directory.fd, name, &sb, AT_SYMLINK_NOFOLLOW) == 0 else {
                 unreadablePaths.append(path + "/" + name)
                 continue
             }
@@ -389,6 +368,5 @@ enum BulkDirScanner {
                 modTime: Int64(sb.st_mtimespec.tv_sec) * 1_000_000_000 + Int64(sb.st_mtimespec.tv_nsec)
             ))
         }
-        return DirectoryListing(entries: entries, unreadablePaths: unreadablePaths)
     }
 }

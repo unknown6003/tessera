@@ -23,6 +23,9 @@ struct ScanProgress: Sendable {
     var bytesFound: Int64 = 0
     var dirsScanned: Int = 0
     var dirsDiscovered: Int = 1
+    var providerReadAttempts: Int = 0
+    /// The root listing was read, independently of gaps beneath that root.
+    var rootReadSucceeded: Bool = false
     var currentPath: String = ""
     /// The volume's used-bytes figure, when scanning a whole volume (0 otherwise).
     /// Used for capacity reporting, not as a completion denominator.
@@ -71,6 +74,7 @@ struct FileScanner: Sendable {
     static func scan(
         url: URL,
         cache: FileNode? = nil,
+        readSession: DirectoryReadSession = DirectoryReadSession(),
         onProgress: @Sendable @escaping (ScanProgress) -> Void
     ) async throws -> FileNode {
         let rootPath = url.path
@@ -103,6 +107,7 @@ struct FileScanner: Sendable {
             volumeUsed: volumeUsed,
             isVolumeRoot: isVolumeRoot,
             progress: progress,
+            readSession: readSession,
             onProgress: onProgress
         )
 
@@ -138,6 +143,7 @@ struct FileScanner: Sendable {
     /// Per-directory enumeration result, computed on a worker before the worker
     /// takes the shared lock to merge it.
     private struct DirResult {
+        var readSucceeded = false
         var children: [FileNode] = []
         var subdirs: [DirWork] = []
         var fileCount = 0
@@ -156,13 +162,15 @@ struct FileScanner: Sendable {
     /// here lifts both.
     private static func buildResult(forEntries entries: [EntryInfo], parentPath: String,
                                     allowedDevices: Set<UInt32>,
-                                    shouldStop: () -> Bool = { false }) -> DirResult {
+                                    shouldStop: () -> Bool = { false },
+                                    onBatch: () -> Void = {}) -> DirResult {
         var result = DirResult()
         result.children.reserveCapacity(entries.count)
         let parentHasSlash = parentPath.hasSuffix("/")
 
         for (index, entry) in entries.enumerated() {
             if index.isMultiple(of: 256), shouldStop() { break }
+            if index.isMultiple(of: 8192) { onBatch() }
             switch entry.type {
             case .symlink, .other:
                 continue
@@ -311,9 +319,6 @@ struct FileScanner: Sendable {
             }
             for path in listing.unreadablePaths { root.addScanCoverageGap(path) }
             let entries = listing.entries
-            if entries.isEmpty && !FileManager.default.isReadableFile(atPath: work.path) {
-                root.addScanCoverageGap(work.path)
-            }
             let t1 = DispatchTime.now().uptimeNanoseconds
             let result = buildResult(forEntries: entries, parentPath: work.path,
                                      allowedDevices: allowedDevices)
@@ -358,7 +363,7 @@ struct FileScanner: Sendable {
     private final class ScanCoordinator: @unchecked Sendable {
         private let cond = NSCondition()
         private static let workerSlots = DispatchSemaphore(value: 12)
-        private let readSession = DirectoryReadSession()
+        private let readSession: DirectoryReadSession
 
         // Shared mutable state — guarded by `cond`.
         private var queue: [DirWork] = []
@@ -398,6 +403,7 @@ struct FileScanner: Sendable {
         init(rootNode: FileNode, rootWork: DirWork, allowedDevices: Set<UInt32>,
              volumeUsed: Int64, isVolumeRoot: Bool,
              progress: ScanProgress,
+             readSession: DirectoryReadSession,
              onProgress: @escaping @Sendable (ScanProgress) -> Void) {
             self.rootNode = rootNode
             self.allowedDevices = allowedDevices
@@ -405,6 +411,7 @@ struct FileScanner: Sendable {
             self.isVolumeRoot = isVolumeRoot
             self.onProgress = onProgress
             self.progress = progress
+            self.readSession = readSession
             self.queue = [rootWork]
             if let override = ProcessInfo.processInfo.environment["SO_SCAN_WORKERS"],
                let n = Int(override), n > 0 {
@@ -569,8 +576,10 @@ struct FileScanner: Sendable {
             }
             var result = FileScanner.buildResult(forEntries: listing.entries, parentPath: work.path,
                                                   allowedDevices: allowedDevices,
-                                                  shouldStop: { self.readSession.isCancelled })
+                                                  shouldStop: { self.readSession.isCancelled },
+                                                  onBatch: { self.noteRead() })
             result.coverageGapPaths = listing.unreadablePaths
+            result.readSucceeded = true
             return result
         }
 
@@ -589,6 +598,7 @@ struct FileScanner: Sendable {
             pending -= 1
 
             progress.filesScanned += result.fileCount
+            if work.node === rootNode { progress.rootReadSucceeded = result.readSucceeded }
             progress.bytesFound += result.bytes
             progress.dirsScanned += 1
             progress.dirsDiscovered += result.subdirs.count
@@ -640,6 +650,7 @@ struct FileScanner: Sendable {
         /// Runs exactly once (guarded by `finished`).
         private func finalizeAndResume() {
             claimWatchdog()?.cancel()
+            readSession.cancel()
 
             // Size cross-mounted volumes (Simulator runtimes, disk images, …) from
             // the mount table before re-aggregating, so their bytes flow up into
@@ -651,6 +662,7 @@ struct FileScanner: Sendable {
             cond.lock()
             let coverageGaps = self.coverageGaps
             progress.isComplete = true
+            progress.providerReadAttempts = readSession.providerReadAttempts
             let snapshot = progress
             let cont = continuation
             continuation = nil
@@ -747,6 +759,14 @@ struct FileScanner: Sendable {
         var sb = Darwin.stat()
         if Darwin.lstat(rootPath, &sb) == 0 {
             devices.insert(UInt32(bitPattern: sb.st_dev))
+        } else if errno == ENAMETOOLONG {
+            var directory = BRDirectory()
+            if br_directory_open(rootPath, &directory) == 0 {
+                if Darwin.fstat(directory.fd, &sb) == 0 {
+                    devices.insert(UInt32(bitPattern: sb.st_dev))
+                }
+                br_directory_close(&directory)
+            }
         }
         if rootPath == "/" {
             var dataSB = Darwin.stat()

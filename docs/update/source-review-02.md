@@ -1,0 +1,174 @@
+# Nonvisual source review
+
+Three independent Codex contexts reviewed `87f00b9..035c059`. The scope was
+analytics, scan state, release policy and qualification code. Opus owns the
+separate UI design and score reviews.
+
+## Standards
+
+One retained finding. The p99 report lacked hardware and cache-state context
+required by AGENTS.md. The report now requires hardware, OS, memory, workload
+and cache-state metadata. CI writes it beside raw samples. Trial IDs must match
+the requested campaign exactly. A missing cohort cannot pass silently.
+
+## Spec
+
+Three retained findings. Two duplicate the metadata issue above and the host
+issue below. The third was unused update-outcome analytics. Updater status and
+post-install detection now emit fixed outcomes without Sparkle error text.
+
+## Risk
+
+Three retained findings:
+
+- SDK custom request headers cover ingestion only, but remote configuration
+  uses a separate assets host. The consent generation is now a session header
+  too. A native regression checks all four EU/US host paths without network
+  traffic. Actual SDK traffic still needs a dedicated Tessera project.
+- The native crash handler outlives SDK shutdown. It can leave a crash report
+  from an opted-out interval. A new consent period now purges that exact native
+  report before SDK setup. A purge failure blocks setup. Normal enabled launches
+  keep reports from the same consent period. An owned-file regression checks the
+  exact cache path and preservation of another app's report. Real crash lifecycle
+  qualification remains open.
+- A bounded command could exit successfully while leaving children running.
+  Its owned process group is now stopped on every exit path. A child that tries
+  to write after its leader exits is stopped in the regression. The deadline
+  path is also checked.
+
+All findings were checked against the pinned SDK source or reproduced locally.
+Ten Python checks pass. New native regressions still require CI. This review
+does not qualify the UI, live analytics, local-drive population p99 or a release.
+
+A follow-up source pass at `703e023` found a missing shell continuation in
+the CI tool-test step. It is fixed. The exact CI step now runs successfully
+under Bash, including all ten Python tests. The pass retained no other failure
+in that pinned scope.
+
+The next source revision also removes the analytics-only filesystem probe
+before scanning. Source telemetry now reads the cached kernel mount table with
+`MNT_NOWAIT`. It reports verified local drives as `local_unknown`, since cached
+mount flags do not prove whether the hardware is internal. It does not add a
+network metadata request or a detached worker to the scan path. The scanner
+still performs its own required filesystem reads.
+
+New consent also requires successful deletion of this project's SDK storage
+before setup, so a failed opt-out erase cannot reuse the old queue or ID.
+Normal enabled launches retain the same consent period. All these native paths
+still need the new CI and live SDK checks.
+
+## Always-on policy delta, 9f16d6d
+
+Three independent native Codex source reads covered `c0f1872..9f16d6d` on
+Standards, Spec and Risk. The latest user instruction makes anonymous
+collection part of every normal configured run, without an opt-out. Tests and
+benchmarks stay excluded. The token is public; private control access stays in
+the vault and CI secret.
+
+Standards retained no finding. Spec found one stale web heading, "You choose
+diagnostics", above the new always-on text. Source inspection confirmed it;
+the heading now reads "Anonymous diagnostics". Risk retained no finding.
+Settings' temporary old setter was excluded because the Opus writer owned its
+replacement. That change is now integrated in `a18a0b5`. These source reads do
+not prove native default collection or live ingestion. The later real-SDK wire
+probe and symbol-upload changes need their own validation.
+
+## SDK and server setup delta, c590e06
+
+Three further independent native Codex reads covered `a18a0b5..c590e06` on
+Standards, Spec and Risk. All 13 changed files were covered; no untracked file
+was present. No retained source finding remained. The saved resources clearly
+mark survey and experiment qualification as open. The wire probe, live symbol
+upload and SDK behavior still require macOS execution. Sixteen tool tests pass,
+including symbol identity, wrong-project and release-series failure paths.
+
+A separate whole-site claim search found historical no-telemetry and silent
+network claims outside the prior changed lines. The current privacy copy now
+states anonymous diagnostics are enabled. It also removes stale unsigned-build
+and unverified competitor-price claims. These are copy corrections; no new
+privacy behavior is inferred from them.
+
+The Opus process-local accessibility proposal `c927cd2` was not integrated. It
+used guessed underscored SwiftUI keys. The writer reverted it in `959606c`;
+that tree equals parent `c590e06`. Native qualification must test public system
+accessibility behavior and restore any temporary changes.
+
+## Local release and metric delta, 76ef824
+
+Three independent Codex passes reviewed `c590e06..76ef824` on Standards, Spec
+and Risk. They retained no finding after source checks. This covers the local
+release upload gate, vault-to-CLI aliases, the matching negative tests, always-on
+project rule, site claim corrections, and both seven-day experiment metrics.
+The app Swift source is unchanged from `c590e06`. All 17 tool tests pass.
+Native SDK, symbol ingestion and UI results remain separate runtime gates.
+
+## Removal and test-service delta, 90f6626
+
+Three independent Codex reads reviewed `b227003..90f6626` on Standards,
+Spec and Risk. All seven changed Swift files were covered. No finding
+survived source checks. The removal summary now records only this action's
+successful bytes and counts. Rescue keeps its full-plan held list. One shared
+run policy excludes XCTest and automation before either Sparkle or PostHog
+starts. Normal configured runs still collect anonymous diagnostics.
+
+The Opus dock consumer is a later delta and was outside these three reads.
+All 17 Python tool checks and the release-policy validator pass. The two new
+native regressions and the real Trash result still need macOS execution.
+
+CI at `778dfdf` compiled and ran all 89 tests. The new removal regression
+failed because a loose `.qcow2` file is protected by live preflight but is not
+a report recommendation. The classifier reports directories and installer
+files. The fixture now uses an owned `.docker` directory with a payload and
+requires its protected recommendation before removal. The result assertions
+remain. This is a test-only correction; native runtime checks keep their
+original app-source pin.
+
+## Darwin process-group cleanup, 37e7e6e
+
+The next CI run exposed the runner's exception. On Darwin, SIGKILL can return
+EPERM briefly after SIGTERM, while launchd reaps an orphaned zombie. An Opus
+native diagnosis reproduced this in five instrumented runs. The child was
+already stopped, but the uncaught exception skipped PID-file removal.
+
+The runner now retries that denial for at most one second. It confirms group
+disappearance or sends the signal; a lasting denial still raises. PID cleanup
+has its own finally block. Three independent Codex Standards, Spec and Risk
+reads retained no finding in `0c615a8..37e7e6e`. All 20 Python tests pass on
+Linux, including the transient denial, lasting denial and cleanup-error cases.
+Fresh macOS proof remains required. No app source changed in this delta.
+
+The later native run at `eed3503` passed all 20 Python checks and five real
+child-cleanup trials. The runner fix has macOS proof. That run compiled no
+Swift tests: the UI's long modifier chain hit the Swift type-checker limit
+on Xcode 27.2. CI on Xcode 26.6 also hit the limit at `e2a23dc`. The Opus
+writer split the chain and extracted handlers in `f4cc139`; its compile
+proof remains pending.
+
+## UI iteration 3 review and build gates
+
+Independent Opus Standards and Spec reads covered `92aa5e6..eed3503`.
+Standards found no hard rule breach. Its soft findings concern repeated focus
+modifiers, duplicate layout constants and repeated capacity view logic. These
+remain deferred until the UI compiles. DESIGN.md now describes the custom
+cyan focus ring correctly.
+
+Spec found three source defects: several filled Rescue actions, a stale
+browser focus request after focus moves elsewhere, and a focus restore guard
+that accepted another Tessera window. The Opus patch integrated at `8a99b8b`
+uses one dock visibility rule, clears intent on actual map or source focus,
+and checks the exact view's window. The bottom-bar height still needs a native
+measurement. The requested UI overhaul permits the added source hover style.
+
+A separate Opus Risk read covered `92aa5e6..8a99b8b`. It found that an old
+collector refusal notice hides a later removal result and its recovery actions.
+Source inspection confirmed the notice had no removal reset. Accepted removal
+now clears it before background work begins. The existing operation-scoped
+removal regression creates a duplicate-add notice and requires it to be gone
+when the result arrives. Its macOS run and the actual dock path remain pending.
+
+Native Debug and Release builds at exact `8a99b8b` failed before any Swift test
+ran. The previous type-check timeout is gone. A standalone native reproduction
+isolated a new ambiguous initializer to the optional method reference passed
+to CleanupSuggestionsView. An explicit closure compiled in the reproduction.
+The Opus writer is applying that minimal fix. Neither the reproduction nor
+these source reviews qualify the app UI, accessibility or a score of nine.

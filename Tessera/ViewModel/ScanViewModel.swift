@@ -15,12 +15,22 @@ final class TreeReadCancellation: @unchecked Sendable {
 
 @MainActor
 final class ScanViewModel: ObservableObject {
+    struct RemovalSummary: Identifiable, Equatable, Sendable {
+        let id = UUID()
+        let moved: Int
+        let movedBytes: Int64
+        let held: Int
+        let failed: Int
+        let permanently: Bool
+    }
     // MARK: - Published state
     @Published var rootNode: FileNode?
     @Published var currentRoot: FileNode?        // zoom target within the chart
     @Published var hoveredNode: FileNode?
     @Published var selectedNode: FileNode?
     @Published var collector: [FileNode] = []
+    @Published var collectorNotice: String?
+    @Published private(set) var lastRemovalSummary: RemovalSummary?
     /// Post-scan cleanup suggestions (caches, temp, Adobe media cache, …). Filled
     /// asynchronously after the tree is built; nil until then.
     @Published var cleanupReport: CleanupReport?
@@ -38,6 +48,8 @@ final class ScanViewModel: ObservableObject {
     @Published private(set) var scanStartedAt: Date?
     var scanStatus: String {
         if isScanning { return rescuePhase == .diagnosing ? "Preparing results" : "Reading files" }
+        if scanTaskWasCancelled, rootNode != nil { return "Scan stopped. Showing previous results." }
+        if errorMessage != nil, rootNode != nil { return "Scan failed. Showing previous results." }
         if rootNode != nil { return rescuePlan?.coverage.state == .partial ? "Partial scan" : "Scan complete" }
         return scanTaskWasCancelled ? "Scan stopped" : ""
     }
@@ -91,12 +103,15 @@ final class ScanViewModel: ObservableObject {
     /// previous tree for incremental speedup.
     private var lastScannedURL: URL?
     private var pendingRescueCase: SavedRescueCase?
+    private var previousScan: (URL, CachedScan)?
+    private var activeScanTelemetry: ScanTelemetry?
 
     /// Completed scans kept in memory so switching between disks/cloud is instant
     /// (no re-scan). Capped (LRU) because each tree can be large.
     private struct CachedScan {
         let rootNode: FileNode
         let currentRoot: FileNode?
+        let selectedNode: FileNode?
         let cleanupReport: CleanupReport?
         let duplicateGroups: [DuplicateGroup]
         let didRunDuplicates: Bool
@@ -145,6 +160,9 @@ final class ScanViewModel: ObservableObject {
 
     func startScan(volumeURL: URL) {
         guard !isDeleting else { return }
+        if isScanning, let activeScanTelemetry {
+            Analytics.shared.capture(.scanCancelled, values: activeScanTelemetry.properties(outcome: "superseded"))
+        }
         selectedSourceURL = volumeURL
         if let pendingRescueCase,
            pendingRescueCase.sourcePath != volumeURL.standardizedFileURL.path {
@@ -156,19 +174,14 @@ final class ScanViewModel: ObservableObject {
         diagnosisTask?.cancel()
         // Preserve the scan currently on screen so switching back to it is instant.
         saveCurrentToCache()
+        if !isScanning {
+            previousScan = scannedURL.flatMap { url in scanCache[url].map { (url, $0) } }
+        }
         // A rescan reads fresh metadata. Cached trees are only for source switching.
         scanCache.removeValue(forKey: volumeURL)
         cacheLRU.removeAll { $0 == volumeURL }
         lastScannedURL = volumeURL
-        scannedURL = nil
-        rootNode = nil
         scanTaskWasCancelled = false
-        currentRoot = nil
-        hoveredNode = nil
-        selectedNode = nil
-        collector = []
-        cleanupReport = nil
-        rescuePlan = nil
         rescuePhase = .scanning
         restoredRescueCandidateIDs = []
         restoredRescueCaseIsStale = false
@@ -183,11 +196,19 @@ final class ScanViewModel: ObservableObject {
         isScanning = true
         scanStartedAt = Date()
         progress = ScanProgress(currentPath: volumeURL.path)
+        let telemetry = ScanTelemetry()
+        activeScanTelemetry = telemetry
 
         scanTask = Task { [weak self] in
             guard let self else { return }
             do {
+                let metadata = AnalyticsSource.inspect(volumeURL)
+                try Task.checkCancellation()
+                telemetry.source = metadata.source
+                telemetry.scope = metadata.scope
+                Analytics.shared.capture(.scanStarted, values: telemetry.properties(outcome: "complete"))
                 let node = try await FileScanner.scan(url: volumeURL) { [weak self] prog in
+                    telemetry.observe(prog)
                     Task { @MainActor [weak self] in
                         guard let self, self.scanGeneration == generation else { return }
                         // Monotonicity guard: discard stale ticks that arrive out of
@@ -205,19 +226,19 @@ final class ScanViewModel: ObservableObject {
                 // that cleanup is guarded by the same generation comparison.
                 guard self.scanGeneration == generation else { return }
                 try Task.checkCancellation()
+                telemetry.finishEnumeration()
+                var enumeration = telemetry.properties(outcome: "complete")
+                enumeration["phase"] = .text("enumeration")
+                Analytics.shared.capture(.scanPhaseFinished, values: enumeration)
                 DebugAutomation.recordScanPhase("enumeration finished", startedAt: self.scanStartedAt)
                 let treeIsEmpty = node.children.isEmpty
                 let volumePath = volumeURL.path
                 let isVolumeRoot = volumePath == "/"
-                let isUnreadable = !FileManager.default.isReadableFile(atPath: volumePath)
+                let isUnreadable = !telemetry.progressSnapshot.rootReadSucceeded
                 // Classify cleanup suggestions off the main actor (pure CPU over the
-                // already-built tree, no I/O) BEFORE publishing it. While this runs,
-                // `node` is still exclusively owned by this task: `rootNode` /
-                // `currentRoot` were cleared at scan start and the collector is empty,
-                // so the tree is unreachable from the UI and nothing can mutate
-                // `children` underneath the walk. Publishing first and classifying
-                // afterwards would race the collector delete flow, which mutates the
-                // same arrays on the main actor.
+                // new tree, no I/O) BEFORE publishing it. The prior displayed tree
+                // is a separate object, retained so Cancel can restore the user's
+                // selection and list. Cleanup remains gated while scanning.
                 let ownerState = CleanupOwnerState.current()
                 self.rescuePhase = .diagnosing
                 let diagnosisTask = Task.detached(priority: .utility) {
@@ -237,10 +258,15 @@ final class ScanViewModel: ObservableObject {
                 self.diagnosisTask = nil
                 try Task.checkCancellation()
                 DebugAutomation.recordScanPhase("diagnosis finished", startedAt: self.scanStartedAt)
+                telemetry.finishDiagnosis()
+                let (coverage, report, measurement) = diagnosis
+                var diagnosisProperties = telemetry.properties(outcome: "complete", coverage: coverage.state,
+                                                                gaps: node.scanCoverageGaps.count)
+                diagnosisProperties["phase"] = .text("diagnosis")
+                Analytics.shared.capture(.scanPhaseFinished, values: diagnosisProperties)
                 if treeIsEmpty && (isVolumeRoot || isUnreadable) {
                     self.needsFullDiskAccess = true
                 }
-                let (coverage, report, measurement) = diagnosis
                 let plan = RescuePlan(sourceURL: volumeURL, report: report,
                                       measurement: measurement, coverage: coverage,
                                       goal: self.rescueGoal,
@@ -249,40 +275,52 @@ final class ScanViewModel: ObservableObject {
                 // Single atomic publish point: tree and its report together.
                 self.rootNode = node
                 self.currentRoot = node
+                self.progress = telemetry.progressSnapshot
+                self.selectedNode = nil
+                self.hoveredNode = nil
+                self.collector = []
+                self.collectorNotice = nil
+                self.lastRemovalSummary = nil
                 self.scannedURL = volumeURL
                 self.cleanupReport = report
                 self.rescuePlan = plan
                 self.rescuePhase = .planReady
-                let hasSavedCaseToReview = self.pendingRescueCase != nil
-                if !hasSavedCaseToReview {
-                    self.stageSafeCleanup()
-                }
                 self.restoreSavedRescueCaseIfNeeded(plan: plan)
+                self.previousScan = nil
                 DebugAutomation.recordScanPhase("results published", startedAt: self.scanStartedAt)
-                // Safe candidates are staged for review on a fresh scan. A saved case
-                // never stages its old selection; the user must ask for that again.
+                Analytics.shared.capture(.scanCompleted, values: telemetry.properties(outcome: coverage.state == .complete ? "complete" : "partial",
+                                                                                     coverage: coverage.state, gaps: node.scanCoverageGaps.count))
             } catch is CancellationError {
                 // User stopped the current scan — not an error. A cancellation
                 // from a superseded scan must not change its replacement's state.
                 if self.scanGeneration == generation {
                     self.scanTaskWasCancelled = true
-                    self.rescuePhase = .needsRescue
+                    self.restorePreviousScan()
+                    Analytics.shared.capture(.scanCancelled, values: telemetry.properties(outcome: "cancelled"))
                 }
             } catch {
                 if self.scanGeneration == generation {
                     self.errorMessage = error.localizedDescription
-                    self.rescuePhase = .needsRescue
+                    self.restorePreviousScan()
+                    var properties = telemetry.properties(outcome: "failed")
+                    properties["error_code"] = .text(Self.analyticsErrorCode(error))
+                    Analytics.shared.capture(.scanFailed, values: properties)
                 }
             }
             if self.scanGeneration == generation {
                 self.isScanning = false
                 self.scanTask = nil
+                self.activeScanTelemetry = nil
             }
         }
     }
 
     func cancelScan() {
         guard isScanning else { return }
+        if let activeScanTelemetry {
+            Analytics.shared.capture(.scanCancelled, values: activeScanTelemetry.properties(outcome: "cancelled"))
+        }
+        activeScanTelemetry = nil
         scanGeneration &+= 1
         scanTask?.cancel()
         diagnosisTask?.cancel()
@@ -290,7 +328,7 @@ final class ScanViewModel: ObservableObject {
         diagnosisTask = nil
         isScanning = false
         scanTaskWasCancelled = true
-        rescuePhase = .needsRescue
+        restorePreviousScan()
     }
 
     /// Whether the most recently requested source can be scanned again after a
@@ -313,7 +351,7 @@ final class ScanViewModel: ObservableObject {
     private func saveCurrentToCache() {
         guard let root = rootNode, let url = scannedURL, !isScanning else { return }
         scanCache[url] = CachedScan(
-            rootNode: root, currentRoot: currentRoot, cleanupReport: cleanupReport,
+            rootNode: root, currentRoot: currentRoot, selectedNode: selectedNode, cleanupReport: cleanupReport,
             duplicateGroups: duplicateGroups,
             didRunDuplicates: didRunDuplicates, collector: collector, progress: progress,
             rescuePlan: rescuePlan, rescuePhase: rescuePhase,
@@ -333,13 +371,66 @@ final class ScanViewModel: ObservableObject {
         cacheLRU.append(url)
     }
 
+    private func restorePreviousScan() {
+        guard let (url, cached) = previousScan else {
+            rescuePhase = .needsRescue
+            return
+        }
+        apply(cached, for: url)
+        previousScan = nil
+    }
+
+    private func apply(_ cached: CachedScan, for url: URL) {
+        rootNode = cached.rootNode
+        currentRoot = cached.currentRoot ?? cached.rootNode
+        selectedNode = cached.selectedNode
+        hoveredNode = nil
+        cleanupReport = cached.cleanupReport
+        duplicateGroups = cached.duplicateGroups
+        didRunDuplicates = cached.didRunDuplicates
+        collector = cached.collector
+        progress = cached.progress
+        rescuePlan = cached.rescuePlan
+        rescuePhase = cached.rescuePhase
+        rescueCapacityGoal = cached.rescueCapacityGoal
+        rescueGoal = cached.rescueGoal
+        requiredRescueSpace = cached.requiredRescueSpace
+        rescueVerification = cached.rescueVerification
+        lastRescueError = cached.lastRescueError
+        restoredRescueCandidateIDs = cached.restoredRescueCandidateIDs
+        restoredRescueCaseIsStale = cached.restoredRescueCaseIsStale
+        scannedURL = url
+    }
+
+    nonisolated private static func analyticsErrorCode(_ error: Error) -> String {
+        if let scanner = error as? FileScannerError {
+            switch scanner {
+            case .resourcesBusy: return "busy"
+            case .sourceUnavailable: return "unavailable"
+            }
+        }
+        let code = (error as NSError).code
+        return code == NSFileReadNoPermissionError ? "permission" : "io"
+    }
+
     /// Switch the display to a cached scan for `url` without re-scanning. Returns
     /// true if it switched. Used when the user taps a previously-scanned source.
     @discardableResult
     func showCachedScanIfAvailable(for url: URL) -> Bool {
         guard !isDeleting else { return false }
+        if isScanning, url == scannedURL {
+            cancelScan()
+            selectedSourceURL = url
+            scanTaskWasCancelled = false
+            return true
+        }
         guard url != scannedURL, let cached = scanCache[url] else { return false }
         if isScanning {
+            if let activeScanTelemetry {
+                Analytics.shared.capture(.scanCancelled, values: activeScanTelemetry.properties(outcome: "superseded"))
+            }
+            activeScanTelemetry = nil
+            previousScan = nil
             // Invalidate every callback/result from the in-flight scan before
             // restoring the cached tree. Cancellation alone is cooperative.
             scanGeneration &+= 1
@@ -356,29 +447,14 @@ final class ScanViewModel: ObservableObject {
         // Preserve what we're leaving, then restore the requested scan.
         saveCurrentToCache()
 
-        rootNode = cached.rootNode
-        currentRoot = cached.currentRoot ?? cached.rootNode
-        cleanupReport = cached.cleanupReport
-        duplicateGroups = cached.duplicateGroups
-        didRunDuplicates = cached.didRunDuplicates
-        collector = cached.collector
-        progress = cached.progress
-        rescuePlan = cached.rescuePlan
-        rescuePhase = cached.rescuePhase
-        rescueCapacityGoal = cached.rescueCapacityGoal
-        rescueGoal = cached.rescueGoal
-        requiredRescueSpace = cached.requiredRescueSpace
-        rescueVerification = cached.rescueVerification
-        lastRescueError = cached.lastRescueError
-        restoredRescueCandidateIDs = cached.restoredRescueCandidateIDs
-        restoredRescueCaseIsStale = cached.restoredRescueCaseIsStale
+        apply(cached, for: url)
         pendingRescueCase = nil
         selectedSourceURL = url
         scannedURL = url
         lastScannedURL = url
 
         hoveredNode = nil
-        selectedNode = nil
+        scanTaskWasCancelled = false
         isFindingDuplicates = false
         errorMessage = nil
         needsFullDiskAccess = false
@@ -398,7 +474,7 @@ final class ScanViewModel: ObservableObject {
     func zoomOut() {
         guard let current = currentRoot, let parent = current.parent else { return }
         currentRoot = parent
-        selectedNode = parent
+        selectedNode = current
         hoveredNode = nil
     }
 
@@ -411,11 +487,15 @@ final class ScanViewModel: ObservableObject {
     // MARK: - Collector
 
     func addToCollector(_ node: FileNode) {
-        guard !isDeleting, !node.isSynthetic else { return }
+        guard !isDeleting, !isScanning else { collectorNotice = "Wait for the current scan or cleanup to finish."; return }
+        guard !node.isSynthetic else { collectorNotice = "This item describes space, not a removable file."; return }
         // The app-uninstaller can mint nodes outside the scanned tree. Apply the
         // path gate before consulting the current plan, so protected roots cannot
         // enter the collector just because they have no recommendation row.
-        guard CleanupClassifier.protectedCategory(for: node.url.path) == nil else { return }
+        guard CleanupClassifier.protectedCategory(for: node.url.path) == nil else {
+            collectorNotice = "This protected item cannot enter the Cleanup List."
+            return
+        }
         func isAncestorOrSame(_ ancestor: FileNode, _ descendant: FileNode) -> Bool {
             var cursor: FileNode? = descendant
             while let current = cursor {
@@ -429,9 +509,13 @@ final class ScanViewModel: ObservableObject {
                return isAncestorOrSame(recommendation.node, node)
                    || isAncestorOrSame(node, recommendation.node)
            }) {
+            collectorNotice = "This selection includes protected files. Review its children instead."
             return
         }
-        guard !collector.contains(where: { $0.id == node.id }) else { return }
+        guard !collector.contains(where: { $0.id == node.id }) else {
+            collectorNotice = "This item is already in the Cleanup List."
+            return
+        }
 
         // Refuse if any existing collector item is an ancestor of this node.
         func isAncestor(_ candidate: FileNode, of target: FileNode) -> Bool {
@@ -442,13 +526,18 @@ final class ScanViewModel: ObservableObject {
             }
             return false
         }
-        guard !collector.contains(where: { isAncestor($0, of: node) }) else { return }
+        guard !collector.contains(where: { isAncestor($0, of: node) }) else {
+            collectorNotice = "A folder in the Cleanup List already includes this item."
+            return
+        }
 
         // Remove any existing collector items that are descendants of the new node
         // (collecting a parent supersedes its children).
         collector.removeAll { isAncestor(node, of: $0) }
 
         collector.append(node)
+        collectorNotice = nil
+        Analytics.shared.capture(.cleanupStaged, values: ["items": .integer(collector.count)])
         if rescuePlan != nil { rescuePhase = .staged }
     }
 
@@ -885,6 +974,11 @@ final class ScanViewModel: ObservableObject {
         let targets = topLevelTargets(nodes.filter { !$0.isSynthetic })
         guard !targets.isEmpty else { return }
         isDeleting = true
+        collectorNotice = nil
+        lastRemovalSummary = nil
+        let removalStarted = DispatchTime.now().uptimeNanoseconds
+        Analytics.shared.capture(.cleanupStarted, values: ["items": .integer(targets.count),
+            "method": .text(permanently ? "permanent" : "trash")])
         deletionProgress = 0
         deletionTotal = targets.count
         stopDuplicateSearch()
@@ -922,6 +1016,10 @@ final class ScanViewModel: ObservableObject {
             if let failure { failures.append(failure) }
             deletionProgress = index + 1
         }
+        let failedURLs = Set(failures.map { $0.url.standardizedFileURL })
+        let movedBytes = attemptedTargets
+            .filter { !failedURLs.contains($0.url.standardizedFileURL) }
+            .reduce(Int64(0)) { $0 + $1.physicalSize }
         // The background pass is done. It cannot read the arrays as they are pruned.
         try? prune(attemptedTargets, failures: failures)
         let after = try await Self.offMain { () -> RescueMeasurement? in
@@ -931,6 +1029,16 @@ final class ScanViewModel: ObservableObject {
         recordRescueResult(before: before, after: after, removalMethod: permanently ? .permanent : .trash, targets: attemptedTargets, failures: failures,
                            measurementMismatchPaths: [], heldNodes: heldTargets,
                            errorMessage: heldError)
+        let moved = max(0, attemptedTargets.count - failures.count)
+        lastRemovalSummary = RemovalSummary(moved: moved, movedBytes: movedBytes, held: heldTargets.count,
+                                             failed: failures.count, permanently: permanently)
+        Analytics.shared.capture(.cleanupCompleted, values: [
+            "items": .integer(targets.count), "moved": .integer(moved),
+            "held": .integer(heldTargets.count), "failed": .integer(failures.count),
+            "method": .text(permanently ? "permanent" : "trash"),
+            "outcome": .text(failures.isEmpty && heldTargets.isEmpty ? "complete" : "partial"),
+            "duration_ms": .decimal(Double(DispatchTime.now().uptimeNanoseconds &- removalStarted) / 1_000_000)
+        ])
         if let heldError { throw RescueActionError.ownerActive(heldError) }
         if let first = failures.first { throw first }
     }

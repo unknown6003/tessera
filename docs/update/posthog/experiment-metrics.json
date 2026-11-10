@@ -1,0 +1,39 @@
+{
+  "id": 111796,
+  "name": "Tessera compact child browser",
+  "start_date": null,
+  "metrics": [
+    {
+      "kind": "ExperimentMetric",
+      "metric_type": "funnel",
+      "name": "Opened exact-path cleanup review",
+      "uuid": "69e696c0-10c5-4f57-901e-542591607ba1",
+      "series": [
+        {
+          "kind": "EventsNode",
+          "event": "tessera cleanup review opened"
+        }
+      ],
+      "conversion_window": 7,
+      "conversion_window_unit": "day",
+      "fingerprint": "183f291d8cd623fa577b632fe1d3aa87ce41b0ecfd030dcec6bf20ba47aac18d"
+    }
+  ],
+  "metrics_secondary": [
+    {
+      "kind": "ExperimentMetric",
+      "metric_type": "funnel",
+      "name": "Finished a reviewed cleanup",
+      "uuid": "16fd2a22-ecae-4d9e-8b11-c7a5447d3172",
+      "series": [
+        {
+          "kind": "EventsNode",
+          "event": "tessera cleanup completed"
+        }
+      ],
+      "conversion_window": 7,
+      "conversion_window_unit": "day",
+      "fingerprint": "18162b4754ae422cd308511a33ed0a2a71814443e646b4335a1f5023abaff95e"
+    }
+  ]
+}

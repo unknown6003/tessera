@@ -1,0 +1,266 @@
+{
+  "Tessera health and product use": {
+    "id": 1095962,
+    "name": "Tessera health and product use",
+    "description": "Anonymous macOS usage. Local-drive p99 is a 120 second goal, never a timeout. Read sample counts, failures, partial coverage, scope, version and cache state together. Cloud and remote results are separate. Automated tests and benchmarks are excluded. No file data or person profiles.",
+    "filters": {}
+  },
+  "Local scan p99, samples and coverage": {
+    "id": 7201917,
+    "name": "Local scan p99, samples and coverage",
+    "query": {
+      "kind": "DataTableNode",
+      "source": {
+        "kind": "HogQLQuery",
+        "query": "SELECT properties.source_class AS source, properties.scope AS scope, properties.coverage AS coverage, properties.cache_state AS cache_state, properties.$app_version AS app_version, count() AS samples, quantile(0.5)(toFloat(properties.duration_ms))/1000 AS median_seconds, quantile(0.99)(toFloat(properties.duration_ms))/1000 AS p99_seconds, max(toFloat(properties.duration_ms))/1000 AS maximum_seconds, countIf(toFloat(properties.duration_ms) > 120000) AS over_goal FROM events WHERE properties.application = 'Tessera' AND timestamp >= now() - INTERVAL 30 DAY AND event = 'tessera scan completed' AND properties.source_class IN ('local_internal','local_external','local_unknown') GROUP BY source,scope,coverage,cache_state,app_version"
+      }
+    },
+    "description": "Successful completions only. A partial scan is separate from a complete scan. Use the outcomes panel for failures and cancellations. Small production samples do not establish population p99."
+  },
+  "Cloud and remote scan durations": {
+    "id": 7201918,
+    "name": "Cloud and remote scan durations",
+    "query": {
+      "kind": "DataTableNode",
+      "source": {
+        "kind": "HogQLQuery",
+        "query": "SELECT properties.source_class AS source, properties.coverage AS coverage, count() AS samples, quantile(0.99)(toFloat(properties.duration_ms))/1000 AS p99_seconds, max(toFloat(properties.duration_ms))/1000 AS maximum_seconds FROM events WHERE properties.application = 'Tessera' AND timestamp >= now() - INTERVAL 30 DAY AND event = 'tessera scan completed' AND properties.source_class IN ('cloud','remote','unknown') GROUP BY source,coverage"
+      }
+    },
+    "description": "Separate from local-drive goal."
+  },
+  "Scan outcomes including failure and cancellation": {
+    "id": 7201919,
+    "name": "Scan outcomes including failure and cancellation",
+    "query": {
+      "kind": "DataTableNode",
+      "source": {
+        "kind": "HogQLQuery",
+        "query": "SELECT event, properties.source_class AS source, properties.outcome AS outcome, properties.coverage AS coverage, count() AS events FROM events WHERE properties.application = 'Tessera' AND timestamp >= now() - INTERVAL 30 DAY AND event IN ('tessera scan started','tessera scan completed','tessera scan cancelled','tessera scan failed') GROUP BY event,source,outcome,coverage"
+      }
+    },
+    "description": "Starts and terminal events are counts, not a paired per-scan conversion. App exits may leave starts without a terminal event."
+  },
+  "Cleanup outcomes and held items": {
+    "id": 7201920,
+    "name": "Cleanup outcomes and held items",
+    "query": {
+      "kind": "DataTableNode",
+      "source": {
+        "kind": "HogQLQuery",
+        "query": "SELECT properties.method AS method, properties.outcome AS outcome, count() AS batches, sum(toFloat(properties.moved)) AS moved, sum(toFloat(properties.held)) AS held, sum(toFloat(properties.failed)) AS failed FROM events WHERE properties.application = 'Tessera' AND timestamp >= now() - INTERVAL 30 DAY AND event = 'tessera cleanup completed' GROUP BY method,outcome"
+      }
+    },
+    "description": "Cleanup safety rules never change with a remote flag."
+  },
+  "Screen and tool use": {
+    "id": 7201921,
+    "name": "Screen and tool use",
+    "query": {
+      "kind": "DataTableNode",
+      "source": {
+        "kind": "HogQLQuery",
+        "query": "SELECT event, coalesce(properties.$screen_name,properties.tool) AS screen_or_tool, count() AS events, uniq(distinct_id) AS anonymous_installs FROM events WHERE properties.application = 'Tessera' AND timestamp >= now() - INTERVAL 30 DAY AND event IN ('$screen','tessera tool opened','tessera tool completed') GROUP BY event,screen_or_tool ORDER BY events DESC"
+      }
+    },
+    "description": "Fixed names only. No search terms or file data."
+  },
+  "Native crashes and update outcomes": {
+    "id": 7201922,
+    "name": "Native crashes and update outcomes",
+    "query": {
+      "kind": "DataTableNode",
+      "source": {
+        "kind": "HogQLQuery",
+        "query": "SELECT event, properties.outcome AS outcome, count() AS events FROM events WHERE properties.application = 'Tessera' AND timestamp >= now() - INTERVAL 30 DAY AND event IN ('$exception','tessera update completed') GROUP BY event,outcome"
+      }
+    },
+    "description": "Crash text and paths are removed on-device. Symbolication uses image UUIDs and instruction addresses."
+  },
+  "Anonymous weekly return use": {
+    "id": 7201923,
+    "name": "Anonymous weekly return use",
+    "query": {
+      "kind": "DataTableNode",
+      "source": {
+        "kind": "HogQLQuery",
+        "query": "WITH first_use AS (SELECT distinct_id, min(toDate(timestamp)) AS first_day FROM events WHERE properties.application='Tessera' AND event='tessera app opened' GROUP BY distinct_id) SELECT toStartOfWeek(first_day) AS cohort_week, uniq(f.distinct_id) AS installs, uniqIf(f.distinct_id,dateDiff('day',first_day,toDate(e.timestamp)) BETWEEN 7 AND 13) AS returned_days_7_to_13 FROM first_use f JOIN events e ON f.distinct_id=e.distinct_id WHERE e.event='tessera app opened' AND e.properties.application='Tessera' AND first_day >= today()-30 AND first_day <= today()-13 GROUP BY cohort_week ORDER BY cohort_week"
+      }
+    },
+    "description": "Random install IDs only, no accounts. Mature cohorts only. Reinstalling or clearing app storage changes the ID."
+  },
+  "Explore to reviewed cleanup funnel": {
+    "id": 7201924,
+    "name": "Explore to reviewed cleanup funnel",
+    "query": {
+      "kind": "InsightVizNode",
+      "source": {
+        "kind": "FunnelsQuery",
+        "series": [
+          {
+            "kind": "EventsNode",
+            "name": "tessera app opened",
+            "event": "tessera app opened"
+          },
+          {
+            "kind": "EventsNode",
+            "name": "tessera scan completed",
+            "event": "tessera scan completed"
+          },
+          {
+            "kind": "EventsNode",
+            "name": "tessera cleanup review opened",
+            "event": "tessera cleanup review opened"
+          },
+          {
+            "kind": "EventsNode",
+            "name": "tessera cleanup completed",
+            "event": "tessera cleanup completed"
+          }
+        ],
+        "dateRange": {
+          "date_from": "-30d"
+        },
+        "properties": [
+          {
+            "key": "application",
+            "type": "event",
+            "value": [
+              "Tessera"
+            ],
+            "operator": "exact"
+          }
+        ],
+        "funnelsFilter": {
+          "funnelWindowInterval": 7,
+          "funnelWindowIntervalUnit": "day"
+        },
+        "version": 2
+      }
+    },
+    "description": "Ordered seven-day flow per anonymous install. This is product use, not a measure of scan correctness."
+  },
+  "Tessera native satisfaction": {
+    "id": "01a1bcba-0111-0000-f2f4-c69e43fff048",
+    "name": "Tessera native satisfaction",
+    "start_date": null,
+    "end_date": null,
+    "archived": false,
+    "description": "Optional fixed 1\u20135 rating in macOS Settings. No text response or automatic popup.",
+    "questions": [
+      {
+        "id": "ef12f00b-694d-4a59-a438-9737000b0711",
+        "type": "rating",
+        "scale": 5,
+        "display": "number",
+        "question": "How easy is Tessera to use?",
+        "lowerBoundLabel": "Hard",
+        "upperBoundLabel": "Easy"
+      }
+    ],
+    "type": "api"
+  },
+  "Tessera native rating in Settings": {
+    "id": 351484,
+    "name": "Tessera native rating in Settings",
+    "key": "tessera-feedback-survey",
+    "active": true,
+    "archived": false,
+    "filters": {
+      "groups": [
+        {
+          "properties": [],
+          "rollout_percentage": 100,
+          "aggregation_group_type_index": null
+        }
+      ],
+      "payloads": {
+        "true": "{\"survey_id\": \"01a1bcba-0111-0000-f2f4-c69e43fff048\", \"question_id\": \"ef12f00b-694d-4a59-a438-9737000b0711\"}"
+      },
+      "aggregation_group_type_index": null
+    },
+    "status": "ACTIVE"
+  },
+  "Tessera compact child browser variants": {
+    "id": 351487,
+    "name": "Tessera compact child browser variants",
+    "key": "tessera-compact-legend",
+    "active": false,
+    "archived": false,
+    "filters": {
+      "groups": [
+        {
+          "properties": [],
+          "rollout_percentage": 100,
+          "aggregation_group_type_index": null
+        }
+      ],
+      "multivariate": {
+        "variants": [
+          {
+            "key": "control",
+            "name": "Eight rows",
+            "rollout_percentage": 50
+          },
+          {
+            "key": "compact",
+            "name": "Four rows",
+            "rollout_percentage": 50
+          }
+        ]
+      },
+      "aggregation_group_type_index": null
+    },
+    "status": "ACTIVE"
+  },
+  "Tessera compact child browser": {
+    "id": 111796,
+    "name": "Tessera compact child browser",
+    "start_date": null,
+    "end_date": null,
+    "archived": false,
+    "description": "Presentation only: four versus eight visible rows. Full child list remains scrollable. No scan or cleanup policy changes. Draft until native UI qualification.",
+    "filters": {},
+    "type": "product",
+    "metrics": [
+      {
+        "kind": "ExperimentMetric",
+        "metric_type": "funnel",
+        "name": "Opened exact-path cleanup review",
+        "uuid": "69e696c0-10c5-4f57-901e-542591607ba1",
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "tessera cleanup review opened"
+          }
+        ],
+        "conversion_window": 7,
+        "conversion_window_unit": "day",
+        "fingerprint": "183f291d8cd623fa577b632fe1d3aa87ce41b0ecfd030dcec6bf20ba47aac18d"
+      }
+    ],
+    "status": "draft",
+    "metrics_secondary": [
+      {
+        "kind": "ExperimentMetric",
+        "metric_type": "funnel",
+        "name": "Finished a reviewed cleanup",
+        "uuid": "16fd2a22-ecae-4d9e-8b11-c7a5447d3172",
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "tessera cleanup completed"
+          }
+        ],
+        "conversion_window": 7,
+        "conversion_window_unit": "day",
+        "fingerprint": "18162b4754ae422cd308511a33ed0a2a71814443e646b4335a1f5023abaff95e"
+      }
+    ]
+  },
+  "flag_evaluation": {
+    "rating_enabled": true,
+    "payload_matches_survey": true,
+    "probe_captured_event": false
+  }
+}

@@ -5,14 +5,22 @@ import AppKit
 /// ranked review list in one readable path.
 struct CleanupSuggestionsView: View {
     @ObservedObject var vm: ScanViewModel
+    /// Shows the in-page review button. The caller passes it only when the
+    /// window's Cleanup List dock, which has its own filled review button, is
+    /// not on screen, so the window never shows two filled review buttons.
     var onMoveToTrash: (() -> Void)? = nil
 
     @State private var expandedGroups = Set<String>()
+    /// The group the user just opened. Only that one scrolls into sight, so
+    /// returning to Rescue with open groups does not move the page.
+    @State private var revealedGroup: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            if let saved = vm.savedRescueCase {
-                savedCaseRow(saved)
+            // With a plan, the header comes first and the saved case sits
+            // under it as a banner (see planView).
+            if vm.rescuePlan == nil, let saved = vm.savedRescueCase {
+                savedCaseRow(saved, showsPath: true)
             }
 
             if let plan = vm.rescuePlan {
@@ -35,6 +43,11 @@ struct CleanupSuggestionsView: View {
     private func planView(_ plan: RescuePlan) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             planHeader(plan)
+            if let saved = vm.savedRescueCase {
+                // The header already shows this path; show it again only if
+                // the saved case is for a different source.
+                savedCaseRow(saved, showsPath: saved.sourcePath != plan.sourcePath)
+            }
             measurementCard(plan)
 
             if let verification = vm.rescueVerification {
@@ -60,7 +73,9 @@ struct CleanupSuggestionsView: View {
                             ? "Added to review"
                             : "Add all safe · \(Theme.format(report.safeTotalBytes))",
                         actionDisabled: vm.safeGroupsAllStaged,
-                        prominent: true
+                        // The one filled button only while the list is empty;
+                        // after that the dock's review button is the primary.
+                        prominent: vm.collector.isEmpty
                     )
                 }
 
@@ -103,12 +118,35 @@ struct CleanupSuggestionsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .truncationMode(.middle)
-                Text("Everything stays on this Mac. Review the paths before anything moves.")
+                // File analysis is local; anonymous usage data is not, so this
+                // line says only what is true.
+                Text("File analysis runs on this Mac. Review the paths before anything moves.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
+            // The result for this folder leads; the drive-wide figures follow.
+            if let summary = resultSummary {
+                Text(summary)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             phaseBadge
         }
+    }
+
+    /// One line with what this scan found, in task order: what is safe to
+    /// add now, then what needs a closer look.
+    private var resultSummary: String? {
+        guard let report = vm.cleanupReport, !report.isEmpty else { return nil }
+        var parts: [String] = []
+        if report.safeTotalBytes > 0 {
+            parts.append("\(Theme.format(report.safeTotalBytes)) safe to review")
+        }
+        let review = report.reviewGroups.count
+        if review > 0 {
+            parts.append(review == 1 ? "1 group to check first" : "\(review) groups to check first")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private var phaseBadge: some View {
@@ -131,11 +169,12 @@ struct CleanupSuggestionsView: View {
 
         return VStack(alignment: .leading, spacing: 14) {
             ViewThatFits(in: .horizontal) {
+                // Available and target share one size and one baseline.
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(primary.map(Theme.format) ?? "Unknown")
-                            .font(.largeTitle.weight(.semibold).monospacedDigit())
-                        Text("available now")
+                            .font(.title2.weight(.semibold).monospacedDigit())
+                        Text(primaryLabel(plan.measurement))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -144,7 +183,7 @@ struct CleanupSuggestionsView: View {
 
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(targetTitle(plan))
-                            .font(.title3.weight(.semibold).monospacedDigit())
+                            .font(.title2.weight(.semibold).monospacedDigit())
                             .foregroundStyle(targetColor(plan))
                         Text(targetLabel(plan))
                             .font(.subheadline)
@@ -157,14 +196,14 @@ struct CleanupSuggestionsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(primary.map(Theme.format) ?? "Unknown")
-                            .font(.largeTitle.weight(.semibold).monospacedDigit())
-                        Text("available now")
+                            .font(.title2.weight(.semibold).monospacedDigit())
+                        Text(primaryLabel(plan.measurement))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(targetTitle(plan))
-                            .font(.title3.weight(.semibold).monospacedDigit())
+                            .font(.title2.weight(.semibold).monospacedDigit())
                             .foregroundStyle(targetColor(plan))
                         Text(targetLabel(plan))
                             .font(.subheadline)
@@ -176,12 +215,13 @@ struct CleanupSuggestionsView: View {
             if let fraction {
                 ProgressView(value: fraction)
                     .tint(targetColor(plan))
-                    .accessibilityLabel("Free capacity")
+                    .accessibilityLabel(primaryLabel(plan.measurement))
                     .accessibilityValue(primary.map(Theme.format) ?? "Unknown")
+                // The headline above already names the figure once, so this
+                // caption carries only the goal.
                 HStack {
-                    Text("Free capacity")
                     Spacer()
-                    Text("Goal: \(100 - capacityGoalPercent)% free")
+                    Text("Goal: under \(capacityGoalPercent)% used")
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -189,14 +229,14 @@ struct CleanupSuggestionsView: View {
 
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 20) {
-                    metric("Free", plan.measurement.freeBytes.map(Theme.format) ?? "Unknown")
+                    secondaryFreeMetric(plan.measurement)
                     metric("Logical", Theme.format(plan.measurement.logicalBytes))
                     metric("Physical", Theme.format(plan.measurement.physicalBytes))
                 }
                 .fixedSize(horizontal: true, vertical: false)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    metric("Free", plan.measurement.freeBytes.map(Theme.format) ?? "Unknown")
+                    secondaryFreeMetric(plan.measurement)
                     metric("Logical", Theme.format(plan.measurement.logicalBytes))
                     metric("Physical", Theme.format(plan.measurement.physicalBytes))
                 }
@@ -207,8 +247,12 @@ struct CleanupSuggestionsView: View {
             Text("Measured locally · \(plan.measurement.primarySource)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            // Definitions follow the figures and the goal control, so the
+            // numbers and the one adjustable value come first.
+            capacityNotes(plan)
         }
-        .padding(.vertical, 20)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) { Divider() }
     }
@@ -257,6 +301,8 @@ struct CleanupSuggestionsView: View {
                   : (coverage.state == .complete ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"))
                 .font(.title3)
                 .foregroundStyle(color)
+                // The title names the state; the symbol is not read.
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(coverage.title)
@@ -317,12 +363,12 @@ struct CleanupSuggestionsView: View {
             if let action, let actionTitle {
                 if prominent {
                     Button(actionTitle, action: action)
-                        .buttonStyle(.flatProminent)
+                        .tesseraButtonStyle(.flatProminent)
                         .controlSize(.small)
                         .disabled(actionDisabled)
                 } else {
                     Button(actionTitle, action: action)
-                        .buttonStyle(.flat)
+                        .tesseraButtonStyle(.flat)
                         .controlSize(.small)
                         .disabled(actionDisabled)
                 }
@@ -339,65 +385,82 @@ struct CleanupSuggestionsView: View {
         let expanded = Binding(
             get: { expandedGroups.contains(group.id) },
             set: { value in
-                if value { expandedGroups.insert(group.id) }
+                if value { expandedGroups.insert(group.id); revealedGroup = group.id }
                 else { expandedGroups.remove(group.id) }
             }
         )
 
-        DisclosureGroup(isExpanded: expanded) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(group.recommendations) { recommendation in
-                    recommendationRow(recommendation)
-                    if recommendation.id != group.recommendations.last?.id {
-                        Divider().padding(.leading, 34)
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 10) {
+                // A Tessera button, not the system disclosure arrow: it shows
+                // the focus ring and scrolls into view on Tab.
+                Button { expanded.wrappedValue.toggle() } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0))
                 }
-            }
-            .padding(.top, 4)
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: group.category.symbol)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(color(for: group.risk))
-                        .frame(width: 24)
+                .tesseraButtonStyle(.icon)
+                .controlSize(.small)
+                .accessibilityLabel(expanded.wrappedValue ? "Hide items in \(group.category.title)"
+                                                          : "Show items in \(group.category.title)")
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(group.category.title)
-                            .font(.subheadline.weight(.semibold))
-                        Text("\(group.nodes.count) item\(group.nodes.count == 1 ? "" : "s") · \(group.category.explanation)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: group.category.symbol)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(color(for: group.risk))
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
 
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text(Theme.format(group.totalBytes))
-                            .font(.subheadline.monospacedDigit().weight(.semibold))
-                        riskTag(group.risk)
-                    }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(group.category.title)
+                        .font(.subheadline.weight(.semibold))
+                    Text("\(group.nodes.count) item\(group.nodes.count == 1 ? "" : "s") · \(group.category.explanation)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { expanded.wrappedValue.toggle() }
+
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(Theme.format(group.totalBytes))
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                    riskTag(group.risk)
                 }
 
-                HStack(spacing: 8) {
-                    if group.risk != .protected {
-                        Button(vm.isGroupStaged(group) ? "Added" : "Add") {
-                            vm.toggleCleanupGroup(group)
-                        }
-                        .buttonStyle(.flat)
-                        .controlSize(.small)
-                    } else {
-                        Text("Owner handoff")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                if group.risk != .protected {
+                    let staged = vm.isGroupStaged(group)
+                    Button(staged ? "Added" : "Add") {
+                        vm.toggleCleanupGroup(group)
                     }
-                    Spacer(minLength: 0)
+                    .tesseraButtonStyle(.flat)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .accessibilityLabel(staged ? "Remove \(group.category.title) from Cleanup List"
+                                               : "Add \(group.category.title) to Cleanup List")
+                } else {
+                    Text("Owner handoff")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
                 }
             }
             .padding(.vertical, 11)
-            .contentShape(Rectangle())
+            if expanded.wrappedValue {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(group.recommendations) { recommendation in
+                        recommendationRow(recommendation)
+                        if recommendation.id != group.recommendations.last?.id {
+                            Divider().padding(.leading, 34)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+                // The items open at the bottom of the page; bring the first
+                // rows into sight.
+                .background { if revealedGroup == group.id { RevealOnAppear() } }
+            }
         }
-        .tint(.secondary)
         .padding(.vertical, 4)
         .overlay(alignment: .bottom) { Divider() }
     }
@@ -418,66 +481,82 @@ struct CleanupSuggestionsView: View {
                         .foregroundStyle(vm.isCollected(recommendation.node)
                                          ? Theme.electricBlue : Theme.mutedForeground)
                 }
-                .buttonStyle(.interactive)
+                .tesseraButtonStyle(.interactive)
                 .disabled(recommendation.risk == .protected || vm.isDeleting || vm.isScanning)
                 .help(vm.isCollected(recommendation.node)
                       ? "Remove from the Cleanup List" : "Add to the Cleanup List")
                 .accessibilityLabel(vm.isCollected(recommendation.node)
-                                    ? "Remove from Cleanup List" : "Add to Cleanup List")
+                                    ? "Remove \(recommendation.node.name) from Cleanup List"
+                                    : "Add \(recommendation.node.name) to Cleanup List")
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(recommendation.node.name)
-                        .font(.subheadline.weight(.semibold))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(Theme.format(recommendation.physicalBytes))
-                        .font(.subheadline.monospacedDigit().weight(.semibold))
-
-                    Text(recommendation.path)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-
-                    Text(sizeSummary(for: recommendation))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                // Row: name, size, one reason line and a risk tag. Path, owner,
+                // side effect and proof sit in one disclosure.
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(recommendation.node.name)
+                            .font(.callout.weight(.semibold))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(recommendation.risk.title)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(riskTint(recommendation.risk))
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .overlay(Capsule().strokeBorder(riskTint(recommendation.risk).opacity(0.5), lineWidth: 1))
+                            .fixedSize()
+                        Spacer(minLength: 8)
+                        Text(Theme.format(recommendation.physicalBytes))
+                            .font(.callout.monospacedDigit().weight(.semibold))
+                            .fixedSize()
+                    }
 
                     Text(recommendation.reason)
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .font(.callout)
+                        .foregroundStyle(Theme.mutedForeground)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(recommendation.reason)
 
-                    Text([recommendation.owner, recommendation.confidence.title,
-                          recommendation.action.title].joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text("May change: \(recommendation.sideEffect)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    DisclosureGroup("Proof") {
-                        ForEach(recommendation.proof, id: \.self) { item in
-                            Text(item)
+                    DisclosureGroup("Details") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(recommendation.path)
                                 .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
+                            Text(sizeSummary(for: recommendation))
+                                .font(.caption.monospacedDigit())
+                            Text([recommendation.owner, recommendation.confidence.title,
+                                  recommendation.action.title].joined(separator: " · "))
+                                .font(.caption)
+                            Text("May change: \(recommendation.sideEffect)")
+                                .font(.caption)
+                            ForEach(recommendation.proof, id: \.self) { item in
+                                Text(item)
+                                    .font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                            }
                         }
+                        .foregroundStyle(Theme.mutedForeground)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .font(.caption)
                 }
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 6)
         .contextMenu {
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([recommendation.node.url])
             } label: {
                 Label("Reveal in Finder", systemImage: "magnifyingglass")
             }
+        }
+    }
+
+    private func riskTint(_ risk: CleanupRisk) -> Color {
+        switch risk {
+        case .safe: return Theme.electricBlue
+        case .review: return Theme.crossVolumeColor
+        case .protected: return Theme.danger
         }
     }
 
@@ -574,34 +653,28 @@ struct CleanupSuggestionsView: View {
             .overlay(alignment: .bottom) { Divider() }
     }
 
-    private func savedCaseRow(_ saved: SavedRescueCase) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 8) {
-                Image(systemName: "bookmark.fill")
-                    .foregroundStyle(.tint)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Saved rescue case")
-                        .font(.headline.weight(.semibold))
-                    Text("Kept on this Mac. A fresh scan is required before staging anything.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+    /// A compact banner: one line of status with its two actions, the path
+    /// only when the header does not already show it.
+    private func savedCaseRow(_ saved: SavedRescueCase, showsPath: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    savedCaseTitle
+                    Spacer(minLength: 8)
+                    savedCaseActions
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    savedCaseTitle
+                    savedCaseActions
                 }
             }
 
-            Text(saved.sourcePath)
-                .font(.caption.monospaced())
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                Button("Reopen and rescan") { vm.reopenSavedRescueCase() }
-                    .buttonStyle(.flatProminent)
-                    .controlSize(.small)
-                    .disabled(vm.isScanning)
-                Button("Forget") { vm.discardSavedRescueCase() }
-                    .buttonStyle(.flat)
-                    .controlSize(.small)
+            if showsPath {
+                Text(saved.sourcePath)
+                    .font(.caption.monospaced())
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.secondary)
             }
 
             if vm.restoredRescueCaseIsStale {
@@ -614,7 +687,7 @@ struct CleanupSuggestionsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Button("Stage for review") { vm.stageRestoredRescueCase() }
-                        .buttonStyle(.flat)
+                        .tesseraButtonStyle(.flat)
                         .controlSize(.small)
                 }
                 Text("Nothing is staged until you choose this action.")
@@ -622,9 +695,10 @@ struct CleanupSuggestionsView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var emptyPlan: some View {
@@ -693,13 +767,79 @@ struct CleanupSuggestionsView: View {
             } label: {
                 Label("Review Cleanup List…", systemImage: "checklist")
             }
-            .buttonStyle(.flatProminent)
+            .tesseraButtonStyle(.flatProminent)
             .controlSize(.regular)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) { Divider() }
+    }
+
+    /// The headline figure is `primaryBytes`: macOS "available for important
+    /// usage" when known (it counts space macOS can reclaim from caches and
+    /// other purgeable files), else plain free space. The label follows the
+    /// value actually shown.
+    private func primaryLabel(_ measurement: RescueMeasurement) -> String {
+        measurement.availableBytes != nil ? "Available for use" : "Free now"
+    }
+
+    @ViewBuilder
+    private func capacityNotes(_ plan: RescuePlan) -> some View {
+        let notes = [
+            plan.measurement.availableBytes != nil
+                ? "Available for use counts space macOS can reclaim by removing caches and other purgeable files. Free now is the space macOS reports as free at this moment."
+                : nil,
+            // True for a volume root and for a folder alike, so it needs no
+            // path test. (`volumePath` is the selected source path, not the
+            // mount point, so comparing it with `sourcePath` cannot tell them
+            // apart.)
+            "Capacity figures cover the whole drive that holds this source. Logical and physical totals cover only the scanned source.",
+        ].compactMap { $0 }
+        if !notes.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(notes, id: \.self) { note in
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    /// Plain free space, shown beside the headline only when the headline is
+    /// the larger "available for use" figure.
+    @ViewBuilder
+    private func secondaryFreeMetric(_ measurement: RescueMeasurement) -> some View {
+        if measurement.availableBytes != nil {
+            metric("Free now", measurement.freeBytes.map(Theme.format) ?? "Unknown")
+        }
+    }
+
+    private var savedCaseTitle: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bookmark.fill")
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            Text("Saved rescue case. Rescan before staging anything.")
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var savedCaseActions: some View {
+        HStack(spacing: 8) {
+            // Flat: a saved case is a secondary path; the page keeps one
+            // filled primary action.
+            Button("Reopen and rescan") { vm.reopenSavedRescueCase() }
+                .tesseraButtonStyle(.flat)
+                .controlSize(.small)
+                .disabled(vm.isScanning)
+            Button("Forget") { vm.discardSavedRescueCase() }
+                .tesseraButtonStyle(.flat)
+                .controlSize(.small)
+        }
     }
 
     private func metric(_ label: String, _ value: String) -> some View {
@@ -739,7 +879,7 @@ struct CleanupSuggestionsView: View {
             return "capacity target unavailable"
         }
         return target > available
-            ? "more free space to reach \(capacityGoalPercent)% used"
+            ? "more space needed to reach \(capacityGoalPercent)% used"
             : "\(capacityGoalPercent)% used limit met"
     }
 

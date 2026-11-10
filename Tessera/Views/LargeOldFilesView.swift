@@ -164,7 +164,7 @@ struct LargeOldFilesView: View {
             } label: {
                 Label("Add all", systemImage: "tray.and.arrow.down.fill")
             }
-            .buttonStyle(.flatProminent)
+            .tesseraButtonStyle(.flatProminent)
             .controlSize(.small)
             .disabled(matches.isEmpty || matches.allSatisfy { vm.isCollected($0) })
         }
@@ -207,7 +207,7 @@ struct LargeOldFilesView: View {
             } label: {
                 Image(systemName: "magnifyingglass").font(.caption)
             }
-            .buttonStyle(.interactive).foregroundStyle(.tint)
+            .tesseraButtonStyle(.interactive).foregroundStyle(.tint)
             .help("Reveal in Finder")
 
             Button {
@@ -216,7 +216,7 @@ struct LargeOldFilesView: View {
                 Image(systemName: collected ? "checkmark.circle.fill" : "plus.circle")
                     .foregroundStyle(collected ? AnyShapeStyle(Theme.electricBlue) : AnyShapeStyle(.secondary))
             }
-            .buttonStyle(.interactive)
+            .tesseraButtonStyle(.interactive)
             .help(collected ? "Remove from the collector" : "Add to the collector")
         }
     }

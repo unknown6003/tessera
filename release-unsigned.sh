@@ -13,6 +13,7 @@ step() { printf "\n\033[1;36m▶ %s\033[0m\n" "$*"; }
 fail() { printf "\n\033[1;31m✗ %s\033[0m\n" "$*" >&2; exit 1; }
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_PLIST")"
+python3 tools/validate_release.py
 step "Building $SCHEME $VERSION  (unsigned / ad-hoc)"
 
 DIST="dist"
