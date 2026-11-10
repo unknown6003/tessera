@@ -1,3 +1,12 @@
+# Tessera 0.2.2
+
+- Toolbar buttons, the Tools menu and the Explore and Rescue switch show the
+  Tessera cyan focus ring, not the system ring in your accent colour.
+- Choose Folder and Connect to Server stay below the source list, so a short
+  window cannot hide them and Tab order is the same from the first pass.
+- Rescue shows its groups right after the headline figures. The other figures,
+  the goal control and the definitions follow the groups.
+
 # Tessera 0.2.1
 
 0.2.1 is the first public 0.2 release. It has all of 0.2.0 below, plus
