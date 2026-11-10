@@ -1,7 +1,7 @@
 # Release Tessera from owned hardware
 
-Tessera releases stay in `0.x.x`. `0.2.1`, build `13`, is the latest public
-release, from `9006d19`. A later release must raise both numbers. `0.2.0`,
+Tessera releases stay in `0.x.x`. The next candidate is `0.2.2`, build `14`.
+`0.2.1`, build `13`, from `9006d19`, is the latest public release. `0.2.0`,
 build `12`, was a candidate that was not published. Withdrawn `1.0.0`, build
 `11`, stays a draft.
 The public release stays latest until a new candidate passes all gates and an
@@ -222,7 +222,7 @@ app, image, signature, smoke evidence and asset hashes. It creates an annotated
 tag at the exact full commit, then a draft release. It uploads exactly:
 
 - `Tessera.dmg`
-- `Tessera-0.2.1.dmg`
+- `Tessera-0.2.2.dmg`
 - `appcast.xml`
 - `SHA256SUMS`
 

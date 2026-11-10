@@ -66,6 +66,7 @@ struct CleanupActionBar: View {
             Button { presentedTool = .search } label: {
                 Label("Search", systemImage: "magnifyingglass")
             }
+            .toolbarIconButton()
             .keyboardShortcut("f", modifiers: .command)
             .help("Search this scan (⌘F)")
             .disabled(unavailable)
@@ -101,6 +102,7 @@ struct CleanupActionBar: View {
                 .labelStyle(.titleAndIcon)
         }
         .help("Search, duplicates, apps, file types and old files")
+        .cyanFocusRing(radius: 8)
         .disabled(unavailable)
     }
 

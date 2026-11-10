@@ -142,6 +142,7 @@ struct ContentView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .focusSection()
             }
             // The onboarding card is modal: nothing behind it takes focus or
             // reaches VoiceOver while it shows.
@@ -183,8 +184,13 @@ struct ContentView: View {
 
     @ToolbarContentBuilder private var toolbarItems: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            Button { changeBrowserHost { showSidebar.toggle() } } label: {
-                Label("Sources", systemImage: "sidebar.left")
+            // In an HStack so the toolbar keeps the Tessera style and its
+            // cyan focus ring; a bare toolbar button gets the system ring.
+            HStack(spacing: 0) {
+                Button { changeBrowserHost { showSidebar.toggle() } } label: {
+                    Label("Sources", systemImage: "sidebar.left")
+                }
+                .toolbarIconButton()
             }
             .keyboardShortcut("s", modifiers: [.command, .control])
             .help(showSidebar ? "Hide sources (⌃⌘S)" : "Show sources (⌃⌘S)")
@@ -192,11 +198,13 @@ struct ContentView: View {
         }
         .sharedBackgroundVisibility(.hidden)
         ToolbarItem(placement: .principal) {
-            Picker("Workspace", selection: $appMode) {
-                ForEach(AppMode.allCases) { mode in Text(mode.title).tag(mode) }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 190)
+            WorkspaceSwitch(
+                label: "Workspace",
+                titles: AppMode.allCases.map(\.title),
+                selection: Binding(
+                    get: { AppMode.allCases.firstIndex(of: appMode) ?? 0 },
+                    set: { appMode = AppMode.allCases[$0] }))
+            .frame(width: 190, height: 36)
             .disabled(vm.showFDAOnboarding)
         }
         .sharedBackgroundVisibility(.hidden)
@@ -208,13 +216,16 @@ struct ContentView: View {
         ToolbarItem(placement: .primaryAction) {
             // Wide windows show Details beside the map; narrow windows
             // show it inline below the map. No popover.
-            Button {
-                changeBrowserHost {
-                    showInspector.toggle()
-                    if showInspector { compactPane = .details }
+            HStack(spacing: 0) {
+                Button {
+                    changeBrowserHost {
+                        showInspector.toggle()
+                        if showInspector { compactPane = .details }
+                    }
+                } label: {
+                    Label("Details", systemImage: "sidebar.right")
                 }
-            } label: {
-                Label("Details", systemImage: "sidebar.right")
+                .toolbarIconButton()
             }
             .keyboardShortcut("i", modifiers: [.command, .control])
             .help("Show or hide selected item details (⌃⌘I)")
@@ -906,6 +917,9 @@ struct ContentView: View {
                     if vm.isCollected(node) {
                         Label("In Cleanup List", systemImage: "checkmark")
                             .font(.callout).foregroundStyle(Theme.mutedForeground)
+                            // One text element; the checkmark is decoration.
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("In Cleanup List")
                     } else {
                         Button("Add to Cleanup List") { vm.addToCollector(node) }
                             .tesseraButtonStyle(.flat)
