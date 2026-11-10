@@ -547,6 +547,133 @@ private struct TesseraButtonModifier<Style: TesseraButtonStyle>: ViewModifier {
     }
 }
 
+extension View {
+    /// A toolbar icon button in the Tessera icon style, with its cyan ring.
+    func toolbarIconButton() -> some View {
+        labelStyle(.iconOnly)
+            .font(.system(size: 15))
+            .tesseraButtonStyle(.icon(size: 28, tint: Theme.foreground))
+    }
+
+    /// The Tessera cyan ring on a system control, such as a toolbar menu,
+    /// in place of the system ring in the user's accent colour.
+    func cyanFocusRing(radius: CGFloat) -> some View {
+        modifier(CyanFocusRing(radius: radius))
+    }
+}
+
+private struct CyanFocusRing: ViewModifier {
+    let radius: CGFloat
+    @Environment(\.controlActiveState) private var activeState
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .focused($focused)
+            .focusEffectDisabled()
+            .overlay {
+                if focused && activeState == .key {
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .inset(by: -3)
+                        .strokeBorder(Theme.electricBlue, lineWidth: 2)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
+/// A segmented switch with the Tessera cyan focus ring. It is an AppKit
+/// segmented control, so it keeps the radio group role, the selected state,
+/// and arrow and Space keys. The system ring is off; the host view draws the
+/// cyan one while the control has keyboard focus in the key window.
+struct WorkspaceSwitch: NSViewRepresentable {
+    let label: String
+    let titles: [String]
+    @Binding var selection: Int
+
+    final class Segments: NSSegmentedControl {
+        var onFocusChange: () -> Void = {}
+        override func becomeFirstResponder() -> Bool {
+            defer { onFocusChange() }
+            return super.becomeFirstResponder()
+        }
+        override func resignFirstResponder() -> Bool {
+            defer { onFocusChange() }
+            return super.resignFirstResponder()
+        }
+    }
+
+    final class Host: NSView {
+        let segments = Segments()
+        private var observers: [NSObjectProtocol] = []
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            segments.focusRingType = .none
+            segments.onFocusChange = { [weak self] in self?.needsDisplay = true }
+            addSubview(segments)
+        }
+        required init?(coder: NSCoder) { nil }
+
+        override func layout() {
+            super.layout()
+            let height = segments.intrinsicContentSize.height
+            segments.frame = NSRect(x: 4, y: (bounds.height - height) / 2,
+                                    width: bounds.width - 8, height: height)
+            let width = segments.frame.width / CGFloat(max(segments.segmentCount, 1))
+            for index in 0..<segments.segmentCount { segments.setWidth(width - 1, forSegment: index) }
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window else { return }
+            for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+                observers.append(NotificationCenter.default.addObserver(
+                    forName: name, object: window, queue: .main) { [weak self] _ in self?.needsDisplay = true })
+            }
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            guard let window, window.isKeyWindow, window.firstResponder === segments else { return }
+            let ring = segments.frame.insetBy(dx: -3, dy: -3).insetBy(dx: 1, dy: 1)
+            let path = NSBezierPath(roundedRect: ring, xRadius: ring.height / 2, yRadius: ring.height / 2)
+            path.lineWidth = 2
+            NSColor(Theme.electricBlue).setStroke()
+            path.stroke()
+        }
+    }
+
+    final class Coordinator: NSObject {
+        var parent: WorkspaceSwitch
+        init(_ parent: WorkspaceSwitch) { self.parent = parent }
+        @objc func changed(_ sender: NSSegmentedControl) { parent.selection = sender.selectedSegment }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> Host {
+        let host = Host()
+        let segments = host.segments
+        segments.segmentCount = titles.count
+        for (index, title) in titles.enumerated() { segments.setLabel(title, forSegment: index) }
+        segments.trackingMode = .selectOne
+        segments.segmentStyle = .automatic
+        segments.controlSize = .large
+        segments.target = context.coordinator
+        segments.action = #selector(Coordinator.changed(_:))
+        segments.setAccessibilityLabel(label)
+        return host
+    }
+
+    func updateNSView(_ host: Host, context: Context) {
+        context.coordinator.parent = self
+        if host.segments.selectedSegment != selection { host.segments.selectedSegment = selection }
+        host.segments.isEnabled = context.environment.isEnabled
+    }
+}
+
 /// Scrolls a control into view when keyboard focus arrives. SwiftUI scroll
 /// views on macOS do not follow Tab focus, so a focused control could sit
 /// below the fold. Scrolls only on the change to focused, so a user scroll

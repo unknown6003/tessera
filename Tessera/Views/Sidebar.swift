@@ -118,7 +118,6 @@ struct Sidebar: View {
                             }
                         }
                         .accessibilityAction { _ = handleSourceKey(.return) }
-                        addSourceRows
                     }
                     .padding(.horizontal, 10)
                     .padding(.top, 8)
@@ -128,6 +127,16 @@ struct Sidebar: View {
                     if let url { proxy.scrollTo(url) }
                 }
             }
+
+            Divider()
+                .opacity(0.3)
+
+            // Fixed below the list, not in its scroll view: a short window
+            // cannot clip these rows, and focus on them never scrolls the
+            // list, so the Tab order is the same from the first pass.
+            addSourceRows
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
 
             Divider()
                 .opacity(0.3)
@@ -310,7 +319,6 @@ struct Sidebar: View {
                 showConnectSheet = true
             }
         }
-        .padding(.top, 2)
     }
 
     @ViewBuilder

@@ -105,6 +105,10 @@ struct CleanupSuggestionsView: View {
             } else {
                 emptyCandidates
             }
+
+            // Secondary figures, the goal control and the definitions follow
+            // the groups, so the first group shows without scrolling.
+            measurementDetails(plan)
         }
     }
 
@@ -226,7 +230,14 @@ struct CleanupSuggestionsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
+        }
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) { Divider() }
+    }
 
+    private func measurementDetails(_ plan: RescuePlan) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 20) {
                     secondaryFreeMetric(plan.measurement)
@@ -254,7 +265,7 @@ struct CleanupSuggestionsView: View {
         }
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) { Divider() }
+        .overlay(alignment: .top) { Divider() }
     }
 
     private var capacityGoalControl: some View {
@@ -321,7 +332,7 @@ struct CleanupSuggestionsView: View {
                 }
             }
         }
-        .padding(16)
+        .padding(.bottom, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) { Divider() }
     }
