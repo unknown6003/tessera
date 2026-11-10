@@ -142,6 +142,7 @@ struct ContentView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .focusSection()
             }
             // The onboarding card is modal: nothing behind it takes focus or
             // reaches VoiceOver while it shows.
@@ -916,6 +917,9 @@ struct ContentView: View {
                     if vm.isCollected(node) {
                         Label("In Cleanup List", systemImage: "checkmark")
                             .font(.callout).foregroundStyle(Theme.mutedForeground)
+                            // One text element; the checkmark is decoration.
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("In Cleanup List")
                     } else {
                         Button("Add to Cleanup List") { vm.addToCollector(node) }
                             .tesseraButtonStyle(.flat)

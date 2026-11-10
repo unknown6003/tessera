@@ -28,6 +28,8 @@ struct Sidebar: View {
     /// Launch focus goes to the source list once, after the first sources
     /// load. Before that the list is empty and cannot take focus.
     @State private var didSetLaunchFocus = false
+    /// The selected source is scrolled into view once, after it first loads.
+    @State private var didRevealSelection = false
 
     // Connect-to-server sheet
     @State private var showConnectSheet = false
@@ -126,6 +128,19 @@ struct Sidebar: View {
                 .onChange(of: vm.selectedSourceURL) { _, url in
                     if let url { proxy.scrollTo(url) }
                 }
+                // The selected source can join the list after it is set, so
+                // the scroll above finds no row. Show it once, after layout.
+                .onChange(of: allSources.map(\.url)) { _, urls in
+                    guard !didRevealSelection, let url = vm.selectedSourceURL,
+                          urls.contains(url) else { return }
+                    didRevealSelection = true
+                    DispatchQueue.main.async { proxy.scrollTo(url) }
+                }
+                // A shorter window can push the selected source below the
+                // fold; keep it in view when the list height changes.
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                    if let url = vm.selectedSourceURL { proxy.scrollTo(url) }
+                }
             }
 
             Divider()
@@ -143,6 +158,8 @@ struct Sidebar: View {
 
             updateRow.padding(.vertical, 10)
         }
+        // Tab visits the source list and its footer before the main content.
+        .focusSection()
         .background(Theme.surface)
         .onAppear {
             loadCustomFolders()
