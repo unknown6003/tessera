@@ -24,3 +24,18 @@ The last completed native run is 1f44e66: compilation passed; 134 tests ran and 
 The first attempted diagnosis after reconnecting read the earlier evidence but ran no loop and proved no cause. A narrower native task is now assigned to execute one red loop and identify the exact guard. Do not classify that read-only attempt as a successful diagnosis or an external blocker.
 
 Record new evidence with its exact source hash. Preserve failed runs and all performance samples. Use fresh production-state baselines for each Mac run. No agent score is a recruited user study, and no area receives 9/10 without its own native evidence.
+
+## Tracked Trash diagnosis, 12 November
+
+The minimal native loop at 1f44e66 reproduced `subset` and `budgetReplacement`.
+Foundation resolved the temporary path to `/var`, leaving a symlink that the
+ancestor guard correctly rejected. `realpath` kept `/private/var`. The replacement
+hook also missed its target because URL equality distinguished a trailing slash.
+The native private-copy patch passed both focused tests. Its evidence is retained
+at `/Users/abdwy/.local/share/tessera-trash-diag-nov12/`, including red.log,
+green3.log, instrumentation.diff and fix.patch.
+
+The branch now uses physical paths for tracking and path comparison in that hook.
+Both disposable test fixtures also retain the physical temporary root. Symlink,
+identity, volume and protected-path checks remain in place. The full Trash suites,
+the newer descriptor helper and the full current suite still need native proof.

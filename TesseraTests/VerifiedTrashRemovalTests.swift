@@ -12,8 +12,10 @@ struct VerifiedTrashRemovalTests {
         let local = LocalTrashFileSystem()
 
         init(directory: Bool = true) throws {
-            base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-                .resolvingSymlinksInPath()
+            let temporary = try #require(realpath(FileManager.default.temporaryDirectory.path, nil))
+            defer { free(temporary) }
+            base = URL(fileURLWithPath: String(cString: temporary))
+                .appendingPathComponent(UUID().uuidString)
             trash = base.appendingPathComponent(".Trash")
             target = trash.appendingPathComponent("reviewed")
             try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)

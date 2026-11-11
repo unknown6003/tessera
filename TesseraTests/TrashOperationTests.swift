@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import Darwin
 @testable import Tessera
 
 @Suite("Operation-scoped Trash", .serialized)
@@ -21,8 +22,10 @@ struct TrashOperationTests {
         let local = LocalTrashFileSystem()
 
         init() throws {
-            base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-                .resolvingSymlinksInPath()
+            let temporary = try #require(realpath(FileManager.default.temporaryDirectory.path, nil))
+            defer { free(temporary) }
+            base = URL(fileURLWithPath: String(cString: temporary))
+                .appendingPathComponent(UUID().uuidString)
             source = base.appendingPathComponent("source")
             trash = base.appendingPathComponent(".Trash")
             for url in [source, trash] {
@@ -68,7 +71,7 @@ struct TrashOperationTests {
         func remove(at url: URL, expected: [String: TrashFileState]) throws {
             if failRemoval { throw CocoaError(.fileWriteNoPermission) }
             // This assertion also protects fixtures from an accidental broad cleanup.
-            try #require(url.deletingLastPathComponent() == trash)
+            try #require(url.deletingLastPathComponent().path == trash.path)
             removals.append(url)
             try VerifiedTrashRemoval.remove(at: url, expected: expected, trashDirectory: trash,
                                              checkpoint: removalCheckpoint)
@@ -321,7 +324,7 @@ struct TrashOperationTests {
         defer { f.clean() }
         let target = try f.prepare("folder", directory: true)
         f.afterListing = { url in
-            guard url == target.url else { return }
+            guard url.resolvingSymlinksInPath().path == target.url.resolvingSymlinksInPath().path else { return }
             f.afterListing = nil
             try FileManager.default.moveItem(at: url, to: f.base.appendingPathComponent("saved"))
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

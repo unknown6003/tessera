@@ -105,7 +105,7 @@ final class TrashOperation: @unchecked Sendable {
                       CleanupClassifier.protectedCategory(for: source.path) == nil else {
                     throw Hold.protectedContents
                 }
-                let canonicalSource = source.resolvingSymlinksInPath().standardizedFileURL
+                let canonicalSource = try source.canonicalFileURL()
                 let before: [String: TrashFileState]
                 do {
                     before = try capture(at: canonicalSource, original: source,
@@ -132,11 +132,10 @@ final class TrashOperation: @unchecked Sendable {
                 }
                 do {
                     guard destination.isFileURL else { throw Hold.unavailable }
-                    let trashRoot = try fileSystem.trashDirectory(for: destination)
-                        .resolvingSymlinksInPath().standardizedFileURL
+                    let trashRoot = try fileSystem.trashDirectory(for: destination).canonicalFileURL()
                     // Resolve the parent once, then forbid any future ancestor changes.
-                    let trashURL = destination.deletingLastPathComponent().resolvingSymlinksInPath()
-                        .appendingPathComponent(destination.lastPathComponent).standardizedFileURL
+                    let trashURL = try destination.deletingLastPathComponent().canonicalFileURL()
+                        .appendingPathComponent(destination.lastPathComponent)
                     guard trashURL.deletingLastPathComponent() == trashRoot,
                           trashURL != canonicalSource,
                           !trashURL.path.hasPrefix(canonicalSource.path + "/") else { throw Hold.unavailable }
@@ -272,8 +271,7 @@ final class TrashOperation: @unchecked Sendable {
                   CleanupClassifier.protectedCategory(for: record.item.originalURL.path) == nil else {
                 throw Hold.protectedContents
             }
-            let root = try fileSystem.trashDirectory(for: record.item.trashURL)
-                .resolvingSymlinksInPath().standardizedFileURL
+            let root = try fileSystem.trashDirectory(for: record.item.trashURL).canonicalFileURL()
             guard root == record.trashRoot else { throw Hold.changed }
             let ancestors = try captureAncestors(of: record.item.trashURL)
             guard Set(ancestors.keys) == Set(record.ancestors.keys),
@@ -331,7 +329,7 @@ final class TrashOperation: @unchecked Sendable {
                 for child in children {
                     let name = child.lastPathComponent
                     guard !name.isEmpty, name != ".", name != "..",
-                          child.deletingLastPathComponent().standardizedFileURL == url else { throw Hold.incomplete }
+                          child.deletingLastPathComponent().path == url.path else { throw Hold.incomplete }
                     stack.append((child, relative.isEmpty ? name : relative + "/" + name))
                 }
                 // Detect mutation during enumeration, including empty folders.
@@ -455,5 +453,17 @@ struct LocalTrashFileSystem: TrashFileSystem {
 
     func remove(at url: URL, expected: [String: TrashFileState]) throws {
         try VerifiedTrashRemoval.remove(at: url, expected: expected)
+    }
+}
+
+private extension URL {
+    // Foundation can shorten /private/var to /var, whose symlink the ancestor
+    // guard rejects. Keep the physical path returned by realpath.
+    func canonicalFileURL() throws -> URL {
+        guard let resolved = Darwin.realpath(path, nil) else {
+            throw TrashOperation.Hold.unavailable
+        }
+        defer { free(resolved) }
+        return URL(fileURLWithPath: String(cString: resolved))
     }
 }
