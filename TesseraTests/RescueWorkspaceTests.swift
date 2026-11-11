@@ -12,6 +12,11 @@ private final class FakeRescueHost: RescueHost {
     var rescueReport: CleanupReport?
     var rescueIsScanning = false
     var rescueIsBusy = false
+    var ownerStates: [CleanupOwnerState] = [.stopped]
+    var rescueCurrentOwnerState: CleanupOwnerState {
+        if ownerStates.count > 1 { return ownerStates.removeFirst() }
+        return ownerStates.first ?? .unknown
+    }
     var rescueMeasuredAt: Date? = Date(timeIntervalSince1970: 1)
     var acceptsStaging = true
     var staged: [FileNode] = []
@@ -315,6 +320,26 @@ struct RescueWorkspaceTests {
         await model.stageSelection()
         #expect(host.staged.isEmpty)
         #expect(model.reviewNotice?.hasPrefix("Nothing was added.") == true)
+    }
+
+    @Test("Generated items hold when their owner is active or starts during identity checks")
+    func ownerChangeBlocksStaging() async throws {
+        let scenarios: [[CleanupOwnerState]] = [[.active], [.stopped, .active], [.unknown]]
+        for states in scenarios {
+            let (defaults, name) = freshDefaults()
+            defer { defaults.removePersistentDomain(forName: name) }
+            let check: @Sendable (String) -> ScanIdentity? = { identity($0, inode: 11, size: 100) }
+            let (model, host, _) = fixture(defaults: defaults, identityCheck: check)
+            let row = try #require(model.rows.first { $0.bytes == 100 })
+            model.openReview(row)
+            try await waitForReview(model)
+            model.selectAllEligible()
+            host.ownerStates = states
+            await model.stageSelection()
+            #expect(host.staged.isEmpty)
+            #expect(model.review == nil)
+            #expect(model.reviewNotice?.contains("Nothing was added") == true)
+        }
     }
 
     @Test("The goal measures Free now change on the same drive only")

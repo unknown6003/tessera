@@ -18,6 +18,7 @@ protocol RescueHost: AnyObject {
     var rescueIsScanning: Bool { get }
     /// Removal or another lock that must stop a new scan or staging.
     var rescueIsBusy: Bool { get }
+    var rescueCurrentOwnerState: CleanupOwnerState { get }
     /// When the published capacity reading was taken.
     var rescueMeasuredAt: Date? { get }
     func rescueStage(_ node: FileNode) -> Bool
@@ -33,6 +34,7 @@ extension ScanViewModel: RescueHost {
     var rescueReport: CleanupReport? { cleanupReport }
     var rescueIsScanning: Bool { isScanning }
     var rescueIsBusy: Bool { isDeleting }
+    var rescueCurrentOwnerState: CleanupOwnerState { CleanupOwnerState.current() }
     var rescueMeasuredAt: Date? { rescuePlan?.measurement.measuredAt }
     func rescueStage(_ node: FileNode) -> Bool {
         let wasCollected = isCollected(node)
@@ -336,6 +338,10 @@ final class RescueReviewSnapshot: Identifiable {
     static func heldReason(_ recommendation: CleanupRecommendation) -> String? {
         if recommendation.risk == .protected || recommendation.action == .handoff {
             return "Managed by \(recommendation.owner). Use the owner route."
+        }
+        if recommendation.category.confidence == .safeRegenerable,
+           recommendation.ownerState != .stopped {
+            return "Quit the owner app, then scan again before adding generated files."
         }
         if recommendation.node.isSynthetic { return "This describes space, not a file." }
         if !(recommendation.identity?.hasStableObjectIdentifier ?? false) {
@@ -670,6 +676,11 @@ final class RescueWorkspaceModel: ObservableObject {
                 })
         }.map(\.recommendation)
         guard !chosen.isEmpty else { return }
+        let needsStoppedOwner = chosen.contains { $0.category.confidence == .safeRegenerable }
+        if needsStoppedOwner, host.rescueCurrentOwnerState != .stopped {
+            closeReview(notice: "The owner state changed. Quit Xcode, then review this group again. Nothing was added.")
+            return
+        }
         isStaging = true
         defer { isStaging = false }
         let identity = currentIdentity
@@ -687,6 +698,10 @@ final class RescueWorkspaceModel: ObservableObject {
               host.rescueSelectedSource?.path == review.sourcePath,
               !host.rescueIsScanning, !host.rescueIsBusy else {
             closeReview(notice: "The scan changed while checking. Nothing was added.")
+            return
+        }
+        if needsStoppedOwner, host.rescueCurrentOwnerState != .stopped {
+            closeReview(notice: "The owner started while checking. Quit Xcode, then review this group again. Nothing was added.")
             return
         }
         var addedBytes: Int64 = 0
