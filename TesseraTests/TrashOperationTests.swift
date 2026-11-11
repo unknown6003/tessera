@@ -117,7 +117,7 @@ struct TrashOperationTests {
         #expect(!FileManager.default.fileExists(atPath: a.originalURL.path))
     }
 
-    @Test("Post-move metadata settles before capture, while later ctime changes stay held")
+    @Test("A fresh review accepts only root metadata changes and freezes its ctime snapshot")
     func movedRootMetadata() throws {
         for changeAfterReview in [false, true] {
             let f = try Fixture()
@@ -150,6 +150,28 @@ struct TrashOperationTests {
             } else {
                 #expect(results.contains { if case .removed(let removed) = $0 { return removed.id == item.id }; return false })
             }
+        }
+    }
+
+    @Test("Fresh review still holds changed root contents, permissions and descendant metadata")
+    func reviewMetadataBoundary() throws {
+        for mutation in ["contents", "permissions", "descendant metadata"] {
+            let f = try Fixture()
+            defer { f.clean() }
+            let operation = TrashOperation(fileSystem: f)
+            let item = try moved(f, operation, name: "boundary", directory: mutation == "descendant metadata")
+            if mutation == "contents" {
+                try Data([3, 4]).write(to: item.trashURL)
+            } else {
+                let url = mutation == "permissions" ? item.trashURL : item.trashURL.appendingPathComponent("nested/deep/child")
+                let permissions = try #require(FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber)
+                let value = mutation == "permissions" ? NSNumber(value: permissions.intValue ^ 0o002) : permissions
+                try FileManager.default.setAttributes([.posixPermissions: value], ofItemAtPath: url.path)
+            }
+            let review = operation.review(ownerState: .stopped)
+            #expect(review.items.first?.hold == .changed)
+            expectHeld(operation.finish(review, selecting: [item.id], ownerState: .stopped), id: item.id)
+            #expect(f.removals.isEmpty)
         }
     }
 

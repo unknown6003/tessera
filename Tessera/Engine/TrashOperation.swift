@@ -66,6 +66,7 @@ final class TrashOperation: @unchecked Sendable {
     private var order: [UUID] = []
     private var recoveryFailures: [UUID: VerifiedTrashRemoval.Failure] = [:]
     private var pendingReview: Review?
+    private var pendingManifests: [UUID: [String: TrashFileState]] = [:]
     private var reviewedAt: ContinuousClock.Instant?
     private let maximumEntries: Int
     private let reviewLifetime: Duration = .seconds(300)
@@ -94,6 +95,7 @@ final class TrashOperation: @unchecked Sendable {
                           isCancelled: () -> Bool) -> MoveOutcome {
         lock.withLock {
             pendingReview = nil
+            pendingManifests.removeAll()
             reviewedAt = nil
             var captured: Record?
             var trackingHold: Hold?
@@ -139,7 +141,6 @@ final class TrashOperation: @unchecked Sendable {
                     guard trashURL.deletingLastPathComponent() == trashRoot,
                           trashURL != canonicalSource,
                           !trashURL.path.hasPrefix(canonicalSource.path + "/") else { throw Hold.unavailable }
-                    try waitForMovedRoot(at: trashURL, expected: before[""], isCancelled: isCancelled)
                     let after = try capture(at: trashURL, original: source,
                                             trashRoot: trashRoot, isCancelled: isCancelled)
                     guard Set(before.keys) == Set(after.keys), before.allSatisfy({ key, value in
@@ -180,11 +181,20 @@ final class TrashOperation: @unchecked Sendable {
     func review(ownerState: CleanupOwnerState,
                 isCancelled: () -> Bool = { false }) -> Review {
         lock.withLock {
+            pendingManifests.removeAll()
             let items = order.compactMap { records[$0] }.map { record in
-                ReviewedItem(item: record.item,
-                             hold: recoveryFailures[record.item.id] == nil
-                                ? validate(record, ownerState: ownerState, isCancelled: isCancelled) : .changed,
-                             recoveryURL: recoveryFailures[record.item.id]?.recoveryURL)
+                let recovery = recoveryFailures[record.item.id]
+                var hold: Hold?
+                if recovery != nil {
+                    hold = .changed
+                } else {
+                    do {
+                        pendingManifests[record.item.id] = try validatedManifest(
+                            record, expected: record.manifest, acceptingRootMetadataChange: true,
+                            ownerState: ownerState, isCancelled: isCancelled)
+                    } catch { hold = (error as? Hold) ?? .unavailable }
+                }
+                return ReviewedItem(item: record.item, hold: hold, recoveryURL: recovery?.recoveryURL)
             }
             let review = Review(operationID: id, items: items, token: UUID())
             pendingReview = review
@@ -212,7 +222,9 @@ final class TrashOperation: @unchecked Sendable {
                 return selected.map { .held($0.item, .staleReview) }
                     + unknown.map { .rejected($0, .staleReview) }
             }
+            let reviewedManifests = pendingManifests
             pendingReview = nil
+            pendingManifests.removeAll()
             self.reviewedAt = nil
             // Unknown selections hold the whole request. There is no partial
             // interpretation of a selection from another operation.
@@ -224,15 +236,19 @@ final class TrashOperation: @unchecked Sendable {
                 if let priorHold = pending.items.first(where: { $0.id == record.item.id })?.hold {
                     return .held(record.item, priorHold)
                 }
-                if let hold = validate(record, ownerState: ownerState, isCancelled: isCancelled) {
-                    return .held(record.item, hold)
+                guard let expected = reviewedManifests[record.item.id] else {
+                    return .held(record.item, .staleReview)
                 }
+                do {
+                    _ = try validatedManifest(record, expected: expected, ownerState: ownerState,
+                                              isCancelled: isCancelled)
+                } catch { return .held(record.item, (error as? Hold) ?? .unavailable) }
                 if isCancelled() { return .held(record.item, .cancelled) }
                 if record.requiresStoppedOwner, let ownerProbe, ownerProbe() != .stopped {
                     return .held(record.item, .ownerUnverified)
                 }
                 do {
-                    try fileSystem.remove(at: record.item.trashURL, expected: record.manifest)
+                    try fileSystem.remove(at: record.item.trashURL, expected: expected)
                     records.removeValue(forKey: record.item.id)
                     return .removed(record.item)
                 } catch {
@@ -248,6 +264,7 @@ final class TrashOperation: @unchecked Sendable {
     func revokeReview() {
         lock.withLock {
             pendingReview = nil
+            pendingManifests.removeAll()
             reviewedAt = nil
         }
     }
@@ -258,35 +275,43 @@ final class TrashOperation: @unchecked Sendable {
             recoveryFailures.removeAll()
             order.removeAll()
             pendingReview = nil
+            pendingManifests.removeAll()
             reviewedAt = nil
         }
     }
 
-    private func validate(_ record: Record, ownerState: CleanupOwnerState,
-                          isCancelled: () -> Bool) -> Hold? {
-        do {
-            if isCancelled() { throw Hold.cancelled }
-            if record.requiresStoppedOwner && ownerState != .stopped { throw Hold.ownerUnverified }
-            guard record.item.operationID == id,
-                  record.item.trashURL.deletingLastPathComponent() == record.trashRoot,
-                  CleanupClassifier.protectedCategory(for: record.item.originalURL.path) == nil else {
-                throw Hold.protectedContents
-            }
-            let root = try fileSystem.trashDirectory(for: record.item.trashURL).canonicalFileURL()
-            guard root == record.trashRoot else { throw Hold.changed }
-            let ancestors = try captureAncestors(of: record.item.trashURL)
-            guard Set(ancestors.keys) == Set(record.ancestors.keys),
-                  ancestors.allSatisfy({ path, state in
-                      record.ancestors[path]?.sameAncestor(as: state) == true
-                  }) else { throw Hold.changed }
-            let current = try capture(at: record.item.trashURL, original: record.item.originalURL,
-                                      trashRoot: record.trashRoot, isCancelled: isCancelled)
-            guard current == record.manifest,
-                  current[""]?.volumeRoot == record.volumeRoot,
-                  let identity = ScanIdentity.current(at: record.item.trashURL),
-                  record.item.identity.matches(identity) else { throw Hold.changed }
-            return nil
-        } catch { return (error as? Hold) ?? .unavailable }
+    private func validatedManifest(_ record: Record, expected: [String: TrashFileState],
+                                   acceptingRootMetadataChange: Bool = false,
+                                   ownerState: CleanupOwnerState,
+                                   isCancelled: () -> Bool) throws -> [String: TrashFileState] {
+        if isCancelled() { throw Hold.cancelled }
+        if record.requiresStoppedOwner && ownerState != .stopped { throw Hold.ownerUnverified }
+        guard record.item.operationID == id,
+              record.item.trashURL.deletingLastPathComponent() == record.trashRoot,
+              CleanupClassifier.protectedCategory(for: record.item.originalURL.path) == nil else {
+            throw Hold.protectedContents
+        }
+        let root = try fileSystem.trashDirectory(for: record.item.trashURL).canonicalFileURL()
+        guard root == record.trashRoot else { throw Hold.changed }
+        let ancestors = try captureAncestors(of: record.item.trashURL)
+        guard Set(ancestors.keys) == Set(record.ancestors.keys),
+              ancestors.allSatisfy({ path, state in
+                  record.ancestors[path]?.sameAncestor(as: state) == true
+              }) else { throw Hold.changed }
+        let current = try capture(at: record.item.trashURL, original: record.item.originalURL,
+                                  trashRoot: record.trashRoot, isCancelled: isCancelled)
+        // macOS can change the moved root's ctime after trashItem returns.
+        // Only a fresh review may establish a new root-metadata baseline.
+        // Descendants remain exact; finishing compares that review exactly.
+        guard Set(current.keys) == Set(expected.keys), current.allSatisfy({ key, state in
+            guard let previous = expected[key] else { return false }
+            return key.isEmpty && acceptingRootMetadataChange
+                ? previous.sameMovedObject(as: state) : previous == state
+        }),
+              current[""]?.volumeRoot == record.volumeRoot,
+              let identity = ScanIdentity.current(at: record.item.trashURL),
+              record.item.identity.matches(identity) else { throw Hold.changed }
+        return current
     }
 
     private func captureAncestors(of url: URL) throws -> [String: TrashFileState] {
@@ -300,31 +325,6 @@ final class TrashOperation: @unchecked Sendable {
             if cursor.path == "/" { return result }
             cursor.deleteLastPathComponent()
         }
-    }
-
-    // FileManager may return before macOS finishes updating the moved root's
-    // metadata. Capture only after a short stable interval; later validation
-    // still compares every field, including ctime.
-    private func waitForMovedRoot(at url: URL, expected: TrashFileState?,
-                                  isCancelled: () -> Bool) throws {
-        guard let expected else { throw Hold.incomplete }
-        let clock = ContinuousClock()
-        let deadline = clock.now + .milliseconds(250)
-        var previous: TrashFileState?
-        var stableSince = clock.now
-        while clock.now < deadline {
-            if isCancelled() { throw Hold.cancelled }
-            let current = try fileSystem.state(at: url)
-            guard current.isUsable, expected.sameMovedObject(as: current) else { throw Hold.changed }
-            if current != previous {
-                previous = current
-                stableSince = clock.now
-            } else if clock.now - stableSince >= .milliseconds(20) {
-                return
-            }
-            Thread.sleep(forTimeInterval: 0.005)
-        }
-        throw Hold.changed
     }
 
     private func capture(at root: URL, original: URL, trashRoot: URL?,

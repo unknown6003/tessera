@@ -92,3 +92,23 @@ This runs after a successful move off the UI thread; it is not a scan timeout.
 A disposable regression simulates the late metadata write and checks that a
 ctime-only change after review remains held. Native red/green, the real Trash
 probe and the full suite still need to qualify this new code.
+
+## Replace the timing assumption with a review snapshot
+
+The 5e4c0f1 native run passed the deterministic red/green fixture, all 153 tests
+and unsigned Release. Its real Trash probe still held both moved roots: another
+ctime-only update arrived 28–33 ms after the move, past the 20 ms quiet window.
+Evidence remains at
+`/Users/abdwy/.local/share/tessera-native-5e4c0f1-1393f633cc3d/`.
+Increasing that wait would not prove completion of system metadata work.
+
+The wait is now removed. A fresh review may accept only a ctime difference on
+the moved root while its identity, mode, owner, flags, links, size, blocks and
+mtime still match. Descendant states must match exactly. That review's complete
+manifest stays private inside the operation and is bound to its one-use token.
+Finish compares it exactly, including root ctime, then passes that same manifest
+to the descriptor helper. A later root change stays held until another fresh
+review. Root contents, permissions and descendant metadata remain regression
+cases. Native proof and a fresh Risk review must qualify this policy before
+release. This remains metadata validation, not a content-hash guarantee against
+a hostile same-user writer who can restore timestamps.
