@@ -39,3 +39,18 @@ The branch now uses physical paths for tracking and path comparison in that hook
 Both disposable test fixtures also retain the physical temporary root. Symlink,
 identity, volume and protected-path checks remain in place. The full Trash suites,
 the newer descriptor helper and the full current suite still need native proof.
+
+## Descriptor helper boundary, 12 November
+
+At 0f3b392 both Trash suites compiled. The first run passed 16 of 28 tests and
+failed 12. The first rejecting guard was the helper's parent-URL equality:
+Foundation retained a trailing slash on one parent URL. A private-copy change
+comparing the standardized paths passed all 28 tests with no other source change.
+The branch now contains that change. No no-follow, identity or manifest check was
+removed. Evidence is retained at
+`/Users/abdwy/.local/share/tessera-qual-0f3b392-nov12/`.
+
+The same run generated the missing Xcode project entries. The returned 15,223-byte
+patch has SHA-256 `97d7918b7fa8563beef69731b0c4871fb929207c14433ff25e54bd54dc9b93f7`.
+It was checked and applied without manual project edits. Full Debug, unsigned
+Release and the production Finder Trash lookup remain unqualified.

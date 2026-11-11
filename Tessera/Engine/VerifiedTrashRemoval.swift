@@ -84,7 +84,7 @@ enum VerifiedTrashRemoval {
         func run() throws {
             try validateManifest()
             guard url.isFileURL, trash.isFileURL,
-                  url.deletingLastPathComponent().standardizedFileURL == trash.standardizedFileURL,
+                  url.deletingLastPathComponent().standardizedFileURL.path == trash.standardizedFileURL.path,
                   VerifiedTrashRemoval.validName(url.lastPathComponent), let root = expected[""] else {
                 throw Stop(reason: .invalidManifest)
             }
