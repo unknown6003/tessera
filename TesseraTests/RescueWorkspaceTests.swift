@@ -218,6 +218,27 @@ struct RescueWorkspaceTests {
         #expect(model.selection.isEmpty)
     }
 
+    @Test("Focused item offsets stay correct as the review search changes")
+    func filteredFocusIndex() async throws {
+        let (defaults, name) = freshDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let (model, host, _) = fixture(defaults: defaults)
+        model.openReview(try #require(model.rows.first { $0.bytes == 550 }))
+        try await waitForReview(model)
+        let item = try #require(model.reviewItems.first { $0.recommendation.node.name == "CacheB" })
+        model.detailItemID = item.recommendation.id
+        #expect(model.detailIndex == 1)
+        model.reviewSearch = "CacheB"
+        #expect(model.detailIndex == 0)
+        #expect(model.detailItem?.recommendation.id == item.recommendation.id)
+        model.reviewSearch = "CacheA"
+        #expect(model.detailIndex == nil)
+        #expect(model.detailItem == nil)
+        model.reviewSearch = ""
+        #expect(model.detailIndex == 1)
+        #expect(host.staged.isEmpty)
+    }
+
     @Test("Managed stores cannot be selected")
     func managedHeld() async throws {
         let (defaults, name) = freshDefaults()

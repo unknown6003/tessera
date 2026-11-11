@@ -333,14 +333,7 @@ enum VerifiedTrashRemoval {
         }
 
         func state(_ value: Darwin.stat, _ expected: TrashFileState) -> TrashFileState {
-            TrashFileState(device: UInt32(bitPattern: value.st_dev), inode: UInt64(value.st_ino),
-                           mode: value.st_mode, owner: value.st_uid, group: value.st_gid,
-                           links: value.st_nlink, size: value.st_size, blocks: value.st_blocks,
-                           flags: value.st_flags,
-                           modifiedSeconds: Int64(value.st_mtimespec.tv_sec), modifiedNanoseconds: Int64(value.st_mtimespec.tv_nsec),
-                           changedSeconds: Int64(value.st_ctimespec.tv_sec), changedNanoseconds: Int64(value.st_ctimespec.tv_nsec),
-                           bornSeconds: Int64(value.st_birthtimespec.tv_sec), bornNanoseconds: Int64(value.st_birthtimespec.tv_nsec),
-                           volumeIdentifier: expected.volumeIdentifier, volumeRoot: expected.volumeRoot)
+            TrashFileState(stat: value, volumeIdentifier: expected.volumeIdentifier, volumeRoot: expected.volumeRoot)
         }
 
         func matches(_ value: Darwin.stat, _ expected: TrashFileState, moved: Bool) throws {

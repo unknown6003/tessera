@@ -218,27 +218,7 @@ struct CleanupSuggestionsView: View {
                     .controlSize(.small)
             }
         }
-        switch workspace.handoff {
-        case .none:
-            EmptyView()
-        case .waiting(let owner), .deferred(let owner):
-            HStack(spacing: 8) {
-                Text("Opened \(owner). Tessera checks this source once when you return.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Button("Don't check") { workspace.cancelHandoff() }
-                    .tesseraButtonStyle(.flat)
-                    .controlSize(.small)
-            }
-        case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .font(.subheadline)
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Retry") { Task { await workspace.retryOwnerHandoff() } }
-                .tesseraButtonStyle(.flat).controlSize(.small)
-                .disabled(workspace.isOpeningOwner)
-        }
+        RescueHandoffStatusView(workspace: workspace, font: .subheadline)
         if plan.coverage.state != .complete {
             VStack(alignment: .leading, spacing: 4) {
                 Label(plan.coverage.title + ". Known items are shown; some areas were not checked.",

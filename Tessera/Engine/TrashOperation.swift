@@ -406,6 +406,22 @@ struct TrashFileState: Equatable, Sendable {
     }
 }
 
+extension TrashFileState {
+    init(stat value: Darwin.stat, volumeIdentifier: String, volumeRoot: URL) {
+        self.init(device: UInt32(bitPattern: value.st_dev), inode: UInt64(value.st_ino),
+                  mode: value.st_mode, owner: value.st_uid, group: value.st_gid,
+                  links: value.st_nlink, size: value.st_size, blocks: value.st_blocks,
+                  flags: value.st_flags,
+                  modifiedSeconds: Int64(value.st_mtimespec.tv_sec),
+                  modifiedNanoseconds: Int64(value.st_mtimespec.tv_nsec),
+                  changedSeconds: Int64(value.st_ctimespec.tv_sec),
+                  changedNanoseconds: Int64(value.st_ctimespec.tv_nsec),
+                  bornSeconds: Int64(value.st_birthtimespec.tv_sec),
+                  bornNanoseconds: Int64(value.st_birthtimespec.tv_nsec),
+                  volumeIdentifier: volumeIdentifier, volumeRoot: volumeRoot)
+    }
+}
+
 struct LocalTrashFileSystem: TrashFileSystem {
     func moveToTrash(at url: URL) throws -> URL? {
         var result: NSURL?
@@ -427,17 +443,7 @@ struct LocalTrashFileSystem: TrashFileSystem {
         let values = try url.resourceValues(forKeys: [.volumeUUIDStringKey, .volumeURLKey])
         guard let volume = values.volumeUUIDString, !volume.isEmpty,
               let root = values.volume, root.isFileURL else { throw TrashOperation.Hold.unavailable }
-        return TrashFileState(device: UInt32(bitPattern: info.st_dev), inode: UInt64(info.st_ino),
-                              mode: info.st_mode, owner: info.st_uid, group: info.st_gid,
-                              links: info.st_nlink, size: info.st_size, blocks: info.st_blocks,
-                              flags: info.st_flags,
-                              modifiedSeconds: Int64(info.st_mtimespec.tv_sec),
-                              modifiedNanoseconds: Int64(info.st_mtimespec.tv_nsec),
-                              changedSeconds: Int64(info.st_ctimespec.tv_sec),
-                              changedNanoseconds: Int64(info.st_ctimespec.tv_nsec),
-                              bornSeconds: Int64(info.st_birthtimespec.tv_sec),
-                              bornNanoseconds: Int64(info.st_birthtimespec.tv_nsec),
-                              volumeIdentifier: volume,
+        return TrashFileState(stat: info, volumeIdentifier: volume,
                               volumeRoot: root.resolvingSymlinksInPath().standardizedFileURL)
     }
 

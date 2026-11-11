@@ -9,6 +9,7 @@ struct RescueReviewView: View {
     let review: RescueReviewSnapshot
 
     private static let pitch: CGFloat = 50
+    @FocusState private var rowsFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -45,6 +46,16 @@ struct RescueReviewView: View {
                     if let item = workspace.reviewItem(for: node) { row(item) }
                 }
                 .frame(height: min(CGFloat(workspace.reviewNodes.count) * Self.pitch + 8, 420))
+                .focusable().focused($rowsFocused)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Items in \(review.title)")
+                .accessibilityHint("Use arrow keys to inspect items. Space selects an eligible item. Home and End reach the first and last item.")
+                .onKeyPress(keys: [.upArrow, .downArrow, .home, .end, .pageUp, .pageDown, .space]) { press in
+                    guard rowsFocused, press.modifiers.intersection([.command, .control, .option]).isEmpty else {
+                        return .ignored
+                    }
+                    return handleRowKey(press.key) ? .handled : .ignored
+                }
                 .overlay(alignment: .top) { Divider() }
                 .overlay(alignment: .bottom) { Divider() }
             }
@@ -96,29 +107,8 @@ struct RescueReviewView: View {
         .padding(.vertical, 6)
     }
 
-    @ViewBuilder
     private var handoffStatus: some View {
-        switch workspace.handoff {
-        case .none:
-            EmptyView()
-        case .waiting(let owner), .deferred(let owner):
-            HStack(spacing: 8) {
-                Text("Opened \(owner). Tessera checks again when you return.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Don't check") { workspace.cancelHandoff() }
-                    .tesseraButtonStyle(.flat)
-                    .controlSize(.small)
-            }
-        case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .font(.caption)
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Retry") { Task { await workspace.retryOwnerHandoff() } }
-                .tesseraButtonStyle(.flat).controlSize(.small)
-                .disabled(workspace.isOpeningOwner)
-        }
+        RescueHandoffStatusView(workspace: workspace, font: .caption)
     }
 
     // MARK: Files
@@ -169,7 +159,11 @@ struct RescueReviewView: View {
         let isDetail = workspace.detailItemID == recommendation.id
         return HStack(spacing: 10) {
             if item.heldReason == nil {
-                Button { workspace.toggle(item) } label: {
+                Button {
+                    workspace.detailItemID = recommendation.id
+                    workspace.toggle(item)
+                    rowsFocused = true
+                } label: {
                     Image(systemName: selected || inList ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
                         .foregroundStyle(selected || inList ? Theme.electricBlue : Theme.mutedForeground)
@@ -187,7 +181,10 @@ struct RescueReviewView: View {
                     .accessibilityLabel("Held")
             }
 
-            Button { workspace.detailItemID = isDetail ? nil : recommendation.id } label: {
+            Button {
+                workspace.detailItemID = isDetail ? nil : recommendation.id
+                rowsFocused = true
+            } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(recommendation.node.name)
                         .font(.callout.weight(.semibold))
@@ -216,6 +213,34 @@ struct RescueReviewView: View {
         .frame(height: Self.pitch)
         .background(isDetail ? Theme.selectionTint : Color.clear,
                     in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay {
+            if isDetail && rowsFocused {
+                RoundedRectangle(cornerRadius: 6).stroke(Theme.electricBlue, lineWidth: 1)
+            }
+        }
+    }
+
+    private func handleRowKey(_ key: KeyEquivalent) -> Bool {
+        let items = workspace.reviewItems
+        guard !items.isEmpty, !vm.isScanning, !vm.isDeleting else { return false }
+        let index = workspace.detailIndex
+        let next: Int
+        switch key {
+        case .upArrow: next = max(0, (index ?? 1) - 1)
+        case .downArrow: next = min(items.count - 1, (index ?? -1) + 1)
+        case .home: next = 0
+        case .end: next = items.count - 1
+        case .pageUp: next = max(0, (index ?? 8) - 8)
+        case .pageDown: next = min(items.count - 1, (index ?? -1) + 8)
+        case .space:
+            guard let index else { return false }
+            let item = items[index]
+            if !vm.isCollected(item.recommendation.node) { workspace.toggle(item) }
+            return true
+        default: return false
+        }
+        workspace.detailItemID = items[next].recommendation.id
+        return true
     }
 
     private func detail(_ item: RescueReviewSnapshot.Item) -> some View {
@@ -267,5 +292,33 @@ struct RescueReviewView: View {
         var line = "\(Theme.format(recommendation.physicalBytes)) allocated"
         if let logical = recommendation.logicalBytes { line += " · \(Theme.format(logical)) logical" }
         return line + ". Space returns only after removal, and shared blocks can reduce it."
+    }
+}
+
+
+struct RescueHandoffStatusView: View {
+    @ObservedObject var workspace: RescueWorkspaceModel
+    let font: Font
+
+    var body: some View {
+        Group {
+            switch workspace.handoff {
+            case .none:
+                EmptyView()
+            case .waiting(let owner), .deferred(let owner):
+                HStack(spacing: 8) {
+                    Text("Opened \(owner). Tessera checks this source once when you return.")
+                        .foregroundStyle(Theme.mutedForeground)
+                    Button("Don't check") { workspace.cancelHandoff() }
+                        .tesseraButtonStyle(.flat).controlSize(.small)
+                }
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                Button("Retry") { Task { await workspace.retryOwnerHandoff() } }
+                    .tesseraButtonStyle(.flat).controlSize(.small)
+                    .disabled(workspace.isOpeningOwner)
+            }
+        }.font(font)
     }
 }

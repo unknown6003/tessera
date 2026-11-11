@@ -383,6 +383,7 @@ final class RescueWorkspaceModel: ObservableObject {
     @Published private(set) var reviewItems: [RescueReviewSnapshot.Item] = []
     /// The same items as nodes, for WindowedRows.
     @Published private(set) var reviewNodes: [FileNode] = []
+    private var reviewIndexByID: [String: Int] = [:]
     @Published var selection = Set<String>()
     @Published var detailItemID: String?
     @Published private(set) var reviewNotice: String?
@@ -550,6 +551,7 @@ final class RescueWorkspaceModel: ObservableObject {
         guard let review else {
             reviewItems = []
             reviewNodes = []
+            reviewIndexByID = [:]
             return
         }
         let kept = Dictionary(grouping: keptItems.filter { $0.sourcePath == review.sourcePath }, by: \.path)
@@ -559,6 +561,10 @@ final class RescueWorkspaceModel: ObservableObject {
             guard let candidates = kept[item.recommendation.path] else { return true }
             return !candidates.contains { $0.matches(item.recommendation, sourcePath: review.sourcePath) }
         }
+        var indices: [String: Int] = [:]
+        indices.reserveCapacity(items.count)
+        for (index, item) in items.enumerated() { indices[item.recommendation.id] = index }
+        reviewIndexByID = indices
         reviewItems = items
         reviewNodes = items.map(\.recommendation.node)
     }
@@ -566,13 +572,13 @@ final class RescueWorkspaceModel: ObservableObject {
     func reviewItem(for node: FileNode) -> RescueReviewSnapshot.Item? { review?.item(for: node) }
 
     var detailItem: RescueReviewSnapshot.Item? {
-        guard let detailItemID else { return nil }
-        return reviewItems.first { $0.recommendation.id == detailItemID }
+        guard let index = detailIndex, reviewItems.indices.contains(index) else { return nil }
+        return reviewItems[index]
     }
 
     var detailIndex: Int? {
         guard let detailItemID else { return nil }
-        return reviewItems.firstIndex { $0.recommendation.id == detailItemID }
+        return reviewIndexByID[detailItemID]
     }
 
     /// Open one group in the main area. Nothing starts selected.
