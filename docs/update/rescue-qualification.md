@@ -331,3 +331,62 @@ The report called the unchanged two-item group after staging stale. That is
 expected: staging does not remove its allocated footprint. The separate removal
 regression verifies that the group shrinks after an actual removal. The Release
 log's 13 warnings still need classification before final qualification.
+
+## Final release review, round 1
+
+Sol retained three Spec findings on bfac606. Standards and Risk retained none.
+The fixes are prepared, with native proof pending:
+
+- New removal results leave the legacy capacity target unset. Result text no
+  longer grades that target, including when an older saved case is displayed.
+  The optional additional-GB goal remains owned by the workspace coordinator.
+- ContentView keeps the previous Rescue result during a same-source refresh.
+  First discovery and a different-source scan still use the scan screen. A
+  regression checks source identity, the retained timestamp and Cancel. Native
+  window evidence must separately prove the Checking again state is visible.
+- Successful removal of the scanned root clears the tree and its cached scan.
+  The rebuilt report is empty. The result, source identity and tracked Trash
+  operation remain available, and the dock can show them without a scan tree.
+  A disposable-root regression checks the tree, recommendations and result.
+
+The native red control uses the old VM and result-status implementation with
+the new tests. It retains only the new source-display predicate so the test
+file compiles. That predicate is not used by the three red removal cases.
+Full Debug, unsigned Release, the next Sol round, final native acceptance and
+both exact-head external CI lanes remain required before publication.
+
+## Large review and remaining narration failure
+
+The bfac606 native pass built unsigned universal Release and verified all 372
+source blobs. Actual VoiceOver spoke the new owner label, selected state and
+Add action. It did not speak the Added result in three attempts. The text was
+on screen, and focus returned to the rows. This does not prove whether the
+announcement was skipped or replaced. A window-targeted AppKit announcement is
+a diagnostic candidate, not an applied fix. Evidence:
+`/tmp/tessera-bfac-ui/REPORT.md`.
+
+The same run verified the owned 100,000-file group. End, Home, single-item
+staging, search, Select all and Clear worked. Only 17 rows appeared in AX at
+each tested size. Opening and reopening took 5.60 and 4.90 seconds in single
+observations; peak sampled RSS was 584 MB. These are not p99 results. The
+scanning heartbeat does not measure review responsiveness. Back restored group
+focus and selection but not the review's End scroll position.
+
+Finder return started exactly one refresh; a later ordinary app switch started
+none. Missing UTM showed steps and Retry without arming a refresh. Empty and
+partial states passed. Cancel was exercised through AX. Reduce Motion was
+restored, but 200 ms captures did not establish transition behavior.
+
+The pass also found that the list's Space handler can consume a key meant for
+a Tab-focused row button. Each row button now has its own focus value, so the
+list handler can distinguish those targets. This repair still needs native
+red/green proof. Managed-store guidance now warns that the fresh check clears
+the Cleanup List and calls the app a management route rather than claiming it
+owns every row. The three existing Theme main-actor warnings have a scoped
+actor-isolation repair awaiting compilation. No warning fix is claimed yet.
+
+The Mac relay became unreachable after this report. A headless red/green job
+was already running on the earlier release-fix patch. Keep that task and its
+evidence separate from the later row-focus and warning changes. A new native
+announcement probe could not start. No final review or publication is justified
+until the missing native checks and both exact-head CI lanes pass.

@@ -631,7 +631,9 @@ struct WorkspaceSwitch: NSViewRepresentable {
             guard let window else { return }
             for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
                 observers.append(NotificationCenter.default.addObserver(
-                    forName: name, object: window, queue: .main) { [weak self] _ in self?.needsDisplay = true })
+                    forName: name, object: window, queue: .main) { [weak self] _ in
+                        MainActor.assumeIsolated { self?.needsDisplay = true }
+                    })
             }
         }
 
@@ -645,7 +647,7 @@ struct WorkspaceSwitch: NSViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject {
+    @MainActor final class Coordinator: NSObject {
         var parent: WorkspaceSwitch
         init(_ parent: WorkspaceSwitch) { self.parent = parent }
         @objc func changed(_ sender: NSSegmentedControl) { parent.selection = sender.selectedSegment }

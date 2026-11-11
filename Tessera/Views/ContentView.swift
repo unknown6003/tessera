@@ -106,7 +106,9 @@ struct ContentView: View {
 
     private var removalBusy: Bool { vm.isDeleting || removalRequested }
     /// The Cleanup List dock is on screen.
-    private var dockIsVisible: Bool { vm.rootNode != nil || removalBusy }
+    private var dockIsVisible: Bool {
+        vm.rootNode != nil || removalBusy || vm.lastRemovalSummary != nil || vm.hasTrackedTrash
+    }
 
     // The body is split into stages so each modifier chain type-checks on
     // its own (Swift 6 timed out on one long chain). The stages nest in the
@@ -128,7 +130,7 @@ struct ContentView: View {
 
                 VStack(spacing: 0) {
                     sourceHeader
-                    if vm.isScanning {
+                    if vm.isScanning && !(appMode == .rescue && vm.hasRescueResultsForSelectedSource) {
                         ScanningView(vm: vm)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if appMode == .rescue && vm.errorMessage == nil && !vm.needsFullDiskAccess {

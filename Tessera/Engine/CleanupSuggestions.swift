@@ -1180,10 +1180,9 @@ struct RescueVerification: Codable, Equatable, Sendable {
         }
         if hasMeasurementMismatch { return "Removed, but reclaimed space is not proven" }
         if after?.primaryBytes == nil {
-            return requestedBytes != nil ? "Target could not be verified" : "Usable space change could not be verified"
+            return "Usable space change could not be verified"
         }
         if before?.primaryBytes == nil { return "Usable space change could not be verified" }
-        if requestedBytes != nil && !targetReached { return "Target not reached" }
         return "Verified after measurement"
     }
 }

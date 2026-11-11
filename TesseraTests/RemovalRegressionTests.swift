@@ -66,6 +66,20 @@ struct RemovalRegressionTests {
         #expect(result.recoveryNote.contains("empty it"))
     }
 
+    @Test("Legacy capacity targets do not grade a measured cleanup result")
+    func legacyTargetDoesNotGradeCleanup() {
+        let before = RescueMeasurement(volumePath: "/fixture", totalBytes: 1_000,
+            availableBytes: 100, freeBytes: 100, logicalBytes: 900, physicalBytes: 900,
+            measuredAt: Date(timeIntervalSince1970: 1))
+        let after = RescueMeasurement(volumePath: "/fixture", totalBytes: 1_000,
+            availableBytes: 130, freeBytes: 130, logicalBytes: 870, physicalBytes: 870,
+            measuredAt: Date(timeIntervalSince1970: 2))
+        let result = RescueVerification(requestedBytes: 250, movedBytes: 30,
+            movedPaths: nil, failedBytes: 0, failedPaths: [], heldBytes: nil, heldPaths: nil,
+            measurementMismatchPaths: nil, before: before, after: after)
+        #expect(result.status == "Verified after measurement")
+    }
+
     @Test("A resource fork uses the same logical size in scan and removal checks")
     func resourceForkIdentity() async throws {
         let url = try fixture()
@@ -115,7 +129,73 @@ struct RemovalRegressionTests {
         #expect(summary.held == 0 && summary.failed == 0)
         #expect(summary.permanently)
         #expect(vm.rescueVerification?.heldPaths?.contains(unrelated.url.path) == true)
+        #expect(vm.rescueVerification?.requestedBytes == nil)
+        #expect(vm.savedRescueCase?.verification?.requestedBytes == nil)
         #expect(FileManager.default.fileExists(atPath: unrelated.url.path))
+    }
+
+    @Test("Removing the scanned source clears its tree and recommendations")
+    func removalOfScanRoot() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(repeating: 1, count: 4096).write(to: url.appendingPathComponent("owned.dmg"))
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
+        vm.startScan(volumeURL: url)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(!vm.isScanning)
+        let root = try #require(vm.rootNode)
+        try #require(!root.children.isEmpty)
+        vm.addToCollector(root)
+
+        try await vm.deletePermanently([root])
+
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        #expect(vm.rootNode == nil)
+        #expect(vm.currentRoot == nil)
+        #expect(vm.collector.isEmpty)
+        #expect(vm.cleanupReport?.recommendations.isEmpty == true)
+        #expect(vm.rescuePlan?.recommendations.isEmpty == true)
+        #expect(vm.rescueVerification?.movedPaths == [url.standardizedFileURL.path])
+        #expect(vm.lastRemovalSummary?.moved == 1)
+        #expect(!vm.hasCachedScan(for: url))
+    }
+
+    @Test("Only a same-source refresh retains the displayed Rescue result")
+    func refreshKeepsSameSourceResults() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data([1]).write(to: url.appendingPathComponent("owned.dmg"))
+        let other = try fixture()
+        defer { try? FileManager.default.removeItem(at: other) }
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
+        vm.startScan(volumeURL: url)
+        #expect(!vm.hasRescueResultsForSelectedSource)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(!vm.isScanning)
+        let rootID = try #require(vm.rootNode?.id)
+        let checked = try #require(vm.rescuePlan?.measurement.measuredAt)
+
+        vm.startScan(volumeURL: url.standardizedFileURL)
+        #expect(vm.isScanning)
+        #expect(vm.hasRescueResultsForSelectedSource)
+        #expect(vm.rootNode?.id == rootID)
+        #expect(vm.rescuePlan?.measurement.measuredAt == checked)
+        vm.cancelScan()
+        #expect(vm.rootNode?.id == rootID)
+        #expect(vm.rescuePlan?.measurement.measuredAt == checked)
+
+        vm.startScan(volumeURL: other)
+        #expect(vm.isScanning)
+        #expect(!vm.hasRescueResultsForSelectedSource)
+        vm.cancelScan()
     }
 
     @Test("Successful removal refreshes Rescue rows from the pruned tree")

@@ -542,12 +542,6 @@ struct CleanupSuggestionsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if let requested = verification.requestedBytes {
-                Text("Requested usable space: \(Theme.format(requested))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             if let onFinishTrash, verification.removalMethod != .permanent {
                 Button("Finish these Trash items…", action: onFinishTrash)
                     .tesseraButtonStyle(.flat)

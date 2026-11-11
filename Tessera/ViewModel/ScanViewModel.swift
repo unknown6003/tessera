@@ -60,6 +60,12 @@ final class ScanViewModel: ObservableObject {
     @Published var didRunDuplicates = false
     @Published var duplicateProgress = DuplicateProgress()
     @Published var isScanning = false
+    var hasRescueResultsForSelectedSource: Bool {
+        guard rootNode != nil, cleanupReport != nil, let plan = rescuePlan,
+              let source = selectedSourceURL, let scannedURL,
+              source.standardizedFileURL.path == scannedURL.standardizedFileURL.path else { return false }
+        return plan.sourcePath == source.standardizedFileURL.path
+    }
     @Published private(set) var isDeleting = false
     @Published private(set) var isReadingTree = false
     private var treeReaders = 0
@@ -1065,13 +1071,17 @@ final class ScanViewModel: ObservableObject {
             .reduce(Int64(0)) { $0 + $1.physicalSize }
         // The background pass is done. It cannot read the arrays as they are pruned.
         try? prune(attemptedTargets, failures: failures)
+        let remainingRoot = rootNode
         let ownerAfterRemoval = CleanupOwnerState.current()
         let coverageComplete = rescuePlan?.coverage.state == .complete
         let updated = try await Self.offMain { () -> (RescueMeasurement?, CleanupReport?) in
-            guard let root, let source else { return (nil, nil) }
-            let report = CleanupClassifier.classify(root: root, ownerState: ownerAfterRemoval,
+            guard let source else { return (nil, nil) }
+            guard let remainingRoot else {
+                return (RescueMeasurement.captureCapacity(volumeURL: source), CleanupReport(recommendations: []))
+            }
+            let report = CleanupClassifier.classify(root: remainingRoot, ownerState: ownerAfterRemoval,
                                                     coverageComplete: coverageComplete)
-            return (RescueMeasurement.capture(volumeURL: source, root: root), report)
+            return (RescueMeasurement.capture(volumeURL: source, root: remainingRoot), report)
         }
         if let report = updated.1 {
             cleanupReport = report
@@ -1274,7 +1284,7 @@ final class ScanViewModel: ObservableObject {
         let heldRecommendationIDs = Set(heldRecommendations.map { $0.node.id })
         let unplannedHeldNodes = heldNodes.filter { !heldRecommendationIDs.contains($0.id) }
         rescueVerification = RescueVerification(
-            requestedBytes: rescuePlan?.targetSpace,
+            requestedBytes: nil,
             movedBytes: movedBytes,
             movedPaths: movedPaths.isEmpty ? nil : movedPaths,
             failedBytes: failedBytes,
@@ -1319,6 +1329,17 @@ final class ScanViewModel: ObservableObject {
 
         let removed = topLevel.filter { !failedURLs.contains($0.url.standardizedFileURL) }
         let removedIDs = Set(removed.map(\.id))
+        if let root = rootNode, removedIDs.contains(root.id) {
+            rootNode = nil
+            currentRoot = nil
+            duplicateGroups = []
+            didRunDuplicates = false
+            if let source = scannedURL {
+                scanCache.removeValue(forKey: source)
+                cacheLRU.removeAll { $0 == source }
+            }
+            previousScan = nil
+        }
         let byParent = Dictionary(grouping: removed.filter { $0.parent != nil }, by: { $0.parent!.id })
         for siblings in byParent.values {
             siblings.first?.parent?.removeChildren(withIDs: Set(siblings.map(\.id)))

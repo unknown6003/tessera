@@ -9,7 +9,10 @@ struct RescueReviewView: View {
     let review: RescueReviewSnapshot
 
     private static let pitch: CGFloat = 50
-    private enum Focus: Hashable { case back, search, selectAll, clear, add, rows }
+    private enum Focus: Hashable {
+        case back, search, selectAll, clear, add, rows
+        case rowSelect(String), rowDetail(String)
+    }
     @FocusState private var focus: Focus?
     @State private var ownWindow = WindowReference()
 
@@ -104,7 +107,7 @@ struct RescueReviewView: View {
 
     private func ownerGuidance(_ route: RescueOwnerRoute) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Managed by \(route.ownerName == "Finder" ? (review.items.first?.recommendation.owner ?? "its app") : route.ownerName)")
+            Text("Manage with \(route.ownerName == "Finder" ? (review.items.first?.recommendation.owner ?? "its app") : route.ownerName)")
                 .font(.headline)
             Text(route.steps)
                 .font(.subheadline)
@@ -116,6 +119,11 @@ struct RescueReviewView: View {
             Text("Tessera does not delete this store. When you come back, it checks this source once.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if !vm.collector.isEmpty {
+                Text("That fresh check clears the Cleanup List. Review the current items before adding them again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Button {
                 let paths = workspace.reviewItems.prefix(1).map(\.recommendation.path)
                 Task { await workspace.openOwner(route, revealing: paths) }
@@ -207,6 +215,7 @@ struct RescueReviewView: View {
                 }
                 .tesseraButtonStyle(.interactive)
                 .disabled(inList)
+                .focused($focus, equals: .rowSelect(recommendation.id))
                 .accessibilityLabel("Select \(recommendation.node.name)")
                 .accessibilityValue(inList ? "In Cleanup List" : (selected ? "Selected" : "Not selected"))
             } else {
@@ -237,6 +246,7 @@ struct RescueReviewView: View {
                 .contentShape(Rectangle())
             }
             .tesseraButtonStyle(.interactive)
+            .focused($focus, equals: .rowDetail(recommendation.id))
             .accessibilityLabel("\(recommendation.node.name), \(Theme.format(recommendation.physicalBytes)) allocated. Owner: \(recommendation.owner).")
             .accessibilityValue(item.heldReason ?? (inList ? "In Cleanup List" : ""))
             .accessibilityHint(isDetail ? "Hides details" : "Shows path, owner and effect")
