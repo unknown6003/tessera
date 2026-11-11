@@ -1,12 +1,12 @@
 # Release Tessera from owned hardware
 
-Tessera releases stay in `0.x.x`. The next candidate is `0.2.2`, build `14`.
-`0.2.1`, build `13`, from `9006d19`, is the latest public release. `0.2.0`,
-build `12`, was a candidate that was not published. Withdrawn `1.0.0`, build
-`11`, stays a draft.
-The public release stays latest until a new candidate passes all gates and an
-operator publishes it.
-A major version needs Ammar's explicit permission and a policy change.
+Tessera releases stay in `0.x.x`. The latest public release is `0.2.2`,
+build `14`, published on 10 November 2026. The Rescue redesign is planned for
+`0.2.3`, build `15`. Its version is not bumped until native qualification is ready.
+`0.2.0`, build `12`, was a candidate that was not published. Withdrawn `1.0.0`,
+build `11`, stays a draft. A major version needs Ammar's explicit permission.
+The public release stays latest until the new candidate passes all gates and
+is published.
 
 The publisher uses the existing Mac, installed Xcode, XcodeGen, Python 3.12+
 and GitHub CLI auth. It uses no GitHub Actions runner, paid CI service or new
@@ -33,13 +33,11 @@ A self-signed identity lacks the shared Team ID needed for runtime library
 validation. The publisher stops on signing failure. It never imports keys,
 changes trust, uses `sudo` or unlocks a keychain.
 
-Readiness remains pending. The Mac has the certificate and private key, but
-`security find-identity` reported `CSSMERR_TP_NOT_TRUSTED`. That listing alone
-is not an actual signing test. An owned `true` binary signing probe then timed
-out after 15 seconds. A keychain prompt may have caused that timeout. It does
-not prove that this identity is unusable. The parent must resolve the probe
-without a trust change, then test the full app. Do not replace the key based
-on the listing or timeout.
+The early signing probe timed out before the 0.2.2 release. That historical
+probe does not establish the current keychain state. Qualify signing on the
+exact new candidate through the publisher. Its stable identity, smoke, symbol
+and Sparkle checks must pass again. Do not substitute a certificate or change
+keychain access based only on an old timeout or `find-identity` listing.
 
 ## Qualify the exact source first
 
@@ -125,10 +123,9 @@ cd "$release_archive"
 ```
 
 Without the pair, the existing clean-HEAD worktree checks still apply. Archive
-mode cannot skip CI. The `c052` native campaign failed one EngineTests timeout
-case in five iterations. The session-scoped fix is in `949c930`; fresh native
-qualification is running. No full native publisher
-run is qualified until a final source commit passes both CI lanes.
+mode cannot skip CI. The earlier failed campaigns remain diagnostic history. Each new candidate
+still needs its own successful reports from both external lanes. No earlier
+release or focused test can qualify a different source commit.
 
 ## Keys and the pinned symbol tool
 
@@ -210,8 +207,7 @@ private key or raw private path. Raw logs stay private beside it.
 
 ## Publish only after review
 
-This implementation task does not publish a release. The parent owns that
-step. Once the concrete candidate and native results pass review, run:
+Once the concrete candidate and native results pass review, run:
 
 ```sh
 ./release.sh --publish --artifacts /private/printed/tessera-release-output
@@ -222,7 +218,7 @@ app, image, signature, smoke evidence and asset hashes. It creates an annotated
 tag at the exact full commit, then a draft release. It uploads exactly:
 
 - `Tessera.dmg`
-- `Tessera-0.2.2.dmg`
+- `Tessera-<candidate-version>.dmg`
 - `appcast.xml`
 - `SHA256SUMS`
 
@@ -234,7 +230,7 @@ An existing tag must be annotated at the same commit. An existing release must
 be a draft with that exact tag and full target commit. Resume accepts an empty
 draft or the full four-asset set only after byte checks. A partial, extra,
 changed or public release stops for parent review. Nothing overwrites or
-deletes remote assets. No failure path moves `0.1.9` or edits its assets.
+deletes remote assets. No failure path changes a prior release tag or edits its assets.
 
 The app checks for updates every six hours. Its custom Sparkle driver reports
 status in the app. It holds a pending relaunch while the app's busy barrier is
