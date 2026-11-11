@@ -73,3 +73,22 @@ The real Finder Trash path, native UI/accessibility, exact final CI lanes and
 publication remain separate gates. Local tooling also passed 72 tests and the
 release-series validator on 12 November. Mock symbol-upload output is not live
 symbol receipt or publication proof.
+
+## Real Trash metadata race, 12 November
+
+The production adapter probe at 84df90d moved two owned items successfully in
+three focused runs, but review held both. macOS changed only the moved root's
+ctime a few milliseconds after FileManager returned. Full manifest equality
+correctly rejected the stale capture. The actual home Trash lookup had no alias.
+Permanent removal was never reached. Owned items were restored by recorded
+identity; production state and unrelated Trash stayed untouched.
+
+Evidence: `/Users/abdwy/.local/share/tessera-native-trash-84df90d-ce8bb23d6598/`.
+The source now waits for 20 ms of stable moved-root metadata before capturing its
+manifest, with a 250 ms bound. Every probe still requires the original object's
+identity, owner, mode, flags, size, blocks and mtime. A changed or unsettled item
+gets no permanent-removal authority. Review and finish retain full ctime equality.
+This runs after a successful move off the UI thread; it is not a scan timeout.
+A disposable regression simulates the late metadata write and checks that a
+ctime-only change after review remains held. Native red/green, the real Trash
+probe and the full suite still need to qualify this new code.

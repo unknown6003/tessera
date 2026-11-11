@@ -139,6 +139,7 @@ final class TrashOperation: @unchecked Sendable {
                     guard trashURL.deletingLastPathComponent() == trashRoot,
                           trashURL != canonicalSource,
                           !trashURL.path.hasPrefix(canonicalSource.path + "/") else { throw Hold.unavailable }
+                    try waitForMovedRoot(at: trashURL, expected: before[""], isCancelled: isCancelled)
                     let after = try capture(at: trashURL, original: source,
                                             trashRoot: trashRoot, isCancelled: isCancelled)
                     guard Set(before.keys) == Set(after.keys), before.allSatisfy({ key, value in
@@ -299,6 +300,31 @@ final class TrashOperation: @unchecked Sendable {
             if cursor.path == "/" { return result }
             cursor.deleteLastPathComponent()
         }
+    }
+
+    // FileManager may return before macOS finishes updating the moved root's
+    // metadata. Capture only after a short stable interval; later validation
+    // still compares every field, including ctime.
+    private func waitForMovedRoot(at url: URL, expected: TrashFileState?,
+                                  isCancelled: () -> Bool) throws {
+        guard let expected else { throw Hold.incomplete }
+        let clock = ContinuousClock()
+        let deadline = clock.now + .milliseconds(250)
+        var previous: TrashFileState?
+        var stableSince = clock.now
+        while clock.now < deadline {
+            if isCancelled() { throw Hold.cancelled }
+            let current = try fileSystem.state(at: url)
+            guard current.isUsable, expected.sameMovedObject(as: current) else { throw Hold.changed }
+            if current != previous {
+                previous = current
+                stableSince = clock.now
+            } else if clock.now - stableSince >= .milliseconds(20) {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+        throw Hold.changed
     }
 
     private func capture(at root: URL, original: URL, trashRoot: URL?,

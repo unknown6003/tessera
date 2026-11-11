@@ -18,6 +18,7 @@ struct TrashOperationTests {
         var unknownRoot = false
         var removals: [URL] = []
         var afterListing: ((URL) throws -> Void)?
+        var beforeState: ((URL) throws -> Void)?
         var removalCheckpoint: (VerifiedTrashRemoval.Checkpoint) throws -> Void = { _ in }
         let local = LocalTrashFileSystem()
 
@@ -60,6 +61,7 @@ struct TrashOperationTests {
             return trash
         }
         func state(at url: URL) throws -> TrashFileState {
+            try beforeState?(url)
             if missingMetadata { throw TrashOperation.Hold.unavailable }
             return try local.state(at: url)
         }
@@ -113,6 +115,42 @@ struct TrashOperationTests {
         #expect(FileManager.default.fileExists(atPath: b.trashURL.path))
         #expect(FileManager.default.fileExists(atPath: unrelated.path))
         #expect(!FileManager.default.fileExists(atPath: a.originalURL.path))
+    }
+
+    @Test("Post-move metadata settles before capture, while later ctime changes stay held")
+    func movedRootMetadata() throws {
+        for changeAfterReview in [false, true] {
+            let f = try Fixture()
+            defer { f.clean() }
+            let target = try f.prepare("metadata.bin")
+            let destination = f.trash.appendingPathComponent("metadata.bin")
+            let permissions = try #require(FileManager.default.attributesOfItem(atPath: target.url.path)[.posixPermissions] as? NSNumber)
+            var rootReads = 0
+            f.beforeState = { url in
+                guard url.path == destination.path else { return }
+                rootReads += 1
+                if rootReads == 2 {
+                    try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: url.path)
+                }
+            }
+            let operation = TrashOperation(fileSystem: f)
+            let outcome = DeletionService.performTracked(target, operation: operation)
+            try #require(outcome.error == nil)
+            try #require(outcome.trackingHold == nil)
+            let item = try #require(outcome.item)
+            let review = operation.review(ownerState: .stopped)
+            try #require(review.items.allSatisfy { $0.hold == nil })
+            if changeAfterReview {
+                try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: item.trashURL.path)
+            }
+            let results = operation.finish(review, selecting: [item.id], ownerState: .stopped)
+            if changeAfterReview {
+                expectHeld(results, id: item.id)
+                #expect(f.removals.isEmpty)
+            } else {
+                #expect(results.contains { if case .removed(let removed) = $0 { return removed.id == item.id }; return false })
+            }
+        }
     }
 
     @Test("Wrong-operation reviews and selections cannot authorize removal")
