@@ -21,3 +21,25 @@ Group review now has a focused keyboard path for arrows, Home/End, Page Up/Down 
 The Mac relay returned HTTP 502 on the next diagnosis attempt. No diagnosis job started. Preserve the failed 1f44e66 evidence at `/Users/abdwy/.local/share/tessera-native-2f56c3f56c2b`. Before another full run, instrument a private copy to report the exact tracking hold and first rejecting guard, and prove whether the replacement hook runs. Check before/after stat fields, actual volume roots, APFS firmlink paths and URL comparison semantics. These are hypotheses, not established causes.
 
 The staging audit found one more stale-state path: a generated Xcode group could be staged after Xcode started, although final removal would still hold it. Staging now checks current owner state before and after the identity worker. Active or unknown ownership closes that review without staging. A captured active/unknown owner also makes a generated item ineligible. Coordinator cases cover an already active owner, a stopped-to-active change between probes, and unknown state. These cases still need native execution.
+
+## Delta review through 0f3b392, 12 November
+
+Independent source passes covered all 13 paths in `b836125..0f3b392`.
+Standards retained no documented breaches or smell findings. The shared stat
+initializer and owner-status view resolve the earlier duplication findings.
+Spec retained no new findings. These are source results, not native proof.
+
+Risk retained one conditional integration concern. Tracking now stores the
+physical Trash root, but `VerifiedTrashRemoval.remove(at:expected:)` independently
+asks FileManager for its Trash root and passes that URL to a no-follow descriptor
+walk. If FileManager returns `/var/...`, the walk holds it at that symlink even
+though tracking used `/private/var/...`. No unrelated removal follows. The actual
+Finder Trash lookup form remains unproved; injected fixture roots do not cover it.
+
+Keep this boundary in native acceptance: use only a new disposable Finder Trash
+item, call the public removal entry point, record the lookup form privately and
+check the operation result. Preserve the ancestor replacement and symlink rejection
+controls. Do not weaken no-follow checks based on this conditional finding.
+
+Summary: Standards 0; Spec 0; Risk 1 conditional integration concern. The full
+native suites at 0f3b392 and real Finder Trash acceptance remain pending.
