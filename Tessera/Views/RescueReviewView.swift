@@ -75,8 +75,11 @@ struct RescueReviewView: View {
             if let item = workspace.detailItem { detail(item) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(TransparentWindowConfigurator(onWindow: { ownWindow.window = $0 }))
-        .onAppear { if canMoveFocus { focus = .back } }
+        .background(TransparentWindowConfigurator(onWindow: { window in
+            let firstAttach = ownWindow.window == nil
+            ownWindow.window = window
+            if firstAttach, canMoveFocus { focus = .back }
+        }))
         .onChange(of: focus) { _, value in
             if value == .rows, workspace.detailIndex == nil {
                 workspace.detailItemID = workspace.reviewItems.first?.recommendation.id

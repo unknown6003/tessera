@@ -237,3 +237,27 @@ The live observer now coalesces notifications into one deferred MainActor refres
 per synchronous burst. It reads values after publication and keeps the existing
 source, revision and owner-return checks. A production-VM batch staging probe
 must verify this correction; fake-host tests do not establish its cost.
+
+
+## Proved initial-focus repair
+
+The private 921afad trace established two distinct failures. Review `onAppear`
+and `.task` ran before its window callback, so the guarded Back request did not
+run. The callback arrived about 20 ms later. The goal field had the correct key
+window, but SwiftUI dropped the focus write in its `onAppear`.
+
+The integrated repair requests Back once, in the first window-attachment callback,
+with the existing own-window, sheet, text-editor and current-review checks. The
+goal button sets its focus binding in the same update that inserts the editor.
+There is no delay, timer or retry. Native clean Release checks passed Back focus,
+Tab to Search without bouncing, and Space then 1 then Return setting a 1 GB goal
+without a mouse click. Settings remained key when opened shortly after attachment;
+Settings already key at attachment and a second main window remain separate checks.
+Evidence: `/tmp/tessera-921a-diag/`. The private native patch used the same two
+behavior changes; the combined repository candidate still needs its full build
+and native acceptance checks.
+
+The count repair at 9450be1 passed controlled red/green for both new regressions
+and all 157 Debug tests in 12 suites. Evidence:
+`/Users/abdwy/.local/share/tessera-native-9450be1-a42120b906db/`.
+The later observer-coalescing delta has a separate production-VM probe in flight.

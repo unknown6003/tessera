@@ -136,7 +136,6 @@ struct CleanupSuggestionsView: View {
                     .frame(width: 70)
                     .accessibilityLabel("Additional gigabytes to free")
                     .focused($goalFocused)
-                    .onAppear { goalFocused = true }
                     .onSubmit(commitGoal)
                 Text("more GB")
                     .font(.subheadline)
@@ -165,6 +164,7 @@ struct CleanupSuggestionsView: View {
             Button("Set a space goal") {
                 goalDraft = ""
                 isEditingGoal = true
+                goalFocused = true
             }
             .tesseraButtonStyle(.flat)
             .controlSize(.small)
