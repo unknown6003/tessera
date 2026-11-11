@@ -1,0 +1,9 @@
+{
+  "status": "consumed",
+  "submittedAt": "2026-11-11T15:31:10.133Z",
+  "answers": {
+    "layout": "ranked-list",
+    "ranking": "largest-footprint",
+    "group-review": "choose-items-first"
+  }
+}

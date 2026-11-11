@@ -1,0 +1,12 @@
+{
+  "status": "consumed",
+  "submittedAt": "2026-11-11T15:38:15.801Z",
+  "answers": {
+    "review-place": "content-drilldown",
+    "exclusions": "remember-kept",
+    "owner-refresh": "auto-return",
+    "trash-step": "operation-trash",
+    "partial-scan": "known-with-gaps",
+    "goal-unit": "additional-gb"
+  }
+}

@@ -1,0 +1,190 @@
+{
+  "title": "Finish the Rescue flow",
+  "eyebrow": "Rescue design \u00b7 Round 3",
+  "summary": "The core is settled: one ranked list, largest storage used first, and item selection before staging. These six choices define the review and follow-through. Then I will bring back the full design for confirmation.",
+  "slug": "tessera-rescue-round3-nov11",
+  "sections": [
+    {
+      "title": "Choose the remaining flow",
+      "blocks": [
+        {
+          "type": "interaction",
+          "id": "rescue-flow",
+          "title": "Round 3: review and follow-through",
+          "description": "Six questions, one at a time. Each has two choices and room for a different answer.",
+          "presentation": "focus",
+          "submitLabel": "Send this round",
+          "fields": [
+            {
+              "id": "review-place",
+              "kind": "single",
+              "label": "Where should a group review open?",
+              "description": "You already chose to inspect items before adding them.",
+              "context": "My pick is to drill into the group in the same content area, with a clear Back to Rescue path. It gives large lists room and avoids stacking a group dialog over the final Cleanup List review. Selection can survive Back navigation. A sheet makes the task feel contained and keeps the original screen behind it, but uses less space and creates another presentation to dismiss.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "content-drilldown",
+                  "label": "In the main content area",
+                  "description": "Replace the ranked results with the group items. Back restores the same list position.",
+                  "recommended": true
+                },
+                {
+                  "id": "review-sheet",
+                  "label": "In a separate sheet",
+                  "description": "Keep Rescue behind a focused group-review sheet."
+                }
+              ]
+            },
+            {
+              "id": "exclusions",
+              "kind": "single",
+              "label": "Should Keep this item apply to future scans?",
+              "description": "Nothing is selected for removal automatically. This choice controls repeated suggestions.",
+              "context": "My pick is a remembered exclusion that the user can inspect and undo. It can reduce repeated review of wanted libraries, backups, or stores. The screen must show that exclusions exist and offer Show excluded. A new or changed item needs revalidation; the implementation must define matching without silently hiding unrelated data. A scan-only choice avoids persistent hidden items, but the same suggestions return on the next scan.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "remember-kept",
+                  "label": "Remember it, with Show excluded",
+                  "description": "Keep an inspectable exclusion list and a way to restore suggestions.",
+                  "recommended": true
+                },
+                {
+                  "id": "scan-only",
+                  "label": "Only for this scan",
+                  "description": "Bring the item back on the next scan."
+                }
+              ]
+            },
+            {
+              "id": "owner-refresh",
+              "kind": "single",
+              "label": "After using an owning app, how should Rescue check the result?",
+              "description": "Opening Docker or Photos does not tell Tessera what changed.",
+              "context": "My pick is a clear Check space action when the user returns. It starts a fresh check and reports the checked time. This avoids rescanning a large source on every app switch. Automatic refresh can save a click, but returning does not prove the owner has finished, and repeated full scans can cost time. In either case, stale sizes must be labelled and a new action must revalidate the current item.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "explicit-check",
+                  "label": "Offer Check space",
+                  "description": "Let the user start a fresh check when the owner action is complete.",
+                  "recommended": true
+                },
+                {
+                  "id": "auto-return",
+                  "label": "Refresh automatically on return",
+                  "description": "Start checking when Tessera becomes active after opening the owner."
+                }
+              ]
+            },
+            {
+              "id": "trash-step",
+              "kind": "single",
+              "label": "How should Rescue help turn a Trash move into usable space?",
+              "description": "Trash remains the default. This decides the separate permanent-removal step.",
+              "context": "My pick is to show the moved result, offer Open Trash, then Check space. That keeps review and permanent removal in Finder for the first version. A more integrated route could permanently remove only the items from this cleanup, with a separate explicit confirmation and strict current-identity checks. That needs a new verified recovery boundary. Neither route can promise that every allocated byte becomes free because snapshots and shared blocks can retain data.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "finder-trash",
+                  "label": "Guide me through Finder Trash",
+                  "description": "Show the moved result, Open Trash, and a fresh capacity check.",
+                  "recommended": true
+                },
+                {
+                  "id": "operation-trash",
+                  "label": "Finish this cleanup inside Tessera",
+                  "description": "Add a separately confirmed permanent-removal step for this operation\u2019s Trash items only."
+                }
+              ]
+            },
+            {
+              "id": "partial-scan",
+              "kind": "single",
+              "label": "What should Rescue show when some areas could not be read?",
+              "description": "A readable item and an unreadable part of the drive are different facts.",
+              "context": "My pick is to show known results with a concise coverage notice and a way to inspect missing areas. Do not label the whole scan complete. Any removal still needs the current identity, owner, protected-path and relevant coverage checks. A blocked candidate stays blocked. The alternative stops the Rescue workflow until the scan is complete, which gives one clear gate but can hide useful known results because of an unrelated cloud or permission boundary.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "known-with-gaps",
+                  "label": "Show known results and the gaps",
+                  "description": "Keep incomplete coverage visible. Hold actions that cannot be validated.",
+                  "recommended": true
+                },
+                {
+                  "id": "require-complete",
+                  "label": "Wait for complete coverage",
+                  "description": "Keep Rescue actions unavailable until the source is fully inspected."
+                }
+              ]
+            },
+            {
+              "id": "goal-unit",
+              "kind": "single",
+              "label": "What should the optional space goal ask for?",
+              "description": "The goal stays secondary. It does not gate discovery.",
+              "context": "My pick is additional GB needed for a task, such as an install or export. It can show a goal without pretending candidate sizes equal recovery. A percentage target is useful for ongoing headroom but less tied to a concrete task and can be very large on a big drive. The goal can only progress against a labelled capacity measurement. It must not treat files staged or moved to Trash as space already recovered.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "additional-gb",
+                  "label": "Additional GB I need",
+                  "description": "Enter a task-sized amount, then track a measured capacity change.",
+                  "recommended": true
+                },
+                {
+                  "id": "free-percent",
+                  "label": "A target percentage free",
+                  "description": "Choose the headroom to keep on the drive."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "What you have settled",
+      "blocks": [
+        {
+          "type": "bullets",
+          "items": [
+            "Show the biggest useful actions first, for both everyday and developer Macs.",
+            "Include large app-managed stores and guide people to their owners.",
+            "Use one list, ordered by storage footprint. Keep footprint distinct from possible recovery.",
+            "Open group items before staging. Keep the final Cleanup List review and Trash default."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "My proposed path",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "Find a large item in the ranked list. Its row shows the owner, storage used, and a clear next action.",
+            "For files, open the group, inspect its items, and add only the chosen ones. For an app-managed store, show the owner guidance and open the owner.",
+            "Review staged files in the Cleanup List before moving them to Trash. Keep held and failed items visible.",
+            "Report what happened. Use a fresh capacity check to show the current space, separately from the moved-byte total."
+          ]
+        },
+        {
+          "type": "text",
+          "text": "This is a proposal built from your answers so far. No new cleanup action, owner command, or permanent removal has been implemented or authorized by a recommended answer alone."
+        }
+      ]
+    },
+    {
+      "title": "After this round",
+      "blocks": [
+        {
+          "type": "text",
+          "text": "I will combine the choices into a full screen and flow specification, with row details, filters, keyboard behavior, error states, exclusions, and a native test plan. You can correct it before confirming that we have reached the same understanding. Product implementation starts after that confirmation."
+        }
+      ]
+    }
+  ]
+}

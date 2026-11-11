@@ -1,0 +1,202 @@
+{
+  "title": "Make Rescue useful",
+  "eyebrow": "Rescue design \u00b7 Round 1",
+  "summary": "Three decisions before we draw the new screen. My starting point is a short list of the biggest useful actions, adapted to what is on the Mac. Nothing is selected for removal by this discussion.",
+  "slug": "tessera-rescue-round1-nov11",
+  "sections": [
+    {
+      "title": "Choose the direction",
+      "blocks": [
+        {
+          "type": "interaction",
+          "id": "rescue-direction",
+          "title": "Round 1: the job, the audience, and the boundary",
+          "description": "Three questions, one at a time. Use my pick, choose the alternative, or write your own answer.",
+          "presentation": "focus",
+          "submitLabel": "Send this round",
+          "fields": [
+            {
+              "id": "primary-job",
+              "kind": "single",
+              "label": "When Rescue opens, what should it help me do first?",
+              "description": "Choose the main job. The next round will test the layout that serves it.",
+              "context": "The reference apps split between browsing large items and reviewing cleanup suggestions. My pick is to find the biggest useful actions first. This directly addresses the space-hog problem and still works when someone has no urgent target. A task-first flow can instead ask how much space is needed for an install or update, but it adds a step before discovery.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "biggest-actions",
+                  "label": "Show the biggest useful actions",
+                  "description": "Open with the largest things I can review, remove, move, or manage. Keep an optional space target.",
+                  "recommended": true
+                },
+                {
+                  "id": "target-first",
+                  "label": "Help me reach a space target",
+                  "description": "Start with the space needed for a task, then guide me through enough actions."
+                }
+              ]
+            },
+            {
+              "id": "audience",
+              "kind": "single",
+              "label": "Who should the first Rescue screen serve best?",
+              "description": "This sets the language and which detected items deserve attention.",
+              "context": "Developer stores such as Docker and Xcode need different explanations from photos, downloads, and backups. My pick is one screen that adapts to the stores found on the Mac. Developer items can be prominent when large without making everyone choose a developer mode. A developer-first product can give more detail and more space to build artifacts, runtimes, and project stores.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "adaptive",
+                  "label": "Everyday users and developers",
+                  "description": "Use plain labels and adapt the visible actions to the data found.",
+                  "recommended": true
+                },
+                {
+                  "id": "developer-first",
+                  "label": "Developers first",
+                  "description": "Prioritize developer stores and accept more technical terms and controls."
+                }
+              ]
+            },
+            {
+              "id": "managed-data",
+              "kind": "single",
+              "label": "Should Rescue include large stores that it cannot safely clean itself?",
+              "description": "For example, Docker disks, simulator stores, photo libraries, and local cloud copies.",
+              "context": "Docker documents separate disk-image capacity and actual use. Its owning tools know which internal objects can be removed. A file scan alone cannot make that decision. My pick is to show the store, explain its size and limits, and offer a route to its owner. This makes Rescue useful for large consumers even before safe direct integrations exist. This answer does not authorize running any cleanup command.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "show-and-guide",
+                  "label": "Show them and guide me to the owner",
+                  "description": "Keep large managed stores visible, with clear limits and an Open or Review action.",
+                  "recommended": true
+                },
+                {
+                  "id": "direct-only",
+                  "label": "Show only actions Tessera can complete",
+                  "description": "Keep Rescue focused on direct cleanup. Put managed stores in a separate diagnostic view."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "What the references support",
+      "blocks": [
+        {
+          "type": "table",
+          "columns": [
+            "Reference",
+            "Useful pattern",
+            "Limit"
+          ],
+          "rows": [
+            [
+              "CleanMyMac",
+              "Summary, then category review. Large files have no automatic selection.",
+              "Its category order does not prove a global biggest-wins ranking."
+            ],
+            [
+              "DaisyDisk",
+              "Explore size, stage items, review the Collector.",
+              "Its deletion is permanent. Keep Tessera's Trash default."
+            ],
+            [
+              "Docker Desktop",
+              "Show the owner and distinguish disk capacity from actual use.",
+              "Disk-image size is not a safe cleanup estimate."
+            ]
+          ]
+        },
+        {
+          "type": "links",
+          "items": [
+            {
+              "label": "CleanMyMac junk review",
+              "url": "https://macpaw.com/support/cleanmymac/knowledgebase/system-junk"
+            },
+            {
+              "label": "CleanMyMac large-file review",
+              "url": "https://macpaw.com/support/cleanmymac/knowledgebase/large-and-old"
+            },
+            {
+              "label": "DaisyDisk Collector",
+              "url": "https://daisydiskapp.com/guide/4/en/DeletingFiles/"
+            },
+            {
+              "label": "Docker storage guidance",
+              "url": "https://docs.docker.com/desktop/troubleshoot-and-support/faqs/macfaqs/"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "What the studies change",
+      "blocks": [
+        {
+          "type": "bullets",
+          "items": [
+            "A 100-person cloud-file study found that 83% wanted at least one of ten shown files deleted. This was a stated preference in a selected sample, not a measured Tessera result. Show concrete candidates, then test comprehension.",
+            "A later cloud-file study had harmful keep-to-delete errors even with a richer prediction model. File age can help review, but it is not permission to delete.",
+            "A defaults meta-analysis found that preselection changes choices. It does not show which Mac files are safe to preselect. Personal and uncertain items should remain unselected."
+          ]
+        },
+        {
+          "type": "links",
+          "items": [
+            {
+              "label": "Khan et al., CHI 2018",
+              "url": "https://www.blaseur.com/papers/chi18retrospectivecloud.pdf"
+            },
+            {
+              "label": "Khan et al., USENIX Security 2021",
+              "url": "https://www.usenix.org/system/files/sec21-khan-mohammad.pdf"
+            },
+            {
+              "label": "Defaults meta-analysis, 2019",
+              "url": "https://www.cambridge.org/core/journals/behavioural-public-policy/article/when-and-why-defaults-influence-decisions/67AF6972CFB52698A60B6BD94B70C2C0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Keep the promises precise",
+      "blocks": [
+        {
+          "type": "text",
+          "text": "Moving files to Trash can preserve a recovery path while leaving disk usage unchanged. Rescue must distinguish candidate bytes, staged bytes, Trash bytes, owner estimates, and observed free-space change. A large total alone is not a promise that all of it can be recovered."
+        },
+        {
+          "type": "links",
+          "items": [
+            {
+              "label": "Apple: free up storage space",
+              "url": "https://support.apple.com/en-us/102624"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "What happens after this round",
+      "blocks": [
+        {
+          "type": "steps",
+          "items": [
+            "Use your answers to draft two concrete layouts. Compare the first screen, row detail, and review flow.",
+            "Ask the next dependent decisions: ordering, grouping, space goal, and the route for each kind of action.",
+            "Agree on the design, then build and test it on a Mac. Keep product changes separate from these research notes."
+          ]
+        },
+        {
+          "type": "text",
+          "text": "Evidence checked on 11 November 2026. This is desk research using vendor documentation, published studies, and a small purposive check of four public threads. We have not recruited users or run a new usability study. We have not tested installed reference apps. Public posts do not establish how common each space problem is. The engine and space-consumer audit is still in progress."
+        }
+      ]
+    }
+  ]
+}
