@@ -19,6 +19,7 @@ protocol RescueHost: AnyObject {
     /// Removal or another lock that must stop a new scan or staging.
     var rescueIsBusy: Bool { get }
     var rescueCurrentOwnerState: CleanupOwnerState { get }
+    var rescueCollectedNodes: [FileNode] { get }
     /// When the published capacity reading was taken.
     var rescueMeasuredAt: Date? { get }
     func rescueStage(_ node: FileNode) -> Bool
@@ -35,6 +36,7 @@ extension ScanViewModel: RescueHost {
     var rescueIsScanning: Bool { isScanning }
     var rescueIsBusy: Bool { isDeleting }
     var rescueCurrentOwnerState: CleanupOwnerState { CleanupOwnerState.current() }
+    var rescueCollectedNodes: [FileNode] { collector }
     var rescueMeasuredAt: Date? { rescuePlan?.measurement.measuredAt }
     func rescueStage(_ node: FileNode) -> Bool {
         let wasCollected = isCollected(node)
@@ -416,6 +418,7 @@ final class RescueWorkspaceModel: ObservableObject {
         let measuredAt: Date?
     }
     private var lastReportKey: ReportKey?
+    private var collectedNodeIDs = Set<ObjectIdentifier>()
     private struct ReviewChoice {
         let source: String
         let revision: ScanTreeRevision
@@ -466,6 +469,7 @@ final class RescueWorkspaceModel: ObservableObject {
     /// drops a stale review, and runs a deferred owner-return check.
     func hostDidChange() {
         guard let host else { return }
+        refreshCollectedState()
         let key = ReportKey(revision: host.rescueRevision, source: host.rescueReportSource,
                             measuredAt: host.rescueMeasuredAt)
         if key != lastReportKey {
@@ -613,7 +617,9 @@ final class RescueWorkspaceModel: ObservableObject {
                                                route: route, sourcePath: source, revision: revision,
                                                items: items)
             if let choice = self.reviewChoices[row.id], choice.source == source, choice.revision == revision {
-                let eligible = Set(items.filter { $0.heldReason == nil }.map(\.recommendation.id))
+                let eligible = Set(items.filter {
+                    $0.heldReason == nil && !self.isStaged($0.recommendation.node)
+                }.map(\.recommendation.id))
                 self.selection = choice.selected.intersection(eligible)
             }
         }
@@ -633,23 +639,49 @@ final class RescueWorkspaceModel: ObservableObject {
         reviewNotice = notice
     }
 
+    private func isStaged(_ node: FileNode) -> Bool {
+        var cursor: FileNode? = node
+        while let current = cursor {
+            if collectedNodeIDs.contains(current.id) { return true }
+            cursor = current.parent
+        }
+        return false
+    }
+
+    private func refreshCollectedState() {
+        guard let host else { return }
+        let ids = Set(host.rescueCollectedNodes.map(\.id))
+        guard ids != collectedNodeIDs else { return }
+        collectedNodeIDs = ids
+        if let review {
+            let staged = review.items.filter { isStaged($0.recommendation.node) }.map(\.recommendation.id)
+            selection.subtract(staged)
+        }
+    }
+
     var eligibleVisibleIDs: [String] {
-        reviewItems.filter { $0.heldReason == nil }.map(\.recommendation.id)
+        reviewItems.filter { $0.heldReason == nil && !isStaged($0.recommendation.node) }
+            .map(\.recommendation.id)
     }
 
     func toggle(_ item: RescueReviewSnapshot.Item) {
-        guard item.heldReason == nil else { return }
+        refreshCollectedState()
+        guard item.heldReason == nil, !isStaged(item.recommendation.node) else { return }
         let id = item.recommendation.id
         if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
     }
 
-    func selectAllEligible() { selection.formUnion(eligibleVisibleIDs) }
+    func selectAllEligible() {
+        refreshCollectedState()
+        selection.formUnion(eligibleVisibleIDs)
+    }
     func clearSelection() { selection = [] }
 
     var selectedBytes: Int64 {
         guard let review else { return 0 }
         return review.items.reduce(0) {
-            selection.contains($1.recommendation.id) && $1.heldReason == nil ? $0 + $1.recommendation.physicalBytes : $0
+            selection.contains($1.recommendation.id) && $1.heldReason == nil && !isStaged($1.recommendation.node)
+                ? $0 + $1.recommendation.physicalBytes : $0
         }
     }
 
@@ -663,6 +695,7 @@ final class RescueWorkspaceModel: ObservableObject {
     /// The scan revision and source are checked before and after the
     /// identity check; changed objects are held, not retargeted.
     func stageSelection() async {
+        refreshCollectedState()
         guard let host, let review, canStage else { return }
         guard host.rescueRevision == review.revision, host.rescueReportSource == review.sourcePath else {
             closeReview(notice: "The scan changed. Open the group again to review current items.")
@@ -671,6 +704,7 @@ final class RescueWorkspaceModel: ObservableObject {
         let kept = keptItems.filter { $0.sourcePath == review.sourcePath }
         let chosen = review.items.filter { item in
             selection.contains(item.recommendation.id) && item.heldReason == nil
+                && !isStaged(item.recommendation.node)
                 && !kept.contains(where: { keptItem in
                     keptItem.matches(item.recommendation, sourcePath: review.sourcePath)
                 })
@@ -713,6 +747,7 @@ final class RescueWorkspaceModel: ObservableObject {
             }
         }
         let held = chosen.count - added
+        refreshCollectedState()
         selection.subtract(chosen.filter { unchanged.contains($0.id) }.map(\.id))
         var notice = added > 0
             ? "Added \(Theme.itemCount(added)) · \(Theme.format(addedBytes)) to the Cleanup List."

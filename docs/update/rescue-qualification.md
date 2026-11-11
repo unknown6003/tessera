@@ -191,3 +191,41 @@ patch. A probe is not full-flow proof.
 The native probe's final leftover check used a shell glob for its own prefix.
 That enumerated Trash names, contrary to its brief. It read no item content and
 changed nothing. Future cleanup checks must use the exact recorded names only.
+
+
+## Search-only patch passes the real adapter
+
+Exact `4f74c947468528a9d97ff7bd940d8a7df0835554` passed 155 Debug tests,
+31 Trash/helper tests and unsigned universal Release. XcodeGen matched the
+372-file archive. The read-only red control failed the new permission fixture
+with EACCES before mutation. The restored search-only version passed.
+
+Three actual Finder Trash runs each moved A and B, opened an unheld fresh
+review, removed A alone, reviewed again, then removed B. The unrelated U sentinel
+retained its identity and bytes throughout and was restored from its recorded
+Trash destination. All 18 compared manifest entries matched after review and
+before finishing. The public production removal helper ran from the CI test
+host. No Trash listing, glob, count or Empty Trash ran. Production state stayed
+unchanged. Evidence:
+`/Users/abdwy/.local/share/tessera-native-4f74c94-aad72241d208/`.
+A separate Risk review found no introduced issue in the descriptor change.
+
+## UI acceptance and live counts
+
+The 921afad native app passed both actual cleanup confirmations, initial Cancel
+focus, Return/Escape cancellation, explicit Trash and permanent removal, and
+unrelated sentinel preservation. Four UI repairs passed. Initial group focus
+and initial goal-field focus failed, landing on toolbar controls. Their cause
+is under a separate native timing probe. Evidence: `/tmp/tessera-921a-ui/`.
+The run did not locate the nine Sample files, so that preservation claim is
+unverified for this run. It also attempted an unnecessary bounded name search;
+future runs must check only the known exact sample root.
+
+Two count defects now have source repairs awaiting native red/green. Staged
+items remain inspectable but are excluded from group selection and Add totals,
+including a collected ancestor. Returning an item from the Cleanup List restores
+eligibility. After successful removal, the VM rebuilds recommendations from its
+pruned tree off the main thread, then publishes the updated report and plan.
+This removes deleted rows and updates parent footprints without claiming a new
+disk scan. Capacity is read separately and measured goal progress remains based
+on Free now. New fixtures cover both transitions.

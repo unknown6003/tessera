@@ -1103,6 +1103,12 @@ struct RescuePlan: Sendable {
                    requiredSpace: requiredSpace, capacityGoal: capacityGoal)
     }
 
+    func updatingReport(_ report: CleanupReport) -> RescuePlan {
+        RescuePlan(sourcePath: sourcePath, generatedAt: generatedAt, measurement: measurement,
+                   coverage: coverage, recommendations: report.recommendations, goal: goal,
+                   requiredSpace: requiredSpace, capacityGoal: capacityGoal)
+    }
+
     static func clampedCapacityGoal(_ value: Double) -> Double {
         guard value.isFinite else { return defaultCapacityGoal }
         return min(max(value, capacityGoalRange.lowerBound), capacityGoalRange.upperBound)

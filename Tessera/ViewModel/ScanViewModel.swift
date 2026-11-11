@@ -1065,11 +1065,19 @@ final class ScanViewModel: ObservableObject {
             .reduce(Int64(0)) { $0 + $1.physicalSize }
         // The background pass is done. It cannot read the arrays as they are pruned.
         try? prune(attemptedTargets, failures: failures)
-        let after = try await Self.offMain { () -> RescueMeasurement? in
-            if let root, let source { return RescueMeasurement.capture(volumeURL: source, root: root) }
-            return nil as RescueMeasurement?
+        let ownerAfterRemoval = CleanupOwnerState.current()
+        let coverageComplete = rescuePlan?.coverage.state == .complete
+        let updated = try await Self.offMain { () -> (RescueMeasurement?, CleanupReport?) in
+            guard let root, let source else { return (nil, nil) }
+            let report = CleanupClassifier.classify(root: root, ownerState: ownerAfterRemoval,
+                                                    coverageComplete: coverageComplete)
+            return (RescueMeasurement.capture(volumeURL: source, root: root), report)
         }
-        recordRescueResult(before: before, after: after, removalMethod: permanently ? .permanent : .trash, targets: attemptedTargets, failures: failures,
+        if let report = updated.1 {
+            cleanupReport = report
+            rescuePlan = rescuePlan?.updatingReport(report)
+        }
+        recordRescueResult(before: before, after: updated.0, removalMethod: permanently ? .permanent : .trash, targets: attemptedTargets, failures: failures,
                            measurementMismatchPaths: [], heldNodes: heldTargets,
                            errorMessage: heldError)
         let moved = max(0, attemptedTargets.count - failures.count)

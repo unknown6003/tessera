@@ -118,6 +118,37 @@ struct RemovalRegressionTests {
         #expect(FileManager.default.fileExists(atPath: unrelated.url.path))
     }
 
+    @Test("Successful removal refreshes Rescue rows from the pruned tree")
+    func removalRefreshesRescueReport() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(repeating: 1, count: 4096).write(to: url.appendingPathComponent("first.dmg"))
+        try Data(repeating: 2, count: 8192).write(to: url.appendingPathComponent("second.dmg"))
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
+        vm.startScan(volumeURL: url)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(!vm.isScanning)
+        let target = try #require(vm.rootNode?.children.first { $0.name == "first.dmg" })
+        let remaining = try #require(vm.rootNode?.children.first { $0.name == "second.dmg" })
+        try #require(vm.cleanupReport?.recommendations.count == 2)
+        let workspace = RescueWorkspaceModel(vm: vm, defaults: defaults)
+        try #require(workspace.rows.first?.itemCount == 2)
+
+        try await vm.deletePermanently([target])
+        workspace.hostDidChange()
+
+        #expect(vm.cleanupReport?.recommendations.map(\.node.id) == [remaining.id])
+        #expect(vm.rescuePlan?.recommendations.map(\.node.id) == [remaining.id])
+        #expect(workspace.rows.count == 1)
+        #expect(workspace.rows.first?.itemCount == 1)
+        #expect(workspace.rows.first?.bytes == remaining.physicalSize)
+        #expect(FileManager.default.fileExists(atPath: remaining.url.path))
+    }
+
     @Test("A cancelled background tree read holds cleanup until the worker returns")
     func treeReadExcludesRemoval() async throws {
         let url = try fixture()

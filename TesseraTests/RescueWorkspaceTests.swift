@@ -20,6 +20,7 @@ private final class FakeRescueHost: RescueHost {
     var rescueMeasuredAt: Date? = Date(timeIntervalSince1970: 1)
     var acceptsStaging = true
     var staged: [FileNode] = []
+    var rescueCollectedNodes: [FileNode] { staged }
     var scans: [URL] = []
     let root: FileNode
 
@@ -200,6 +201,34 @@ struct RescueWorkspaceTests {
         model.closeReview()
         #expect(model.review == nil)
         #expect(model.returnGroupID == caches.id)
+    }
+
+    @Test("Staged items stay inspectable but cannot inflate a new staging choice")
+    func stagedItemsAreNotEligible() async throws {
+        let (defaults, name) = freshDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let (model, host, _) = fixture(defaults: defaults)
+        let row = try #require(model.rows.first { $0.bytes == 550 })
+        model.openReview(row)
+        try await waitForReview(model)
+        let item = try #require(model.reviewItems.first)
+        model.toggle(item)
+        #expect(model.selection == [item.recommendation.id])
+        host.staged = [item.recommendation.node]
+        model.hostDidChange()
+        #expect(model.selection.isEmpty)
+        #expect(model.reviewItems.count == 3)
+        model.toggle(item)
+        #expect(model.selection.isEmpty)
+        model.selectAllEligible()
+        #expect(model.selection.count == 1)
+        #expect(model.selectedBytes == 200)
+        #expect(!model.eligibleVisibleIDs.contains(item.recommendation.id))
+        host.staged = []
+        model.hostDidChange()
+        model.selectAllEligible()
+        #expect(model.selection.count == 2)
+        #expect(model.selectedBytes == 500)
     }
 
     @Test("Back keeps explicit choices only within the same source and revision")
