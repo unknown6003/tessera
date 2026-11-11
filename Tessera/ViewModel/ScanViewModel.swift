@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-struct ScanTreeRevision: Equatable {
+struct ScanTreeRevision: Equatable, Sendable {
     let rootID: ObjectIdentifier?
     let revision: UInt64
 }
@@ -31,6 +31,12 @@ final class ScanViewModel: ObservableObject {
         let revision: UInt64
         let allocatedBytes: [UUID: Int64]
     }
+    struct TrashFinishIssue: Identifiable {
+        let id: UUID
+        let trashURL: URL
+        let message: String
+    }
+    @Published private(set) var trashFinishIssues: [TrashFinishIssue] = []
     @Published private(set) var hasTrackedTrash = false
     private var trashOperation: TrashOperation?
     private var trashOperationSource: URL?
@@ -1081,6 +1087,7 @@ final class ScanViewModel: ObservableObject {
         trashOperationSource = nil
         trashOperationBytes = [:]
         hasTrackedTrash = false
+        trashFinishIssues = []
     }
 
     func reviewTrackedTrash() async throws -> TrashFinishReview {
@@ -1091,6 +1098,7 @@ final class ScanViewModel: ObservableObject {
         }
         isDeleting = true
         defer { isDeleting = false }
+        trashFinishIssues = []
         let owner = CleanupOwnerState.current()
         let review = try await Self.offMain { operation.review(ownerState: owner) }
         return TrashFinishReview(review: review, source: source, rootID: rootNode?.id,
@@ -1113,7 +1121,9 @@ final class ScanViewModel: ObservableObject {
         defer { isDeleting = false }
         let owner = CleanupOwnerState.current()
         let results = try await Self.offMain {
-            operation.finish(snapshot.review, selecting: ids, ownerState: owner)
+            operation.finish(snapshot.review, selecting: ids, ownerState: owner, ownerProbe: {
+                DispatchQueue.main.sync { MainActor.assumeIsolated { CleanupOwnerState.current() } }
+            })
         }
         var removed = 0
         var held = 0
@@ -1125,16 +1135,27 @@ final class ScanViewModel: ObservableObject {
                 removed += 1
                 bytes += snapshot.allocatedBytes[item.id] ?? 0
                 trashOperationBytes.removeValue(forKey: item.id)
-            case .held, .rejected: held += 1
-            case .failed: failed += 1
+            case .held(let item, _):
+                held += 1
+                trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: item.trashURL,
+                    message: "Held because this item could not be verified. Inspect it in Finder."))
+            case .rejected: held += 1
+            case .failed(let item, _):
+                failed += 1
+                trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: item.trashURL,
+                    message: "Removal failed. Some contents may already be gone. Inspect what remains in Trash."))
             }
         }
         deletionProgress = results.count
         hasTrackedTrash = !trashOperationBytes.isEmpty
         lastRemovalSummary = RemovalSummary(moved: removed, movedBytes: bytes,
                                             held: held, failed: failed, permanently: true)
-        // A fresh scan measures free space. Deleted allocated bytes are not a
-        // claim about reclaimed blocks, clones, snapshots or whole-volume use.
+        if let root = rootNode {
+            let source = snapshot.source
+            let measurement = try await Self.offMain { RescueMeasurement.capture(volumeURL: source, root: root) }
+            if scannedURL == source { rescuePlan = rescuePlan?.updatingMeasurement(measurement) }
+        }
+        // Measured Free now, rather than deleted allocated bytes, updates goals.
         Analytics.shared.capture(.cleanupCompleted, values: [
             "items": .integer(ids.count), "moved": .integer(removed),
             "held": .integer(held), "failed": .integer(failed),

@@ -94,16 +94,9 @@ enum DeletionService {
         guard target.check == .ready else {
             return DeletionError(url: target.url, underlying: PreflightError(result: target.check))
         }
-        for ancestor in target.ancestors {
-            var stat = Darwin.stat()
-            guard Darwin.lstat(ancestor.path, &stat) == 0, stat.st_mode & S_IFMT == S_IFDIR,
-                  UInt32(bitPattern: stat.st_dev) == ancestor.device, UInt64(stat.st_ino) == ancestor.inode else {
-                return DeletionError(url: target.url, underlying: PreflightError(result: .identityChanged))
-            }
-        }
-        guard let expected = target.identity,
-              let current = ScanIdentity.current(at: target.url), expected.matches(current) else {
-            return DeletionError(url: target.url, underlying: PreflightError(result: .identityChanged))
+        let liveCheck = revalidate(target)
+        guard liveCheck == .ready else {
+            return DeletionError(url: target.url, underlying: PreflightError(result: liveCheck))
         }
         do {
             if permanently { try FileManager.default.removeItem(at: target.url) }
@@ -112,6 +105,25 @@ enum DeletionService {
         } catch {
             return DeletionError(url: target.url, underlying: error)
         }
+    }
+
+    static func revalidate(_ target: PreparedRemoval) -> DeletionPreflight {
+        guard target.check == .ready else { return target.check }
+        guard CleanupClassifier.protectedCategory(for: target.url.path) == nil else { return .protected }
+        for ancestor in target.ancestors {
+            var stat = Darwin.stat()
+            guard Darwin.lstat(ancestor.path, &stat) == 0, stat.st_mode & S_IFMT == S_IFDIR,
+                  UInt32(bitPattern: stat.st_dev) == ancestor.device, UInt64(stat.st_ino) == ancestor.inode else {
+                return .identityChanged
+            }
+        }
+        guard let expected = target.identity,
+              let current = ScanIdentity.current(at: target.url), expected.matches(current) else {
+            return .identityChanged
+        }
+        if current.resourceType == .directory,
+           let issue = inspectLiveDescendants(at: target.url, device: current.device) { return issue }
+        return .ready
     }
 
     @discardableResult

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct TrashFinishReviewView: View {
     @ObservedObject var vm: ScanViewModel
@@ -8,9 +9,10 @@ struct TrashFinishReviewView: View {
     @State private var confirming = false
     @State private var working = false
     @State private var failure: String?
+    @State private var consumed = false
 
     private var current: Bool {
-        snapshot.source == vm.scannedURL
+        !consumed && snapshot.source == vm.scannedURL
             && (vm.selectedSourceURL == nil || vm.selectedSourceURL == snapshot.source)
             && snapshot.rootID == vm.rootNode?.id && snapshot.revision == vm.chartRevision
             && vm.hasTrackedTrash && !vm.isScanning && !vm.isDeleting
@@ -45,7 +47,15 @@ struct TrashFinishReviewView: View {
                     }
                 }.padding(.vertical, 4)
             }.frame(maxHeight: 310)
-            if !current && !working {
+            ForEach(vm.trashFinishIssues) { issue in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(issue.message).font(.caption)
+                    Button("Inspect \(issue.trashURL.lastPathComponent) in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([issue.trashURL])
+                    }.tesseraButtonStyle(.flat).controlSize(.small)
+                }
+            }
+            if !current && !working && !consumed {
                 Text("The scan or source changed. Close this review and check the items again.")
                     .font(.caption).foregroundStyle(Theme.mutedForeground)
             }
@@ -77,7 +87,9 @@ struct TrashFinishReviewView: View {
         Task {
             do {
                 try await vm.finishTrackedTrash(snapshot, selecting: selected)
-                dismiss()
+                consumed = true
+                working = false
+                if vm.trashFinishIssues.isEmpty { dismiss() }
             } catch {
                 failure = error.localizedDescription
                 working = false

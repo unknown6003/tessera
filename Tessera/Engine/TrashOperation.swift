@@ -113,6 +113,7 @@ final class TrashOperation: @unchecked Sendable {
                     // move preflight. A large safe folder can still enter Trash;
                     // only in-app permanent finishing is unavailable for it.
                     if isCancelled() { throw Hold.cancelled }
+                    guard DeletionService.revalidate(target) == .ready else { throw Hold.changed }
                     _ = try fileSystem.moveToTrash(at: source)
                     trackingHold = .incomplete
                     return
@@ -192,6 +193,7 @@ final class TrashOperation: @unchecked Sendable {
     /// accept a caller URL or item record as deletion authority. Recheck owner
     /// state at the call site as well as the source/scan busy lock.
     func finish(_ review: Review, selecting itemIDs: Set<UUID>, ownerState: CleanupOwnerState,
+                ownerProbe: (@Sendable () -> CleanupOwnerState)? = nil,
                 isCancelled: () -> Bool = { false }) -> [Result] {
         lock.withLock {
             let selected = order.compactMap { records[$0] }.filter { itemIDs.contains($0.item.id) }
@@ -222,6 +224,9 @@ final class TrashOperation: @unchecked Sendable {
                     return .held(record.item, hold)
                 }
                 if isCancelled() { return .held(record.item, .cancelled) }
+                if record.requiresStoppedOwner, let ownerProbe, ownerProbe() != .stopped {
+                    return .held(record.item, .ownerUnverified)
+                }
                 do {
                     try fileSystem.remove(at: record.item.trashURL)
                     records.removeValue(forKey: record.item.id)

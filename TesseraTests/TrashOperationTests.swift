@@ -16,6 +16,7 @@ struct TrashOperationTests {
         var failRemoval = false
         var unknownRoot = false
         var removals: [URL] = []
+        var afterListing: ((URL) throws -> Void)?
         let local = LocalTrashFileSystem()
 
         init() throws {
@@ -58,7 +59,11 @@ struct TrashOperationTests {
             if missingMetadata { throw TrashOperation.Hold.unavailable }
             return try local.state(at: url)
         }
-        func children(at url: URL) throws -> [URL] { try local.children(at: url) }
+        func children(at url: URL) throws -> [URL] {
+            let result = try local.children(at: url)
+            try afterListing?(url)
+            return result
+        }
         func remove(at url: URL) throws {
             if failRemoval { throw CocoaError(.fileWriteNoPermission) }
             // This assertion also protects fixtures from an accidental broad cleanup.
@@ -283,6 +288,36 @@ struct TrashOperationTests {
         let cancelled = DeletionService.performTracked(try f.prepare("cancelled"), operation: operation,
                                                       isCancelled: { true })
         #expect(cancelled.error != nil)
+    }
+
+    @Test("An over-budget capture never moves a replacement source")
+    func budgetReplacement() throws {
+        let f = try Fixture()
+        defer { f.clean() }
+        let target = try f.prepare("folder", directory: true)
+        f.afterListing = { url in
+            guard url == target.url else { return }
+            f.afterListing = nil
+            try FileManager.default.moveItem(at: url, to: f.base.appendingPathComponent("saved"))
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try Data([7]).write(to: url.appendingPathComponent("unrelated"))
+        }
+        let result = DeletionService.performTracked(target, operation: TrashOperation(fileSystem: f, maximumEntries: 1))
+        #expect(result.error != nil)
+        #expect(FileManager.default.fileExists(atPath: target.url.appendingPathComponent("unrelated").path))
+        #expect(!FileManager.default.fileExists(atPath: f.trash.appendingPathComponent("folder").path))
+    }
+
+    @Test("Owner activity detected after validation holds permanent removal")
+    func freshOwnerProbe() throws {
+        let f = try Fixture()
+        defer { f.clean() }
+        let operation = TrashOperation(fileSystem: f)
+        let item = try moved(f, operation, name: "Library/Developer/Xcode/DerivedData", directory: true)
+        let review = operation.review(ownerState: .stopped)
+        expectHeld(operation.finish(review, selecting: [item.id], ownerState: .stopped,
+                                    ownerProbe: { .active }), id: item.id)
+        #expect(f.removals.isEmpty)
     }
 
     @Test("Existing wrappers keep their source-compatible failure and permanent shapes")
