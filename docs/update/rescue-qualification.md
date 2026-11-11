@@ -10,8 +10,8 @@ The full goal is the confirmed design in `docs/research/rescue-2026-11-11/design
 | Group review, explicit selection, Back, exclusions | Coordinator tests and source review; later keyboard changes uncompiled | Native keyboard and 100,000-item review, same-source/revision checks, kept identity replacement |
 | Owner routes, Retry, return refresh | Coordinator tests and source review | Verify installed app IDs and supported routes; native one-return refresh, failed owner, source change and busy cases |
 | Additional-GB goal and capacity labels | Coordinator tests; old 75% confirmation text removed | Native same-volume capacity success/failure, negative change and post-action refresh |
-| Recoverable moves and actual Trash destinations | 1f44e66 compiled, but common tracking checks failed | Diagnose the first rejecting guard; passing controlled red/green and full suite; disposable real Finder Trash on supported local volumes |
-| Operation-scoped permanent finishing | Separate Risk reviews; acquired-object helper and recovery-map tests written | Native descriptor/durability tests, deterministic replacement, partial failure, cancellation, owner changes, recovery reveal and no unrelated deletion |
+| Recoverable moves and actual Trash destinations | Two native red/green diagnoses; 84df90d passed the full 152-test suite | Disposable real Finder Trash on supported local volumes |
+| Operation-scoped permanent finishing | Separate Risk reviews; all 28 native Trash/helper tests passed at 84df90d, including replacement, partial failure, journal, cancellation and owner checks | Real Finder Trash integration; recovery reveal and interactive confirmation/cancellation |
 | Confirmations and held results | Empty initial selection and Cancel-default source; rejected IDs and recovery paths retained | Native initial focus, Return/Escape, Cancel keeps review, accurate moved/held/failed results |
 | Window and appearance | Flat existing surfaces retained; latest Rescue layout unqualified | Captures at minimum, standard and wide sizes; sheets, long names and focus without overlap |
 | Accessibility | Source labels, keyboard handling and contrast tokens | Real VoiceOver narration; Increase Contrast and Reduce Motion with restored settings; fixed ten-area rubric with reference evidence |
@@ -19,7 +19,7 @@ The full goal is the confirmed design in `docs/research/rescue-2026-11-11/design
 | Release CI | Existing owned-hardware lanes and exact-head gates | Both signed reports for the final clean commit, full 400-trial campaign, unchanged limits and valid baseline comparison |
 | Publication and updater | Existing 0.2.2 release infrastructure | Next 0.x version/build, signing and smoke, matching symbols, verified Sparkle feed and DMG, public asset readback and update path |
 
-The last completed native run is 1f44e66: compilation passed; 134 tests ran and the suite failed with 13 issues across 11 tests. Release was held. Later changes, including the acquired-object helper, are not covered by that run.
+The latest completed native build gate is 84df90d: both Trash suites passed all 28 tests; the full Debug suite passed all 152 tests in 12 suites with no failures or skips; unsigned Release succeeded. XcodeGen output exactly matched the committed project. The earlier 1f44e66 failure is retained as diagnostic history. The passing gate covers the acquired-object helper and owner-state tests, but not real Finder Trash or interactive acceptance.
 
 The first attempted diagnosis after reconnecting read the earlier evidence but ran no loop and proved no cause. A narrower native task is now assigned to execute one red loop and identify the exact guard. Do not classify that read-only attempt as a successful diagnosis or an external blocker.
 
@@ -54,3 +54,22 @@ The same run generated the missing Xcode project entries. The returned 15,223-by
 patch has SHA-256 `97d7918b7fa8563beef69731b0c4871fb929207c14433ff25e54bd54dc9b93f7`.
 It was checked and applied without manual project edits. Full Debug, unsigned
 Release and the production Finder Trash lookup remain unqualified.
+
+## Passing native build gate at 84df90d
+
+Exact revision: `84df90d2516411e9ce70afdf58a231d1e920d0b0`.
+All 372 archive files matched Git blobs. XcodeGen 2.45.4 reproduced the committed
+project without a diff. Both Trash suites passed 28/28; full Debug passed 152/152
+in 12 suites; unsigned Release succeeded. Each command exited 0. The new owner
+staging and permanent-removal checks ran in that full suite. The retained app is
+still labelled 0.2.2 because the candidate version has not been bumped.
+
+Private evidence: `/Users/abdwy/.local/share/tessera-qual-84df90d-nov12/`.
+The report, commands.jsonl, both xcresults, test-name inventory, source manifest,
+logs and before/after state snapshots remain there. Test automation excluded
+analytics and the updater. Production preferences, process and original checkout
+were preserved; all owned processes stopped. This is build/test proof only.
+The real Finder Trash path, native UI/accessibility, exact final CI lanes and
+publication remain separate gates. Local tooling also passed 72 tests and the
+release-series validator on 12 November. Mock symbol-upload output is not live
+symbol receipt or publication proof.
