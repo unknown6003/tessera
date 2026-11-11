@@ -37,6 +37,7 @@ final class TrashOperation: @unchecked Sendable {
     struct ReviewedItem: Identifiable, Sendable {
         let item: Item
         let hold: Hold?
+        let recoveryURL: URL?
         var id: UUID { item.id }
     }
 
@@ -63,6 +64,7 @@ final class TrashOperation: @unchecked Sendable {
     private let fileSystem: any TrashFileSystem
     private var records: [UUID: Record] = [:]
     private var order: [UUID] = []
+    private var recoveryFailures: [UUID: VerifiedTrashRemoval.Failure] = [:]
     private var pendingReview: Review?
     private var reviewedAt: ContinuousClock.Instant?
     private let maximumEntries: Int
@@ -180,7 +182,9 @@ final class TrashOperation: @unchecked Sendable {
         lock.withLock {
             let items = order.compactMap { records[$0] }.map { record in
                 ReviewedItem(item: record.item,
-                             hold: validate(record, ownerState: ownerState, isCancelled: isCancelled))
+                             hold: recoveryFailures[record.item.id] == nil
+                                ? validate(record, ownerState: ownerState, isCancelled: isCancelled) : .changed,
+                             recoveryURL: recoveryFailures[record.item.id]?.recoveryURL)
             }
             let review = Review(operationID: id, items: items, token: UUID())
             pendingReview = review
@@ -228,10 +232,13 @@ final class TrashOperation: @unchecked Sendable {
                     return .held(record.item, .ownerUnverified)
                 }
                 do {
-                    try fileSystem.remove(at: record.item.trashURL)
+                    try fileSystem.remove(at: record.item.trashURL, expected: record.manifest)
                     records.removeValue(forKey: record.item.id)
                     return .removed(record.item)
                 } catch {
+                    if let recovery = error as? VerifiedTrashRemoval.Failure {
+                        recoveryFailures[record.item.id] = recovery
+                    }
                     return .failed(record.item, error)
                 }
             }
@@ -241,6 +248,7 @@ final class TrashOperation: @unchecked Sendable {
     func invalidate() {
         lock.withLock {
             records.removeAll()
+            recoveryFailures.removeAll()
             order.removeAll()
             pendingReview = nil
             reviewedAt = nil
@@ -348,7 +356,7 @@ protocol TrashFileSystem {
     func trashDirectory(for url: URL) throws -> URL
     func state(at url: URL) throws -> TrashFileState
     func children(at url: URL) throws -> [URL]
-    func remove(at url: URL) throws
+    func remove(at url: URL, expected: [String: TrashFileState]) throws
 }
 
 struct TrashFileState: Equatable, Sendable {
@@ -432,5 +440,7 @@ struct LocalTrashFileSystem: TrashFileSystem {
         return listing.entries.map { url.appendingPathComponent($0.name) }
     }
 
-    func remove(at url: URL) throws { try FileManager.default.removeItem(at: url) }
+    func remove(at url: URL, expected: [String: TrashFileState]) throws {
+        try VerifiedTrashRemoval.remove(at: url, expected: expected)
+    }
 }

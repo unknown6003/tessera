@@ -17,6 +17,7 @@ struct TrashOperationTests {
         var unknownRoot = false
         var removals: [URL] = []
         var afterListing: ((URL) throws -> Void)?
+        var removalCheckpoint: (VerifiedTrashRemoval.Checkpoint) throws -> Void = { _ in }
         let local = LocalTrashFileSystem()
 
         init() throws {
@@ -64,12 +65,13 @@ struct TrashOperationTests {
             try afterListing?(url)
             return result
         }
-        func remove(at url: URL) throws {
+        func remove(at url: URL, expected: [String: TrashFileState]) throws {
             if failRemoval { throw CocoaError(.fileWriteNoPermission) }
             // This assertion also protects fixtures from an accidental broad cleanup.
             try #require(url.deletingLastPathComponent() == trash)
             removals.append(url)
-            try local.remove(at: url)
+            try VerifiedTrashRemoval.remove(at: url, expected: expected, trashDirectory: trash,
+                                             checkpoint: removalCheckpoint)
         }
     }
 
@@ -271,6 +273,29 @@ struct TrashOperationTests {
         #expect(result.contains { if case .failed(let failed, _) = $0 { return failed.id == item.id }; return false })
         #expect(operation.review(ownerState: .stopped).items.count == 1)
         #expect(f.removals.isEmpty)
+    }
+
+    @Test("A partial verified removal keeps its recovery path in later reviews")
+    func partialRecovery() throws {
+        let f = try Fixture()
+        defer { f.clean() }
+        let operation = TrashOperation(fileSystem: f)
+        let item = try moved(f, operation, name: "folder", directory: true)
+        let review = operation.review(ownerState: .stopped)
+        f.removalCheckpoint = { point in
+            if case .didUnlink = point { throw CocoaError(.fileWriteNoPermission) }
+        }
+        let results = operation.finish(review, selecting: [item.id], ownerState: .stopped)
+        var recovery: URL?
+        if let result = results.first, case .failed(_, let error) = result {
+            let failure = try #require(error as? VerifiedTrashRemoval.Failure)
+            #expect(failure.removedEntryCount == 1)
+            recovery = try #require(failure.recoveryURL)
+        } else { Issue.record("Expected a partial failure") }
+        let next = operation.review(ownerState: .stopped)
+        #expect(next.items.first?.hold == .changed)
+        #expect(next.items.first?.recoveryURL == recovery)
+        #expect(FileManager.default.fileExists(atPath: try #require(recovery).appendingPathComponent("recovery.json").path))
     }
 
     @Test("Tracking limits preserve recoverable moves and cancellation blocks a move")

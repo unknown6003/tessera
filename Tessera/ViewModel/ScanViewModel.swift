@@ -1120,10 +1120,15 @@ final class ScanViewModel: ObservableObject {
         deletionProgress = 0
         defer { isDeleting = false }
         let owner = CleanupOwnerState.current()
-        let results = try await Self.offMain {
-            operation.finish(snapshot.review, selecting: ids, ownerState: owner, ownerProbe: {
-                DispatchQueue.main.sync { MainActor.assumeIsolated { CleanupOwnerState.current() } }
-            })
+        let cancellation = TreeReadCancellation()
+        let results = try await withTaskCancellationHandler {
+            try await Self.offMain {
+                operation.finish(snapshot.review, selecting: ids, ownerState: owner, ownerProbe: {
+                    DispatchQueue.main.sync { MainActor.assumeIsolated { CleanupOwnerState.current() } }
+                }, isCancelled: { cancellation.isCancelled })
+            }
+        } onCancel: {
+            cancellation.cancel()
         }
         var removed = 0
         var held = 0
@@ -1140,10 +1145,15 @@ final class ScanViewModel: ObservableObject {
                 trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: item.trashURL,
                     message: "Held because this item could not be verified. Inspect it in Finder."))
             case .rejected: held += 1
-            case .failed(let item, _):
+            case .failed(let item, let error):
                 failed += 1
-                trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: item.trashURL,
-                    message: "Removal failed. Some contents may already be gone. Inspect what remains in Trash."))
+                let recovery = error as? VerifiedTrashRemoval.Failure
+                let path = recovery?.recoveryURL ?? item.trashURL
+                let partial = (recovery?.removedEntryCount ?? 0) > 0
+                trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: path,
+                    message: partial
+                        ? "Removal stopped after some contents were deleted. Inspect the remaining items and recovery map."
+                        : "Removal stopped. Inspect the held item in Finder before taking further action."))
             }
         }
         deletionProgress = results.count

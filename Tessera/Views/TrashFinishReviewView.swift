@@ -10,6 +10,7 @@ struct TrashFinishReviewView: View {
     @State private var working = false
     @State private var failure: String?
     @State private var consumed = false
+    @State private var finishTask: Task<Void, Never>?
 
     private var current: Bool {
         !consumed && snapshot.source == vm.scannedURL
@@ -36,6 +37,9 @@ struct TrashFinishReviewView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                 if let hold = row.hold {
                                     Text(Self.message(hold)).font(.caption).foregroundStyle(Theme.mutedForeground)
+                                    Button("Inspect held item in Finder") {
+                                        NSWorkspace.shared.activateFileViewerSelecting([row.recoveryURL ?? row.item.trashURL])
+                                    }.tesseraButtonStyle(.flat).controlSize(.small)
                                 } else {
                                     Text("\(Theme.format(snapshot.allocatedBytes[row.id] ?? 0)) allocated")
                                         .font(.caption.monospacedDigit()).foregroundStyle(Theme.mutedForeground)
@@ -63,8 +67,9 @@ struct TrashFinishReviewView: View {
             Text("Removal cannot be undone. Allocated bytes do not promise the same increase in free space.")
                 .font(.caption).foregroundStyle(Theme.mutedForeground)
             HStack {
-                Button("Cancel") { dismiss() }.tesseraButtonStyle(.flat)
-                    .keyboardShortcut(.cancelAction).disabled(working)
+                Button(working ? "Stop after current item" : "Close") {
+                    if working { finishTask?.cancel() } else { dismiss() }
+                }.tesseraButtonStyle(.flat).keyboardShortcut(.cancelAction)
                 Spacer()
                 if working { ProgressView().controlSize(.small) }
                 Button("Remove \(Theme.itemCount(selected.count)) permanently…") { confirming = true }
@@ -73,6 +78,7 @@ struct TrashFinishReviewView: View {
             }
         }
         .padding(24).frame(width: 560).background(Theme.bg)
+        .onDisappear { finishTask?.cancel() }
         .alert("Permanently remove \(Theme.itemCount(selected.count))?", isPresented: $confirming) {
             Button("Cancel", role: .cancel) {}.keyboardShortcut(.defaultAction)
             Button("Remove permanently", role: .destructive) { finish() }
@@ -84,7 +90,7 @@ struct TrashFinishReviewView: View {
     private func finish() {
         guard current, !selected.isEmpty, !working else { return }
         working = true
-        Task {
+        finishTask = Task {
             do {
                 try await vm.finishTrackedTrash(snapshot, selecting: selected)
                 consumed = true
