@@ -637,9 +637,11 @@ final class RescueWorkspaceModel: ObservableObject {
             return
         }
         let kept = keptItems.filter { $0.sourcePath == review.sourcePath }
-        let chosen = review.items.filter {
-            selection.contains($0.recommendation.id) && $0.heldReason == nil
-                && !kept.contains(where: { k in k.matches($0.recommendation, sourcePath: review.sourcePath) })
+        let chosen = review.items.filter { item in
+            selection.contains(item.recommendation.id) && item.heldReason == nil
+                && !kept.contains(where: { keptItem in
+                    keptItem.matches(item.recommendation, sourcePath: review.sourcePath)
+                })
         }.map(\.recommendation)
         guard !chosen.isEmpty else { return }
         isStaging = true

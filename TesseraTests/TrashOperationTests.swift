@@ -6,7 +6,7 @@ import Foundation
 struct TrashOperationTests {
     /// Every move/remove stays below one owned disposable directory. This never
     /// invokes Finder Trash, including when run on macOS.
-    private final class Fixture: TrashFileSystem {
+    fileprivate final class Fixture: TrashFileSystem {
         let base: URL
         let source: URL
         let trash: URL
@@ -346,7 +346,9 @@ struct TrashMoveSafetyTests {
         node.addScanCoverageGap(url.path)
         let target = DeletionService.prepare(node)
         #expect(target.check == .incompleteScan)
-        let outcome = DeletionService.performTracked(target, operation: TrashOperation())
+        let adapter = try TrashOperationTests.Fixture()
+        defer { adapter.clean() }
+        let outcome = DeletionService.performTracked(target, operation: TrashOperation(fileSystem: adapter))
         #expect(outcome.error != nil)
         #expect(outcome.item == nil)
         #expect(FileManager.default.fileExists(atPath: url.path))
@@ -356,7 +358,7 @@ struct TrashMoveSafetyTests {
         // Even a hand-made ready record cannot bypass live path protection.
         let forged = DeletionService.PreparedRemoval(url: protected, identity: protectedIdentity,
                                                      check: .ready, ancestors: [])
-        let blocked = DeletionService.performTracked(forged, operation: TrashOperation())
+        let blocked = DeletionService.performTracked(forged, operation: TrashOperation(fileSystem: adapter))
         #expect(blocked.error != nil)
         #expect(blocked.item == nil)
         #expect(FileManager.default.fileExists(atPath: protected.path))

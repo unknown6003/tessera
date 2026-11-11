@@ -7,3 +7,5 @@ The view model freezes scanning and mutation during review and finishing. Source
 Moved bytes use the scanned allocated footprint, not the directory inode size. They are not a promise of reclaimed space. Held and failed outcomes remain separate. No file paths or names enter analytics.
 
 Status: source integration only. All 72 Linux tool tests pass. Linux cannot compile SwiftUI or exercise Finder Trash. The path-based permanent-removal race flagged by the module author remains under review. Native build, tracked real-Trash fixture checks, keyboard review, independent risk review and both external CI lanes remain required.
+
+The first native compile on `b1b8a12` stopped at the selection filter in RescueWorkspaceModel. The outer item now has an explicit name, so the inner kept-item closure does not refer to an anonymous argument from the wrong scope. The safety-gate tests also inject the temporary Trash adapter, including tests expected to reject before moving. Existing wrapper checks remove only disposable fixture files or pass missing fixture paths. No tests ran in that first attempt.
