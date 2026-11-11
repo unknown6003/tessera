@@ -1,8 +1,8 @@
 # Rescue redesign specification
 
-Status: proposed for shared-understanding confirmation on 11 November 2026.
+Status: confirmed for implementation on 11 November 2026. The consumed decision is recorded in design-confirmation-response.json.
 Base main: 65e272109ad906810ff3b8a3d01d217cd1fb1934, which contains the released 0.2.2 changes.
-No product implementation is included in this research unit.
+This file records the agreed design. Product implementation and native qualification are tracked in docs/update/rescue-review-triage.md.
 
 Outcome: people can find the largest storage consumers, understand their next action, and recover usable space without guessing which files are disposable.
 Proof: native fixture flows, keyboard and VoiceOver checks, captured states, release CI, and direct comprehension checks. Agent scores and desk research are not user-study results.
@@ -22,7 +22,7 @@ Three replies were consumed. Exact values and submission times are in round-1-re
 - Show known results with visible coverage gaps. Hold unverified actions.
 - Make the optional goal an additional amount of GB.
 
-The details below are the proposed implementation interpretation. They are not additional answers supplied by the owner.
+The details below are the implementation interpretation confirmed by the owner. The three earlier answers are preserved separately.
 
 ## 1. Main screen
 

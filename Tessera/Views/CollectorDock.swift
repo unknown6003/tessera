@@ -217,7 +217,7 @@ struct CleanupReviewSheet: View {
     let sourcePath: String
     let rootID: ObjectIdentifier?
     let revision: UInt64
-    /// Rescue shows the risk mix and capacity goal in the confirmation.
+    /// Rescue shows the reviewed risk mix in the confirmation.
     let startedInRescue: Bool
     var onTrash: ([FileNode]) -> Void
     var onDelete: ([FileNode]) -> Void
@@ -428,7 +428,7 @@ struct CleanupReviewSheet: View {
                 Spacer()
                 Text("\(Theme.format(total)) allocated").font(.headline.monospacedDigit())
             }
-            Text("Trash is recoverable. Space returns when you empty Trash.")
+            Text("Trash is recoverable. Free space is measured separately after removal.")
                 .font(.caption).foregroundStyle(Theme.mutedForeground)
             HStack {
                 Menu("More") {
@@ -461,10 +461,10 @@ struct CleanupReviewSheet: View {
         "Move \(Theme.itemCount(items.count)) (\(Theme.format(total))) to Trash?"
     }
 
-    /// Two sentences in Explore. Rescue adds the risk mix and the capacity goal,
-    /// because only Rescue sets that goal.
+    /// The optional additional-space goal stays in Rescue. Confirmation names
+    /// the reviewed action and risk mix without reviving the old capacity target.
     private var trashMessage: String {
-        let base = "You can restore items from Trash. Space returns when you empty Trash."
+        let base = "You can restore items from Trash. They can still use disk space until permanently removed."
         guard startedInRescue, let plan = vm.rescuePlan else { return base }
         let ids = Set(items.map(\.id))
         let parts = [(CleanupRisk.safe, "safe"), (.review, "marked Review first"), (.protected, "protected")]
@@ -474,13 +474,6 @@ struct CleanupReviewSheet: View {
             }
         var message = base
         if !parts.isEmpty { message += " In this list: " + parts.joined(separator: ", ") + "." }
-        if let target = plan.targetSpace {
-            // Name both figures so the goal is not read as current free space.
-            message += " Goal: under \(Int((plan.capacityGoal * 100).rounded()))% used, which needs \(Theme.format(target)) free."
-            if let now = plan.measurement.primaryBytes {
-                message += " \(Theme.format(now)) is available now."
-            }
-        }
         return message
     }
 }
