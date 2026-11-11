@@ -6,22 +6,22 @@ The full goal is the confirmed design in `docs/research/rescue-2026-11-11/design
 
 | Requirement | Evidence so far | Required before release |
 | --- | --- | --- |
-| Largest-first discovery and 12 consumer families | Source review; discovery tests compiled at 1f44e66 within the failed 134-test run | Full passing exact-candidate tests and native fixture results |
-| Group review, explicit selection, Back, exclusions | Coordinator tests and source review; later keyboard changes uncompiled | Native keyboard and 100,000-item review, same-source/revision checks, kept identity replacement |
+| Largest-first discovery and 12 consumer families | Source review; all discovery cases passed within the 154-test abd0491 run | Full passing exact-candidate tests and native fixture results |
+| Group review, explicit selection, Back, exclusions | Coordinator tests passed at abd0491; 84df90d native Back, selection and Keep/Restore passed; 921afad focus repairs under native check | Native keyboard and 100,000-item review, same-source/revision checks, kept identity replacement |
 | Owner routes, Retry, return refresh | Coordinator tests and source review | Verify installed app IDs and supported routes; native one-return refresh, failed owner, source change and busy cases |
 | Additional-GB goal and capacity labels | Coordinator tests; old 75% confirmation text removed | Native same-volume capacity success/failure, negative change and post-action refresh |
 | Recoverable moves and actual Trash destinations | Two native red/green diagnoses; 84df90d passed the full 152-test suite | Disposable real Finder Trash on supported local volumes |
-| Operation-scoped permanent finishing | Separate Risk reviews; all 28 native Trash/helper tests passed at 84df90d, including replacement, partial failure, journal, cancellation and owner checks | Real Finder Trash integration; recovery reveal and interactive confirmation/cancellation |
+| Operation-scoped permanent finishing | Separate Risk reviews; 30 native Trash/helper tests passed at abd0491; real review passed, helper stopped at Trash-directory EPERM | Real Finder Trash integration; recovery reveal and interactive confirmation/cancellation |
 | Confirmations and held results | Empty initial selection and Cancel-default source; rejected IDs and recovery paths retained | Native initial focus, Return/Escape, Cancel keeps review, accurate moved/held/failed results |
-| Window and appearance | Flat existing surfaces retained; latest Rescue layout unqualified | Captures at minimum, standard and wide sizes; sheets, long names and focus without overlap |
+| Window and appearance | 84df90d native captures and keyboard checks at 820x652, 1100x700 and 1600x900 passed; six focus/text repairs still under check | Captures at minimum, standard and wide sizes; sheets, long names and focus without overlap |
 | Accessibility | Source labels, keyboard handling and contrast tokens | Real VoiceOver narration; Increase Contrast and Reduce Motion with restored settings; fixed ten-area rubric with reference evidence |
 | Privacy and analytics | No new path-bearing analytics in reviewed changes; production policy unchanged | Automated-run exclusion and allowed new-flow payload checks; no names, paths, search, exclusion identity or raw errors sent |
 | Release CI | Existing owned-hardware lanes and exact-head gates | Both signed reports for the final clean commit, full 400-trial campaign, unchanged limits and valid baseline comparison |
 | Publication and updater | Existing 0.2.2 release infrastructure | Next 0.x version/build, signing and smoke, matching symbols, verified Sparkle feed and DMG, public asset readback and update path |
 
-The latest completed native build gate is 84df90d: both Trash suites passed all 28 tests; the full Debug suite passed all 152 tests in 12 suites with no failures or skips; unsigned Release succeeded. XcodeGen output exactly matched the committed project. The earlier 1f44e66 failure is retained as diagnostic history. The passing gate covers the acquired-object helper and owner-state tests, but not real Finder Trash or interactive acceptance.
+The latest completed Debug gate is abd0491: both Trash suites passed 30 tests and the full suite passed 154 tests in 12 suites. XcodeGen matched the committed project. The latest unsigned Release gate is 5e4c0f1, before the fresh-review policy and focus repairs. Real Finder Trash review passed at abd0491, but finishing stopped at a directory-open permission error. None of these results qualifies the final release commit.
 
-The first attempted diagnosis after reconnecting read the earlier evidence but ran no loop and proved no cause. A narrower native task is now assigned to execute one red loop and identify the exact guard. Do not classify that read-only attempt as a successful diagnosis or an external blocker.
+The first attempted diagnosis after reconnecting read the earlier evidence but ran no loop and proved no cause. Later focused runs below established the path, metadata and directory-open failures. The initial read-only attempt is neither a successful diagnosis nor an external blocker.
 
 Record new evidence with its exact source hash. Preserve failed runs and all performance samples. Use fresh production-state baselines for each Mac run. No agent score is a recruited user study, and no area receives 9/10 without its own native evidence.
 
@@ -84,8 +84,8 @@ Permanent removal was never reached. Owned items were restored by recorded
 identity; production state and unrelated Trash stayed untouched.
 
 Evidence: `/Users/abdwy/.local/share/tessera-native-trash-84df90d-ce8bb23d6598/`.
-The source now waits for 20 ms of stable moved-root metadata before capturing its
-manifest, with a 250 ms bound. Every probe still requires the original object's
+The superseded 5e4c0f1 patch waited for 20 ms of stable moved-root metadata before
+capturing its manifest, with a 250 ms bound. Every probe still requires the original object's
 identity, owner, mode, flags, size, blocks and mtime. A changed or unsettled item
 gets no permanent-removal authority. Review and finish retain full ctime equality.
 This runs after a successful move off the UI thread; it is not a scan timeout.
@@ -138,3 +138,31 @@ it. A 15 pt background gap separated the header from the partially visible row.
 This is normal clipping by a scroll viewport, not a layout defect. No sidebar
 change was made. The sanitized 1100x700 capture was transferred and hash-checked:
 `8ef5cf46ecec96492cc6d145cc0628b3463e8e6642918ab0adb63540fc8063c6`.
+
+
+## Fresh review passes; real Trash descriptor open fails
+
+At `abd049135af8bd80f2c8800d7ec1738217e6f8eb`, all 372 archive files matched.
+XcodeGen made no change. Both Trash suites passed 30/30 and full Debug passed
+154/154 in 12 suites. The controlled red test rejected a root ctime change when
+the fresh-review allowance was disabled. A separate Risk review found no blocking
+issue in that allowance or its private one-use manifest binding.
+
+The first real Finder Trash probe moved both owned items and reviewed them
+without holds. Their complete review manifests still matched immediately before
+finish. Finish failed before removing any entry, with EPERM while opening the
+Trash directory for reading. A narrow probe in the same test host opened every
+ancestor successfully, rejected `O_RDONLY` on `.Trash`, and accepted `O_SEARCH`.
+This establishes the failing open mode. It does not prove what permissions the
+signed production app receives or whether a search-only descriptor supports all
+required durability operations. A separate probe will check those operations
+before a product change. The remaining real-Trash repetitions were not run.
+
+Private evidence:
+`/Users/abdwy/.local/share/tessera-native-abd0491-a1cf1b1a2288/`.
+All owned Trash items were restored from their recorded destinations after
+identity checks. No Trash listing or Empty Trash ran. Production state remained
+unchanged and all job processes stopped. Release remains unqualified.
+
+The separate Spec review of `abd0491..921afad` found no mismatch in the six UI
+repairs. Native focus timing and the actual keyboard paths still need proof.
