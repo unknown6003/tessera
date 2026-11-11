@@ -392,6 +392,8 @@ final class RescueWorkspaceModel: ObservableObject {
 
     @Published private(set) var goal: RescueSpaceGoal?
     @Published private(set) var handoff: HandoffState = .none
+    @Published private(set) var isOpeningOwner = false
+    private var retryHandoff: (route: RescueOwnerRoute, paths: [String], source: URL)?
 
     private weak var host: (any RescueHost)?
     private let opener: any RescueOwnerOpening
@@ -407,6 +409,12 @@ final class RescueWorkspaceModel: ObservableObject {
         let measuredAt: Date?
     }
     private var lastReportKey: ReportKey?
+    private struct ReviewChoice {
+        let source: String
+        let revision: ScanTreeRevision
+        let selected: Set<String>
+    }
+    private var reviewChoices: [String: ReviewChoice] = [:]
     private var reviewTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
@@ -461,6 +469,10 @@ final class RescueWorkspaceModel: ObservableObject {
                 closeReview(notice: "The scan changed. Open the group again to review current items.")
             }
             if measurementChanged, goal != nil { checkGoal() }
+        }
+        if let retry = retryHandoff, retry.source != host.rescueSelectedSource {
+            retryHandoff = nil
+            handoff = .none
         }
         if let pending = pendingHandoff, pending.source != host.rescueSelectedSource {
             pendingHandoff = nil
@@ -588,11 +600,19 @@ final class RescueWorkspaceModel: ObservableObject {
             self.review = RescueReviewSnapshot(groupID: row.id, title: row.title, kind: row.kind,
                                                route: route, sourcePath: source, revision: revision,
                                                items: items)
+            if let choice = self.reviewChoices[row.id], choice.source == source, choice.revision == revision {
+                let eligible = Set(items.filter { $0.heldReason == nil }.map(\.recommendation.id))
+                self.selection = choice.selected.intersection(eligible)
+            }
         }
     }
 
     /// Back to the ranked list. The filter, search and the opened row stay.
     func closeReview(notice: String? = nil) {
+        if let review {
+            reviewChoices[review.groupID] = ReviewChoice(source: review.sourcePath,
+                                                       revision: review.revision, selected: selection)
+        }
         reviewTask?.cancel()
         isOpeningReview = false
         review = nil
@@ -753,7 +773,11 @@ final class RescueWorkspaceModel: ObservableObject {
     /// Open the owner, or Finder at the item. Only a successful open through
     /// this call arms the one automatic check on return.
     func openOwner(_ route: RescueOwnerRoute, revealing paths: [String]) async {
-        guard let host, let source = host.rescueSelectedSource else { return }
+        guard !isOpeningOwner, let host, let source = host.rescueSelectedSource,
+              source.path == host.rescueReportSource else { return }
+        isOpeningOwner = true
+        defer { isOpeningOwner = false }
+        retryHandoff = (route, paths, source)
         let urls = paths.map { URL(fileURLWithPath: $0) }
         let departureBeforeOpen = departureGeneration
         var opened = false
@@ -774,9 +798,15 @@ final class RescueWorkspaceModel: ObservableObject {
             }
         }
         guard source == host.rescueSelectedSource else { return }
+        retryHandoff = nil
         pendingHandoff = (source, route.ownerName, departureGeneration != departureBeforeOpen)
         handoff = .waiting(ownerName: route.ownerName)
         if pendingHandoff?.leftApp == true, NSApp?.isActive == true { appDidBecomeActive() }
+    }
+
+    func retryOwnerHandoff() async {
+        guard let retry = retryHandoff, retry.source == host?.rescueSelectedSource else { return }
+        await openOwner(retry.route, revealing: retry.paths)
     }
 
     func cancelHandoff() {

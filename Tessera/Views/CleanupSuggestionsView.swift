@@ -80,6 +80,7 @@ struct CleanupSuggestionsView: View {
 
         listControls
         rankedList
+        unmeasuredFindings(plan)
         excludedLink
     }
 
@@ -234,6 +235,9 @@ struct CleanupSuggestionsView: View {
                 .font(.subheadline)
                 .foregroundStyle(.orange)
                 .fixedSize(horizontal: false, vertical: true)
+            Button("Retry") { Task { await workspace.retryOwnerHandoff() } }
+                .tesseraButtonStyle(.flat).controlSize(.small)
+                .disabled(workspace.isOpeningOwner)
         }
         if plan.coverage.state != .complete {
             VStack(alignment: .leading, spacing: 4) {
@@ -242,21 +246,6 @@ struct CleanupSuggestionsView: View {
                     .font(.subheadline)
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
-                if !plan.coverage.notes.isEmpty {
-                    DisclosureGroup("Areas not checked") {
-                        VStack(alignment: .leading, spacing: 3) {
-                            ForEach(plan.coverage.notes, id: \.self) { note in
-                                Text(note)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .font(.caption)
-                }
             }
         }
         if let notice = workspace.reviewNotice {
@@ -265,6 +254,22 @@ struct CleanupSuggestionsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func unmeasuredFindings(_ plan: RescuePlan) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Not measured").font(.headline).accessibilityAddTraits(.isHeader)
+            Text("Snapshot and purgeable recovery is not measured by this file scan. These findings are not added to allocated totals.")
+                .font(.caption).foregroundStyle(Theme.mutedForeground)
+            ForEach(plan.coverage.notes, id: \.self) { note in
+                Text(note).font(.caption).foregroundStyle(Theme.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            }
+            Button("Inspect snapshots in Disk Utility") {
+                let route = RescueOwnerRoute.route(categoryID: "owner.snapshots", path: "")
+                Task { await workspace.openOwner(route, revealing: []) }
+            }.tesseraButtonStyle(.flat).controlSize(.small)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Ranked list

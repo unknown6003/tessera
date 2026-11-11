@@ -333,6 +333,21 @@ struct TrashOperationTests {
         #expect(!FileManager.default.fileExists(atPath: f.trash.appendingPathComponent("folder").path))
     }
 
+    @Test("An over-budget package cannot move new protected descendants")
+    func budgetPackageProtection() throws {
+        let f = try Fixture()
+        defer { f.clean() }
+        let target = try f.prepare("Example.app", directory: true)
+        f.afterListing = { url in
+            guard url.standardizedFileURL.path == target.url.standardizedFileURL.path else { return }
+            f.afterListing = nil
+            try Data([9]).write(to: url.appendingPathComponent("nested/deep/keep.qcow2"))
+        }
+        let result = DeletionService.performTracked(target, operation: TrashOperation(fileSystem: f, maximumEntries: 1))
+        #expect(result.error != nil)
+        #expect(FileManager.default.fileExists(atPath: target.url.path))
+    }
+
     @Test("Owner activity detected after validation holds permanent removal")
     func freshOwnerProbe() throws {
         let f = try Fixture()

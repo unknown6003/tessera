@@ -197,6 +197,27 @@ struct RescueWorkspaceTests {
         #expect(model.returnGroupID == caches.id)
     }
 
+    @Test("Back keeps explicit choices only within the same source and revision")
+    func backKeepsChoices() async throws {
+        let (defaults, name) = freshDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let (model, host, _) = fixture(defaults: defaults)
+        let row = try #require(model.rows.first { $0.bytes == 550 })
+        model.openReview(row)
+        try await waitForReview(model)
+        let item = try #require(model.reviewItems.first)
+        model.toggle(item)
+        model.closeReview()
+        model.openReview(row)
+        try await waitForReview(model)
+        #expect(model.selection == [item.recommendation.id])
+        host.rescueRevision = ScanTreeRevision(rootID: host.rescueRevision.rootID, revision: 2)
+        model.hostDidChange()
+        model.openReview(row)
+        try await waitForReview(model)
+        #expect(model.selection.isEmpty)
+    }
+
     @Test("Managed stores cannot be selected")
     func managedHeld() async throws {
         let (defaults, name) = freshDefaults()
@@ -369,6 +390,23 @@ struct RescueWorkspaceTests {
         model.appDidBecomeActive()
         #expect(host.scans.count == 1)
         #expect(model.handoff == .none)
+    }
+
+    @Test("A failed owner launch can be retried without leaving the review")
+    func retryOwner() async {
+        let (defaults, name) = freshDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let opener = FakeOpener()
+        let (model, host, _) = fixture(defaults: defaults, opener: opener)
+        let route = RescueOwnerRoute.route(categoryID: "owner.docker", path: "/fixture/.docker")
+        await model.openOwner(route, revealing: ["/fixture/.docker"])
+        #expect(opener.opens.isEmpty)
+        opener.installed = ["com.docker.docker"]
+        await model.retryOwnerHandoff()
+        #expect(opener.opens.count == 1)
+        model.appDidResignActive()
+        model.appDidBecomeActive()
+        #expect(host.scans.count == 1)
     }
 
     @Test("A missing owner falls back to Finder and arms no refresh")

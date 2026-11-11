@@ -54,9 +54,11 @@ struct TrashFinishReviewView: View {
             ForEach(vm.trashFinishIssues) { issue in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(issue.message).font(.caption)
-                    Button("Inspect \(issue.trashURL.lastPathComponent) in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([issue.trashURL])
-                    }.tesseraButtonStyle(.flat).controlSize(.small)
+                    if let url = issue.trashURL {
+                        Button("Inspect \(url.lastPathComponent) in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }.tesseraButtonStyle(.flat).controlSize(.small)
+                    }
                 }
             }
             if !current && !working && !consumed {

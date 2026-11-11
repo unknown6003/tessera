@@ -245,6 +245,13 @@ final class TrashOperation: @unchecked Sendable {
         }
     }
 
+    func revokeReview() {
+        lock.withLock {
+            pendingReview = nil
+            reviewedAt = nil
+        }
+    }
+
     func invalidate() {
         lock.withLock {
             records.removeAll()

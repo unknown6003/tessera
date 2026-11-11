@@ -115,6 +115,9 @@ struct RescueReviewView: View {
                 .font(.caption)
                 .foregroundStyle(.orange)
                 .fixedSize(horizontal: false, vertical: true)
+            Button("Retry") { Task { await workspace.retryOwnerHandoff() } }
+                .tesseraButtonStyle(.flat).controlSize(.small)
+                .disabled(workspace.isOpeningOwner)
         }
     }
 

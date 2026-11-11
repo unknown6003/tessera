@@ -128,14 +128,12 @@ struct CollectorDock: View {
                     .disabled(vm.isScanning || vm.isDeleting || vm.isReadingTree)
                     .help("Review only items moved by this cleanup before permanent removal.")
             }
+            if vm.hasTrashMoveHistory,
+               let trash = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first {
+                Button("Show Trash") { NSWorkspace.shared.open(trash) }
+                    .tesseraButtonStyle(.flat).controlSize(.small)
+            }
             if vm.collectorNotice == nil, let summary = shownSummary {
-                // Finder can put items back from Trash. Tessera offers no Undo
-                // of its own; it does not restore files itself.
-                if !summary.permanently && summary.moved > 0,
-                   let trash = FileManager.default.urls(for: .trashDirectory, in: .userDomainMask).first {
-                    Button("Show Trash") { NSWorkspace.shared.open(trash) }
-                        .tesseraButtonStyle(.flat).controlSize(.small)
-                }
                 Button("Dismiss") { hiddenSummaryID = summary.id }
                     .tesseraButtonStyle(.flat).controlSize(.small)
                     .accessibilityLabel("Dismiss removal result")

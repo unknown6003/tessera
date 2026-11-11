@@ -33,11 +33,12 @@ final class ScanViewModel: ObservableObject {
     }
     struct TrashFinishIssue: Identifiable {
         let id: UUID
-        let trashURL: URL
+        let trashURL: URL?
         let message: String
     }
     @Published private(set) var trashFinishIssues: [TrashFinishIssue] = []
     @Published private(set) var hasTrackedTrash = false
+    @Published private(set) var hasTrashMoveHistory = false
     private var trashOperation: TrashOperation?
     private var trashOperationSource: URL?
     private var trashOperationBytes: [UUID: Int64] = [:]
@@ -179,7 +180,11 @@ final class ScanViewModel: ObservableObject {
 
     func startScan(volumeURL: URL) {
         guard !isDeleting else { return }
-        invalidateTrackedTrash()
+        if trashOperationSource?.standardizedFileURL == volumeURL.standardizedFileURL {
+            trashOperation?.revokeReview()
+        } else {
+            invalidateTrackedTrash()
+        }
         if isScanning, let activeScanTelemetry {
             Analytics.shared.capture(.scanCancelled, values: activeScanTelemetry.properties(outcome: "superseded"))
         }
@@ -1068,6 +1073,7 @@ final class ScanViewModel: ObservableObject {
                            measurementMismatchPaths: [], heldNodes: heldTargets,
                            errorMessage: heldError)
         let moved = max(0, attemptedTargets.count - failures.count)
+        if !permanently && moved > 0 { hasTrashMoveHistory = true }
         lastRemovalSummary = RemovalSummary(moved: moved, movedBytes: movedBytes, held: heldTargets.count,
                                              failed: failures.count, permanently: permanently)
         Analytics.shared.capture(.cleanupCompleted, values: [
@@ -1144,7 +1150,10 @@ final class ScanViewModel: ObservableObject {
                 held += 1
                 trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: item.trashURL,
                     message: "Held because this item could not be verified. Inspect it in Finder."))
-            case .rejected: held += 1
+            case .rejected(let id, _):
+                held += 1
+                trashFinishIssues.append(TrashFinishIssue(id: id, trashURL: nil,
+                    message: "This selection could not be verified. Close the review and check this cleanup again."))
             case .failed(let item, let error):
                 failed += 1
                 let recovery = error as? VerifiedTrashRemoval.Failure

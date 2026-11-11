@@ -121,7 +121,7 @@ enum DeletionService {
               let current = ScanIdentity.current(at: target.url), expected.matches(current) else {
             return .identityChanged
         }
-        if current.resourceType == .directory,
+        if current.resourceType.isDirectory,
            let issue = inspectLiveDescendants(at: target.url, device: current.device) { return issue }
         return .ready
     }
