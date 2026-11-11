@@ -6,13 +6,13 @@ The full goal is the confirmed design in `docs/research/rescue-2026-11-11/design
 
 | Requirement | Evidence so far | Required before release |
 | --- | --- | --- |
-| Largest-first discovery and 12 consumer families | Source review; all discovery cases passed within the 154-test abd0491 run | Full passing exact-candidate tests and native fixture results |
-| Group review, explicit selection, Back, exclusions | Coordinator tests passed at abd0491; 84df90d native Back, selection and Keep/Restore passed; 921afad focus repairs under native check | Native keyboard and 100,000-item review, same-source/revision checks, kept identity replacement |
+| Largest-first discovery and 12 consumer families | Full Debug passed 157 tests at 9450be1; native fixture ranking and managed rows passed at 84df90d and 921afad | Exact release commit CI and remaining owner handoff checks |
+| Group review, explicit selection, Back, exclusions | Native keyboard, explicit selection, filtered Select all, Keep/Restore and Back passed; staged-item regression passed at 9450be1 | Integrated focus recheck and native 100,000-item review |
 | Owner routes, Retry, return refresh | Coordinator tests and source review | Verify installed app IDs and supported routes; native one-return refresh, failed owner, source change and busy cases |
 | Additional-GB goal and capacity labels | Coordinator tests; old 75% confirmation text removed | Native same-volume capacity success/failure, negative change and post-action refresh |
-| Recoverable moves and actual Trash destinations | Two native red/green diagnoses; 84df90d passed the full 152-test suite | Disposable real Finder Trash on supported local volumes |
-| Operation-scoped permanent finishing | Separate Risk reviews; 30 native Trash/helper tests passed at abd0491; real review passed, helper stopped at Trash-directory EPERM | Real Finder Trash integration; recovery reveal and interactive confirmation/cancellation |
-| Confirmations and held results | Empty initial selection and Cancel-default source; rejected IDs and recovery paths retained | Native initial focus, Return/Escape, Cancel keeps review, accurate moved/held/failed results |
+| Recoverable moves and actual Trash destinations | Three real home-volume Finder Trash runs passed at 4f74c94; actual destinations and identity recorded | Exact release build and existing unsupported-volume holds remain enforced |
+| Operation-scoped permanent finishing | Three public-adapter runs passed at 4f74c94; 31 Trash/helper tests passed; 921afad real UI removed only its owned item, sentinel preserved | Exact release gates; retain recovery fixtures and metadata-only limits |
+| Confirmations and held results | Both native confirmations focused Cancel and cancelled on Return/Escape; review and files stayed; explicit confirmations succeeded | Combined-candidate acceptance and exact release tests |
 | Window and appearance | 84df90d native captures and keyboard checks at 820x652, 1100x700 and 1600x900 passed; six focus/text repairs still under check | Captures at minimum, standard and wide sizes; sheets, long names and focus without overlap |
 | Accessibility | Source labels, keyboard handling and contrast tokens | Real VoiceOver narration; Increase Contrast and Reduce Motion with restored settings; fixed ten-area rubric with reference evidence |
 | Privacy and analytics | No new path-bearing analytics in reviewed changes; production policy unchanged | Automated-run exclusion and allowed new-flow payload checks; no names, paths, search, exclusion identity or raw errors sent |
@@ -261,3 +261,42 @@ The count repair at 9450be1 passed controlled red/green for both new regressions
 and all 157 Debug tests in 12 suites. Evidence:
 `/Users/abdwy/.local/share/tessera-native-9450be1-a42120b906db/`.
 The later observer-coalescing delta has a separate production-VM probe in flight.
+
+
+## Production observer cost and final delta review
+
+At 5e01a64, a private native probe used the real ScanViewModel and the live
+workspace observer. It staged 1,000 virtual nodes through rescueStage, the same
+host method used by group staging. Both versions emitted 3,000 VM notifications.
+The old observer ran 3,000 workspace callbacks and read 3,000,000 collected entries.
+The coalesced observer ran once and read 1,000 entries. The controlled red failed
+only the two callback-cost assertions; green passed. Both public count regressions
+also passed again after instrumentation was removed and source hashes restored.
+Evidence: `/Users/abdwy/.local/share/tessera-native-5e01a64-a63df1617636/`.
+
+This is a notification-cost proof, not a duration or p99 claim. It did not drive
+stageSelection with a live group or establish linear total staging cost. Existing
+per-item collector checks still scan the collector. The combined candidate needs
+its separate native large-review check and external performance campaign.
+
+Separate Standards and Spec rechecks of 9450be1..dde90cb retained no findings.
+They verified deferred coalescing, weak coordinator lifetime, first-attachment
+focus guards and explicit goal focus. Native combined acceptance remains separate.
+
+
+## Prepared large group and owner lookup
+
+The next UI fixture contains exactly 100,000 one-byte ordinary files named
+review000000.dmg through review099999.dmg, with 409,600,000 allocated bytes.
+A fresh inventory verified every name, regular-file type, single link and unique
+inode. This prepares the native group review; it is not a UI or speed result.
+Private fixture and manifest:
+`/Users/abdwy/.local/share/tessera-rescue-large-20261111T231405Z-59929/`.
+Manifest SHA-256:
+`1d5fc5691dc121890984ec8baed32d176e69f3136f5541a8d2b81910c4bfa608`.
+
+Read-only NSWorkspace lookups found exact bundle-ID matches for Docker, Xcode,
+Photos, Mail, Disk Utility, Messages and Finder. OrbStack and UTM were absent.
+Their existing missing-owner fallback still needs its native check. No owner app
+was launched during inventory. The prep report checked a truncated Sample path,
+so it does not establish preservation of the intended nine Sample disk files.
