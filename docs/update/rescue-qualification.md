@@ -112,3 +112,29 @@ review. Root contents, permissions and descendant metadata remain regression
 cases. Native proof and a fresh Risk review must qualify this policy before
 release. This remains metadata validation, not a content-hash guarantee against
 a hostile same-user writer who can restore timestamps.
+
+## Native UI pass and focused repairs
+
+The 84df90d UI pass used the exact retained Release app and a synthetic 15-file
+fixture across nine families. Ranked rows, main-area review, no initial selection,
+local search, Keep/Restore, Back position and selection, arrow/Home/End/Space keys,
+Cleanup List review, Cancel as initial focus, Return/Escape cancellation, separate
+capacity figures and additional-GB progress all passed. Layout was checked at
+820x652, 1100x700 and 1600x900. The actual minimum window height is 652. No Trash
+confirmation was accepted. Select all was present but not exercised. No 100k group,
+VoiceOver or system accessibility setting was tested. Private report and captures:
+`/tmp/tessera-84df-ui/REPORT.md`.
+
+Six confirmed polish defects now have source repairs awaiting native checks:
+new group focus goes to Back, keyboard staging returns focus to the rows, the GB
+editor requests focus, kept-item narration uses singular/plural, unchanged goal
+progress says it has not changed, and the row browser uses its cyan focus mark
+without the native system ring. Asynchronous staging focus restoration checks the
+exact owning key window, modal state, current review and current focus intent.
+
+The reported seventh issue was checked against AX frames and pixels. The sidebar
+content was scrolled 64 pt above its 380 pt viewport; the header did not overlap
+it. A 15 pt background gap separated the header from the partially visible row.
+This is normal clipping by a scroll viewport, not a layout defect. No sidebar
+change was made. The sanitized 1100x700 capture was transferred and hash-checked:
+`8ef5cf46ecec96492cc6d145cc0628b3463e8e6642918ab0adb63540fc8063c6`.

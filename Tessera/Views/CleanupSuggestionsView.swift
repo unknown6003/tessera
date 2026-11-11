@@ -18,6 +18,7 @@ struct CleanupSuggestionsView: View {
     @FocusState private var focusedRow: String?
     @State private var goalDraft = ""
     @State private var isEditingGoal = false
+    @FocusState private var goalFocused: Bool
 
     init(vm: ScanViewModel, onMoveToTrash: (() -> Void)? = nil, onFinishTrash: (() -> Void)? = nil) {
         self.vm = vm
@@ -134,6 +135,8 @@ struct CleanupSuggestionsView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 70)
                     .accessibilityLabel("Additional gigabytes to free")
+                    .focused($goalFocused)
+                    .onAppear { goalFocused = true }
                     .onSubmit(commitGoal)
                 Text("more GB")
                     .font(.subheadline)
@@ -187,6 +190,9 @@ struct CleanupSuggestionsView: View {
         case .unverified(let reason):
             return "Goal: \(target) more free. Not verified. \(reason)"
         case .progress(let change, let remaining):
+            if change == 0 {
+                return "Goal: \(target) more free. Free now has not changed, \(Theme.format(remaining)) to go. Checked \(time)."
+            }
             let sign = change < 0 ? "−" : "+"
             return "Goal: \(target) more free. Free now changed \(sign)\(Theme.format(abs(change))) since you set it, \(Theme.format(remaining)) to go. Checked \(time)."
         case .reached(let change):
@@ -381,7 +387,7 @@ struct CleanupSuggestionsView: View {
             Button("Show excluded (\(kept))") { workspace.showsExcluded = true }
                 .tesseraButtonStyle(.flat)
                 .controlSize(.small)
-                .accessibilityLabel("Show \(kept) kept items")
+                .accessibilityLabel("Show \(kept.formatted()) kept \(kept == 1 ? "item" : "items")")
         }
     }
 

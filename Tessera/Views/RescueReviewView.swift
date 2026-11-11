@@ -9,7 +9,17 @@ struct RescueReviewView: View {
     let review: RescueReviewSnapshot
 
     private static let pitch: CGFloat = 50
-    @FocusState private var rowsFocused: Bool
+    private enum Focus: Hashable { case back, search, selectAll, clear, add, rows }
+    @FocusState private var focus: Focus?
+    @State private var ownWindow = WindowReference()
+
+    private final class WindowReference { weak var window: NSWindow? }
+    private var rowsFocused: Bool { focus == .rows }
+    private var canMoveFocus: Bool {
+        guard let window = ownWindow.window else { return false }
+        return NSApp.keyWindow === window && window.attachedSheet == nil
+            && !(window.firstResponder is NSText) && workspace.review === review
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -19,6 +29,7 @@ struct RescueReviewView: View {
             .tesseraButtonStyle(.flat)
             .controlSize(.small)
             .keyboardShortcut("[", modifiers: .command)
+            .focused($focus, equals: .back)
             .accessibilityHint("Returns to the ranked list at the same group.")
 
             header
@@ -46,7 +57,8 @@ struct RescueReviewView: View {
                     if let item = workspace.reviewItem(for: node) { row(item) }
                 }
                 .frame(height: min(CGFloat(workspace.reviewNodes.count) * Self.pitch + 8, 420))
-                .focusable().focused($rowsFocused)
+                .focusable().focused($focus, equals: .rows)
+                .focusEffectDisabled()
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Items in \(review.title)")
                 .accessibilityHint("Use arrow keys to inspect items. Space selects an eligible item. Home and End reach the first and last item.")
@@ -63,6 +75,13 @@ struct RescueReviewView: View {
             if let item = workspace.detailItem { detail(item) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TransparentWindowConfigurator(onWindow: { ownWindow.window = $0 }))
+        .onAppear { if canMoveFocus { focus = .back } }
+        .onChange(of: focus) { _, value in
+            if value == .rows, workspace.detailIndex == nil {
+                workspace.detailItemID = workspace.reviewItems.first?.recommendation.id
+            }
+        }
     }
 
     private var header: some View {
@@ -128,19 +147,28 @@ struct RescueReviewView: View {
             .textFieldStyle(.roundedBorder)
             .frame(minWidth: 140, maxWidth: 220)
             .accessibilityLabel("Search item names in this group")
+            .focused($focus, equals: .search)
         Button("Select all") { workspace.selectAllEligible() }
             .tesseraButtonStyle(.flat)
             .controlSize(.small)
             .disabled(workspace.eligibleVisibleIDs.isEmpty)
+            .focused($focus, equals: .selectAll)
             .accessibilityLabel("Select all items that can be added")
         if count > 0 {
             Button("Clear") { workspace.clearSelection() }
                 .tesseraButtonStyle(.flat)
                 .controlSize(.small)
+                .focused($focus, equals: .clear)
         }
         Spacer(minLength: 0)
         Button {
-            Task { await workspace.stageSelection() }
+            let restoreFocus = focus == .add
+            Task {
+                await workspace.stageSelection()
+                if restoreFocus, (focus == .add || focus == nil), canMoveFocus {
+                    focus = workspace.reviewItems.isEmpty ? .back : .rows
+                }
+            }
         } label: {
             Text(count == 0
                  ? "Add to Cleanup List"
@@ -149,6 +177,7 @@ struct RescueReviewView: View {
         .tesseraButtonStyle(.flatProminent)
         .controlSize(.regular)
         .disabled(!workspace.canStage)
+        .focused($focus, equals: .add)
         .help(busy ? "Wait for the current scan or cleanup to finish." : "Adds only the selected items. Nothing moves yet.")
     }
 
@@ -162,7 +191,7 @@ struct RescueReviewView: View {
                 Button {
                     workspace.detailItemID = recommendation.id
                     workspace.toggle(item)
-                    rowsFocused = true
+                    focus = .rows
                 } label: {
                     Image(systemName: selected || inList ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
@@ -183,7 +212,7 @@ struct RescueReviewView: View {
 
             Button {
                 workspace.detailItemID = isDetail ? nil : recommendation.id
-                rowsFocused = true
+                focus = .rows
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(recommendation.node.name)
