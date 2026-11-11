@@ -300,3 +300,34 @@ Photos, Mail, Disk Utility, Messages and Finder. OrbStack and UTM were absent.
 Their existing missing-owner fallback still needs its native check. No owner app
 was launched during inventory. The prep report checked a truncated Sample path,
 so it does not establish preservation of the intended nine Sample disk files.
+
+
+## Integrated focus, build and first actual VoiceOver pass
+
+At dde90cb all 157 Debug tests passed in the correctly isolated test host, and
+unsigned universal Release succeeded. A prior malformed-bundle-ID run is not
+used as evidence. Native keys proved both initial-focus repairs, no initial
+selection, Tab to Search without bouncing, and Settings already key before a
+background review attached. The second-main-window case was not driven because
+there is no public New Window command.
+
+Actual VoiceOver started through System Settings and its caption panel supplied
+spoken text for item, size, unselected and selected states, Add action, held
+reason and Cleanup List review. Owner text and the Added result were not captured
+as speech. The item label now includes its owner and allocated-size wording.
+The Add action posts its outcome as a high-priority accessibility announcement
+after any guarded focus restoration, only while the current review and owning
+key window remain valid. Native narration still must qualify these changes.
+
+Increase Contrast and Reduce Motion were enabled, read back and restored to the
+fresh baseline. A cyan row outline was captured with contrast on under accent 6.
+The motion transition itself was not inspected. All nine Sample disk files and
+all 14 owned fixture files matched before and after; production process and
+preferences were preserved. Sixteen job domains and two owned Application Support
+folders were removed. Raw captures remain private. Evidence:
+`/tmp/tessera-dde9-ui/REPORT.md`.
+
+The report called the unchanged two-item group after staging stale. That is
+expected: staging does not remove its allocated footprint. The separate removal
+regression verifies that the group shrinks after an actual removal. The Release
+log's 13 warnings still need classification before final qualification.

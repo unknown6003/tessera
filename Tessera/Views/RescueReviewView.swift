@@ -171,6 +171,11 @@ struct RescueReviewView: View {
                 if restoreFocus, (focus == .add || focus == nil), canMoveFocus {
                     focus = workspace.reviewItems.isEmpty ? .back : .rows
                 }
+                if canMoveFocus, let notice = workspace.reviewNotice {
+                    var announcement = AttributedString(notice)
+                    announcement.accessibilitySpeechAnnouncementPriority = .high
+                    AccessibilityNotification.Announcement(announcement).post()
+                }
             }
         } label: {
             Text(count == 0
@@ -232,7 +237,7 @@ struct RescueReviewView: View {
                 .contentShape(Rectangle())
             }
             .tesseraButtonStyle(.interactive)
-            .accessibilityLabel("\(recommendation.node.name), \(Theme.format(recommendation.physicalBytes))")
+            .accessibilityLabel("\(recommendation.node.name), \(Theme.format(recommendation.physicalBytes)) allocated. Owner: \(recommendation.owner).")
             .accessibilityValue(item.heldReason ?? (inList ? "In Cleanup List" : ""))
             .accessibilityHint(isDetail ? "Hides details" : "Shows path, owner and effect")
 
