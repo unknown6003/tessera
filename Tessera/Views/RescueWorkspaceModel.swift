@@ -427,6 +427,7 @@ final class RescueWorkspaceModel: ObservableObject {
     private var reviewChoices: [String: ReviewChoice] = [:]
     private var reviewTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
+    private var hostUpdateScheduled = false
 
     init(host: any RescueHost,
          opener: any RescueOwnerOpening = SystemOwnerOpener(),
@@ -458,9 +459,18 @@ final class RescueWorkspaceModel: ObservableObject {
     convenience init(vm: ScanViewModel, defaults: UserDefaults = .standard) {
         self.init(host: vm, defaults: defaults)
         vm.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in MainActor.assumeIsolated { self?.hostDidChange() } }
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.scheduleHostUpdate() } }
             .store(in: &cancellables)
+    }
+
+    private func scheduleHostUpdate() {
+        guard !hostUpdateScheduled else { return }
+        hostUpdateScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.hostUpdateScheduled = false
+            self.hostDidChange()
+        }
     }
 
     // MARK: Host changes

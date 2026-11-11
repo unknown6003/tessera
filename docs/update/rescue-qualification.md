@@ -229,3 +229,11 @@ pruned tree off the main thread, then publishes the updated report and plan.
 This removes deleted rows and updates parent footprints without claiming a new
 disk scan. Capacity is read separately and measured goal progress remains based
 on Free now. New fixtures cover both transitions.
+
+
+The count delta's Risk pass retained no finding. Its Spec pass found repeated
+collector scans: each queued VM notification rebuilt the final collected-ID set.
+The live observer now coalesces notifications into one deferred MainActor refresh
+per synchronous burst. It reads values after publication and keeps the existing
+source, revision and owner-return checks. A production-VM batch staging probe
+must verify this correction; fake-host tests do not establish its cost.
