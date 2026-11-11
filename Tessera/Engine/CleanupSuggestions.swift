@@ -212,6 +212,8 @@ struct CleanupPath: Sendable {
         }
     }
 
+    func isWithin(_ root: String) -> Bool { hasSuffix(root) || contains(root + "/") }
+
     func hasPrefix(_ part: String) -> Bool { value.hasPrefix(part) }
     func hasSuffix(_ part: String) -> Bool { value.hasSuffix(part) }
 }
@@ -243,13 +245,19 @@ struct CleanupRecommendation: Identifiable, Sendable {
          ownerState: CleanupOwnerState = .stopped,
          coverageComplete: Bool = true,
          hasProtectedDescendant: Bool = false,
-         hasOpaqueDescendant: Bool = false) {
+         hasOpaqueDescendant: Bool = false,
+         measuredPhysicalBytes: Int64? = nil) {
         let path = node.url.standardizedFileURL.path
         // A hand-built node has no identity proof. It can still be shown, but it
         // cannot enter the safe default or pass an action preflight.
+        let identityMatchesNode = node.scanIdentity.map { identity in
+            identity.resourceType.isDirectory == node.isDirectory
+                && (identity.path == nil || identity.path == path)
+        } ?? false
         let effectiveConfidence: CleanupConfidence =
             category.confidence == .safeRegenerable
                 && (!(node.scanIdentity?.hasStableObjectIdentifier ?? false)
+                    || !identityMatchesNode || !node.isDirectory || node.kind == .package
                     || ownerState != .stopped
                     || !coverageComplete
                     || hasProtectedDescendant
@@ -273,7 +281,7 @@ struct CleanupRecommendation: Identifiable, Sendable {
             } else if hasOpaqueDescendant {
                 self.reason = "\(category.explanation) It contains unscanned or separately mounted data, so review the exact contents first."
             } else {
-                self.reason = "\(category.explanation) This result has no stable scan identity, so it stays in review."
+                self.reason = "\(category.explanation) This result has no matching directory scan identity, so it stays in review."
             }
         } else {
             self.reason = category.explanation
@@ -284,7 +292,7 @@ struct CleanupRecommendation: Identifiable, Sendable {
         self.action = effectiveConfidence == .safeRegenerable ? .stage
             : (effectiveConfidence == .protected ? .handoff : .inspect)
         self.logicalBytes = node.logicalSize
-        self.physicalBytes = node.physicalSize
+        self.physicalBytes = measuredPhysicalBytes ?? node.physicalSize
         self.identity = node.scanIdentity
         self.ownerState = category.confidence == .safeRegenerable ? ownerState : .unknown
     }
@@ -406,33 +414,104 @@ enum CleanupCatalog {
         symbol: "message.fill", confidence: .protected, owner: "Messages or communication app",
         sideEffect: "Use the owner app after checking sync, account, and encryption state.")
 
+    static let protectedDocker = CleanupCategory(
+        id: "owner.docker", title: "Docker storage",
+        explanation: "Docker stores containers, images, volumes and guest state here.",
+        symbol: "shippingbox.fill", confidence: .protected, owner: "Docker",
+        sideEffect: "Use Docker to review objects. Removing the store can lose persistent volumes.")
+    static let protectedOrbStack = CleanupCategory(
+        id: "owner.orbstack", title: "OrbStack storage",
+        explanation: "OrbStack's backing store holds containers and virtual machines.",
+        symbol: "shippingbox.fill", confidence: .protected, owner: "OrbStack",
+        sideEffect: "Use OrbStack to manage data. Its mounted views are not extra recoverable space.")
+    static let protectedSimulators = CleanupCategory(
+        id: "owner.simulators", title: "Simulator storage",
+        explanation: "Simulator runtimes and device data belong to Xcode.",
+        symbol: "iphone", confidence: .protected, owner: "Xcode",
+        sideEffect: "Review runtimes in Xcode Settings > Components. Device data may contain test work.")
+    static let protectedPhotos = CleanupCategory(
+        id: "owner.photos", title: "Photos libraries",
+        explanation: "A Photos library holds originals, edits and library state.",
+        symbol: "photo.on.rectangle", confidence: .protected, owner: "Photos",
+        sideEffect: "Use Photos to review storage. iCloud deletion can affect other devices.")
+    static let protectedMedia = CleanupCategory(
+        id: "owner.media", title: "Media libraries",
+        explanation: "Media libraries can hold original media, edits and projects.",
+        symbol: "film.stack", confidence: .protected, owner: "Media app",
+        sideEffect: "Open the library in its owner app and check wanted originals before removal.")
+    static let protectedMail = CleanupCategory(
+        id: "owner.mail", title: "Mail storage",
+        explanation: "Mail stores messages, attachments and account state here.",
+        symbol: "envelope.fill", confidence: .protected, owner: "Mail",
+        sideEffect: "Review in Mail. Removing messages or attachments may also affect the server.")
+    static let protectedSnapshots = CleanupCategory(
+        id: "owner.snapshots", title: "Snapshot stores",
+        explanation: "Snapshots preserve earlier file versions and need system storage tools.",
+        symbol: "externaldrive.badge.timemachine", confidence: .protected, owner: "macOS",
+        sideEffect: "Inspect with Disk Utility or Time Machine. Allocated footprint is not snapshot reclaim.")
+    static let protectedArchives = CleanupCategory(
+        id: "owner.archives", title: "Xcode archives",
+        explanation: "Archives can be needed to distribute builds and diagnose crashes.",
+        symbol: "archivebox.fill", confidence: .protected, owner: "Xcode",
+        sideEffect: "Review in Xcode Organizer. Keep archives needed for released builds.")
+    static let largeFiles = CleanupCategory(
+        id: "user.largefiles", title: "Large files to review",
+        explanation: "This file uses at least 1 GB of allocated space. Size does not make it disposable.",
+        symbol: "doc.fill", confidence: .review, owner: "User",
+        sideEffect: "Check the contents and any wanted copy before moving it.")
+
     static let all: [CleanupCategory] = [
         xcodeDerived, xcodeDeviceSupport, nodeModules, packageCache, userCaches,
         adobeMediaCache, adobeCameraRaw, browserCache, buildOutput, logs,
         installers, downloads, trash, protectedBackup, protectedVirtualDisk,
         protectedCloud, protectedProfile, protectedCommunication,
+        protectedDocker, protectedOrbStack, protectedSimulators, protectedPhotos,
+        protectedMedia, protectedMail, protectedSnapshots, protectedArchives, largeFiles,
     ]
 }
 
 // MARK: - Rules
 
 enum CleanupClassifier {
-    static let ruleVersion = "rescue-2026-08-31.1"
+    static let ruleVersion = "rescue-2026-11-11.1"
 
     static let rules: [CleanupRule] = [
         // Owner-managed roots must win before a child cache rule can run.
         CleanupRule(category: CleanupCatalog.protectedBackup) { n, p in
-            p.contains("/library/application support/mobilesync/backup")
-                || p.contains("/time machine/")
+            p.isWithin("/library/application support/mobilesync/backup")
+                || p.isWithin("/time machine")
                 || n.hasSuffix(".backupbundle")
                 || n == "backups.backupdb"
                 || (n == "backups" && p.hasPrefix("/volumes/"))
         },
-        CleanupRule(category: CleanupCatalog.protectedVirtualDisk) { n, p in
-            n == "docker.raw" || n == "docker.qcow2" || n.hasSuffix(".qcow2")
-                || n.hasSuffix(".pvm") || n.hasSuffix(".utm") || n.hasSuffix(".vmdk")
-                || p.hasSuffix("/.docker") || p.contains("/.docker/")
-                || p.hasSuffix("/.parallels") || p.contains("/.parallels/")
+        CleanupRule(category: CleanupCatalog.protectedDocker) { n, p in
+            n == "docker.raw" || n == "docker.qcow2"
+                || p.isWithin("/.docker") || p.isWithin("/library/containers/com.docker.docker")
+                || p.isWithin("/library/group containers/group.com.docker")
+        },
+        CleanupRule(category: CleanupCatalog.protectedOrbStack) { _, p in
+            p.isWithin("/.orbstack")
+        },
+        CleanupRule(category: CleanupCatalog.protectedSimulators) { _, p in
+            p.isWithin("/library/developer/coresimulator")
+        },
+        CleanupRule(category: CleanupCatalog.protectedPhotos) { n, _ in
+            n.hasSuffix(".photoslibrary") || n.hasSuffix(".photolibrary")
+        },
+        CleanupRule(category: CleanupCatalog.protectedMedia) { n, p in
+            n.hasSuffix(".fcpbundle") || n.hasSuffix(".imovielibrary")
+                || n.hasSuffix(".musiclibrary") || n.hasSuffix(".tvlibrary") || n.hasSuffix(".aplibrary")
+                || p.isWithin("/music/itunes")
+        },
+        CleanupRule(category: CleanupCatalog.protectedMail) { _, p in
+            p.isWithin("/library/mail") || p.isWithin("/library/containers/com.apple.mail")
+                || p.isWithin("/library/group containers/group.com.apple.mail")
+        },
+        CleanupRule(category: CleanupCatalog.protectedSnapshots) { n, _ in
+            n == ".timemachine" || n == ".snapshots"
+        },
+        CleanupRule(category: CleanupCatalog.protectedArchives) { n, p in
+            n.hasSuffix(".xcarchive") || p.isWithin("/library/developer/xcode/archives")
         },
         CleanupRule(category: CleanupCatalog.protectedCloud) { _, p in
             p.hasSuffix("/library/cloudstorage") || p.contains("/library/cloudstorage/")
@@ -453,6 +532,13 @@ enum CleanupClassifier {
                 || p.contains("/library/application support/signal")
         },
         CleanupRule(category: CleanupCatalog.trash) { n, _ in n == ".trash" || n == ".trashes" },
+
+        CleanupRule(category: CleanupCatalog.protectedVirtualDisk) { n, p in
+            n.hasSuffix(".qcow2") || n.hasSuffix(".qcow") || n.hasSuffix(".vmdk")
+                || n.hasSuffix(".vdi") || n.hasSuffix(".vhd") || n.hasSuffix(".vhdx")
+                || n.hasSuffix(".pvm") || n.hasSuffix(".utm") || n.hasSuffix(".vmwarevm")
+                || p.isWithin("/.parallels")
+        },
 
         // Safe defaults use exact owner paths. The final action still checks the
         // scan identity and current permissions.
@@ -513,9 +599,12 @@ enum CleanupClassifier {
     /// so the plan's protected recommendations are not enough as a safety gate.
     static func protectedCategory(for path: String) -> CleanupCategory? {
         var candidate = URL(fileURLWithPath: path).standardizedFileURL.path.lowercased()
+        var owner: CleanupCategory?
         while true {
-            if let category = protectedCategory(atNormalizedPath: candidate) { return category }
-            guard candidate != "/", let slash = candidate.lastIndex(of: "/") else { return nil }
+            // The outer protected container owns its contents, even when a child
+            // suffix looks like a disk or cache belonging to a different owner.
+            if let category = protectedCategory(atNormalizedPath: candidate) { owner = category }
+            guard candidate != "/", let slash = candidate.lastIndex(of: "/") else { return owner }
             candidate = slash == candidate.startIndex ? "/" : String(candidate[..<slash])
         }
     }
@@ -528,19 +617,24 @@ enum CleanupClassifier {
 
     /// Check only when a directory is about to be proposed as one unit. Walking
     /// every subtree here would defeat the scanner's cheap pre-order pass.
-    static func hasProtectedDescendant(_ node: FileNode) -> Bool {
+    static func hasProtectedDescendant(_ node: FileNode,
+                                       shouldStop: @Sendable () -> Bool = { false }) -> Bool {
         guard node.isDirectory else { return false }
         let rootPath = node.url.standardizedFileURL.path
-        var stack: [(FileNode, String)] = node.children.map { child in
-            (child, rootPath == "/" ? "/\(child.name)" : rootPath + "/" + child.name)
+        var stack: [(FileNode, String)] = []
+        for child in node.children {
+            if shouldStop() { return true }
+            stack.append((child, rootPath == "/" ? "/\(child.name)" : rootPath + "/" + child.name))
         }
         while let (child, path) = stack.popLast() {
+            if shouldStop() { return true }
             guard !child.isSynthetic else { continue }
             if protectedCategory(atNormalizedPath: path.lowercased(), name: child.name.lowercased()) != nil { return true }
             if child.isDirectory {
-                stack.append(contentsOf: child.children.map { nested in
-                    (nested, path == "/" ? "/\(nested.name)" : path + "/" + nested.name)
-                })
+                for nested in child.children {
+                    if shouldStop() { return true }
+                    stack.append((nested, path == "/" ? "/\(nested.name)" : path + "/" + nested.name))
+                }
             }
         }
         return false
@@ -549,71 +643,196 @@ enum CleanupClassifier {
     /// An opaque child means the parent cannot be safely treated as one unit:
     /// the scan did not inspect that child's contents or it belongs to another
     /// mounted boundary.
-    static func hasOpaqueDescendant(_ node: FileNode) -> Bool {
+    static func hasOpaqueDescendant(_ node: FileNode,
+                                    shouldStop: @Sendable () -> Bool = { false }) -> Bool {
         guard node.isDirectory else { return false }
         var stack = node.children
         while let child = stack.popLast() {
+            if shouldStop() { return true }
             if child.isSynthetic { return true }
-            if child.isDirectory { stack.append(contentsOf: child.children) }
+            if child.isDirectory {
+                for nested in child.children {
+                    if shouldStop() { return true }
+                    stack.append(nested)
+                }
+            }
         }
         return false
     }
 
-    /// Classify the assembled tree with one iterative pre-order walk. A matched
-    /// directory is kept as one explainable unit and its children are subsumed.
+    /// Review broad roots by child item. A specific match remains one unit, so
+    /// its descendants never contribute a second time. No filesystem I/O runs here.
     static func classify(root: FileNode,
                          ownerState: CleanupOwnerState = .stopped,
                          coverageComplete: Bool? = nil,
                          shouldStop: @Sendable () -> Bool = { false }) -> CleanupReport {
         var recommendations: [CleanupRecommendation] = []
-        var stack: [(node: FileNode, lowerPath: String)] = []
-
-        let hasCompleteCoverage = coverageComplete ?? root.scanCoverageGaps.isEmpty
+        var stack: [(node: FileNode, lowerPath: String, fallback: CleanupCategory?)] = [
+            (root, root.url.standardizedFileURL.path.lowercased(), nil)
+        ]
+        let rootProtection = protectedCategory(for: root.url.standardizedFileURL.path)
+        let coverage = CandidateCoverage(root: root, shouldStop: shouldStop)
+        guard !shouldStop() else { return CleanupReport(recommendations: []) }
+        // A false legacy flag without any located gap or known boundary carries
+        // no proof of what failed. Keep generated items in review in that case.
+        let unlocatedFailure = coverageComplete == false && !coverage.hasLocatedBoundary
 
         func append(_ category: CleanupCategory, _ node: FileNode) {
             recommendations.append(CleanupRecommendation(node: node, category: category,
-                                                         ownerState: ownerState,
-                                                         coverageComplete: hasCompleteCoverage,
-                                                         hasProtectedDescendant: category.confidence == .safeRegenerable
-                                                            && hasProtectedDescendant(node),
-                                                         hasOpaqueDescendant: category.confidence == .safeRegenerable
-                                                            && hasOpaqueDescendant(node)))
+                ownerState: ownerState,
+                coverageComplete: !unlocatedFailure && !coverage.overlaps(node.url.standardizedFileURL.path),
+                hasProtectedDescendant: category.confidence == .safeRegenerable
+                    && hasProtectedDescendant(node, shouldStop: shouldStop),
+                hasOpaqueDescendant: category.confidence == .safeRegenerable
+                    && hasOpaqueDescendant(node, shouldStop: shouldStop),
+                measuredPhysicalBytes: coverage.measuredBytes(node)))
         }
 
-        func consider(_ children: [FileNode], parentLowerPath: String) {
-            for child in children where !child.isSynthetic {
-                if shouldStop() { return }
-                let lowerName = child.name.lowercased()
-                let childPath = parentLowerPath == "/"
-                    ? "/" + lowerName : parentLowerPath + "/" + lowerName
-                if child.isDirectory {
-                    stack.append((child, childPath))
-                } else if lowerName.hasSuffix(".dmg") || lowerName.hasSuffix(".pkg")
-                            || lowerName.hasSuffix(".iso") {
-                    append(CleanupCatalog.installers, child)
-                }
-            }
-        }
-
-        consider(root.children, parentLowerPath: root.url.path.lowercased())
-        while let (node, lowerPath) = stack.popLast() {
-            if shouldStop() { break }
-            let lowerName = node.name.lowercased()
+        while let (node, lowerPath, fallback) = stack.popLast() {
+            // Do not publish an incomplete diagnosis if cancellation interrupts a
+            // descendant safety walk or enumeration of a very wide directory.
+            if shouldStop() { return CleanupReport(recommendations: []) }
+            guard !node.isSynthetic else { continue }
             let path = CleanupPath(lowerPath)
-            if let category = rules.first(where: {
-                $0.matches(lowerName, path)
-            })?.category {
+            let lowerName = node.name.lowercased()
+            let category = (node === root ? rootProtection : nil)
+                ?? rules.first { $0.matches(lowerName, path) }?.category
+            let broad = category?.id == CleanupCatalog.userCaches.id
+                || category?.id == CleanupCatalog.downloads.id
+            if broad, node.isDirectory, node.kind != .package, !node.children.isEmpty {
+                for child in node.children {
+                    if shouldStop() { return CleanupReport(recommendations: []) }
+                    stack.append((child, lowerPath == "/" ? "/" + child.name.lowercased()
+                                  : lowerPath + "/" + child.name.lowercased(), category))
+                }
+                continue
+            }
+            if let category {
                 append(category, node)
                 continue
             }
-            // A package is one user-facing item. Do not surface a cache or
-            // dependency-looking folder buried inside an app/bundle as if it
-            // were an independent cleanup target.
-            if node.kind == .package { continue }
-            consider(node.children, parentLowerPath: lowerPath)
+            if let fallback, !coverage.hasSpecificDescendant(node) {
+                append(fallback, node)
+                continue
+            }
+            if !node.isDirectory || node.kind == .package {
+                // Match the Large & Old lens default: >= 1 GiB, any age. This is
+                // a review prompt, never an age-based safety or recovery claim.
+                if coverage.measuredBytes(node) >= 1_073_741_824 { append(CleanupCatalog.largeFiles, node) }
+                continue
+            }
+            for child in node.children {
+                if shouldStop() { return CleanupReport(recommendations: []) }
+                stack.append((child, lowerPath == "/" ? "/" + child.name.lowercased()
+                              : lowerPath + "/" + child.name.lowercased(), fallback))
+            }
         }
-        return CleanupReport(recommendations: recommendations)
+        return shouldStop() ? CleanupReport(recommendations: [])
+            : CleanupReport(recommendations: recommendations)
     }
+
+    /// Index gaps once, rather than comparing every candidate to every gap.
+    private struct CandidateCoverage {
+        let gaps: Set<String>
+        let sortedGaps: [String]
+        let hasLocatedBoundary: Bool
+        private let specificDescendants: Set<ObjectIdentifier>
+        private let opaqueBytes: [ObjectIdentifier: Int64]
+
+        func measuredBytes(_ node: FileNode) -> Int64 {
+            let physical = max(0, node.physicalSize)
+            return physical - min(physical, opaqueBytes[ObjectIdentifier(node), default: 0])
+        }
+
+        func hasSpecificDescendant(_ node: FileNode) -> Bool {
+            specificDescendants.contains(ObjectIdentifier(node))
+        }
+
+        init(root: FileNode, shouldStop: @Sendable () -> Bool) {
+            var paths = Set<String>()
+            var boundary = false
+            var ancestor = root.parent
+            while let node = ancestor {
+                if shouldStop() { break }
+                for gap in node.scanCoverageGaps {
+                    if shouldStop() { break }
+                    paths.insert(gap)
+                }
+                ancestor = node.parent
+            }
+            var specific = Set<ObjectIdentifier>()
+            var opaque: [ObjectIdentifier: Int64] = [:]
+            func addOpaque(_ bytes: Int64, to node: FileNode) {
+                guard bytes > 0 else { return }
+                let id = ObjectIdentifier(node)
+                let sum = opaque[id, default: 0].addingReportingOverflow(bytes)
+                opaque[id] = sum.overflow ? Int64.max : sum.partialValue
+            }
+            var stack: [(FileNode, String, Bool)] = [(root, root.url.standardizedFileURL.path.lowercased(), false)]
+            while let (node, path, expanded) = stack.popLast() {
+                if shouldStop() { break }
+                if expanded {
+                    if node !== root, let parent = node.parent {
+                        addOpaque(opaque[ObjectIdentifier(node), default: 0], to: parent)
+                    }
+                    let lowerName = node.name.lowercased()
+                    let input = CleanupPath(path)
+                    let category = CleanupClassifier.rules.first { $0.matches(lowerName, input) }?.category
+                    let isSpecific = category != nil && category?.id != CleanupCatalog.userCaches.id
+                        && category?.id != CleanupCatalog.downloads.id
+                    if node !== root, isSpecific || specific.contains(ObjectIdentifier(node)),
+                       let parent = node.parent, parent.kind != .package {
+                        specific.insert(ObjectIdentifier(parent))
+                    }
+                    continue
+                }
+                for gap in node.scanCoverageGaps {
+                    if shouldStop() { break }
+                    paths.insert(gap)
+                }
+                if node.isSynthetic {
+                    boundary = true
+                    if node !== root, let parent = node.parent { addOpaque(max(0, node.physicalSize), to: parent) }
+                    // Split the review fallback around opaque data. Never fold
+                    // remote or mounted usage into a local review item.
+                    if let parent = node.parent, parent.kind != .package { specific.insert(ObjectIdentifier(parent)) }
+                    continue
+                }
+                stack.append((node, path, true))
+                // Read only assembled metadata inside packages for safety gaps.
+                // Their internal categories never propagate into discovery.
+                guard node.isDirectory else { continue }
+                for child in node.children {
+                    if shouldStop() { break }
+                    stack.append((child, path == "/" ? "/" + child.name.lowercased()
+                                  : path + "/" + child.name.lowercased(), false))
+                }
+            }
+            specificDescendants = specific
+            opaqueBytes = opaque
+            gaps = paths
+            sortedGaps = paths.sorted()
+            hasLocatedBoundary = boundary || !paths.isEmpty
+        }
+
+        func overlaps(_ path: String) -> Bool {
+            var ancestor = path
+            while true {
+                if gaps.contains(ancestor) { return true }
+                guard ancestor != "/", let slash = ancestor.lastIndex(of: "/") else { break }
+                ancestor = slash == ancestor.startIndex ? "/" : String(ancestor[..<slash])
+            }
+            let prefix = path == "/" ? "/" : path + "/"
+            var low = 0
+            var high = sortedGaps.count
+            while low < high {
+                let mid = low + (high - low) / 2
+                if sortedGaps[mid] < prefix { low = mid + 1 } else { high = mid }
+            }
+            return low < sortedGaps.count && sortedGaps[low].hasPrefix(prefix)
+        }
+    }
+
 }
 
 // MARK: - Report
@@ -622,14 +841,21 @@ struct CleanupReport: Sendable {
     struct Group: Identifiable, Sendable {
         let category: CleanupCategory
         let recommendations: [CleanupRecommendation]
+        let totalBytes: Int64
         var id: String { "\(category.id)::\(risk.rawValue)" }
         var nodes: [FileNode] { recommendations.map(\.node) }
-        var totalBytes: Int64 { recommendations.reduce(0) { $0 + $1.physicalBytes } }
         var risk: CleanupRisk { recommendations.first?.risk ?? category.confidence.risk }
+
+        init(category: CleanupCategory, recommendations: [CleanupRecommendation]) {
+            self.category = category
+            self.recommendations = recommendations
+            self.totalBytes = recommendations.reduce(0) { $0 + $1.physicalBytes }
+        }
     }
 
     let groups: [Group]
     let recommendations: [CleanupRecommendation]
+    let rankedRecommendations: [CleanupRecommendation]
 
     /// Kept for callers that construct reports directly in tests or small tools.
     init(matches: [(CleanupCategory, FileNode)]) {
@@ -640,31 +866,29 @@ struct CleanupReport: Sendable {
 
     init(recommendations: [CleanupRecommendation]) {
         self.recommendations = recommendations
+        let ranked = recommendations.sorted(by: Self.largestFirst)
+        self.rankedRecommendations = ranked
         var byCategory: [String: (CleanupCategory, [CleanupRecommendation])] = [:]
-        for recommendation in recommendations where recommendation.physicalBytes > 0 {
+        for recommendation in ranked where recommendation.physicalBytes > 0 {
             let key = "\(recommendation.category.id)::\(recommendation.risk.rawValue)"
-            byCategory[key, default: (recommendation.category, [])]
-                .1.append(recommendation)
+            byCategory[key, default: (recommendation.category, [])].1.append(recommendation)
         }
-        groups = byCategory.values
-            .map { entry in
-                Group(category: entry.0,
-                      recommendations: entry.1.sorted { $0.physicalBytes > $1.physicalBytes })
-            }
-            .sorted {
-                if $0.risk != $1.risk {
-                    return Self.riskOrder($0.risk) < Self.riskOrder($1.risk)
-                }
-                return $0.totalBytes > $1.totalBytes
-            }
+        groups = byCategory.values.map { Group(category: $0.0, recommendations: $0.1) }.sorted {
+            if $0.totalBytes != $1.totalBytes { return $0.totalBytes > $1.totalBytes }
+            if $0.category.id != $1.category.id { return $0.category.id < $1.category.id }
+            let left = $0.recommendations.first?.path ?? ""
+            let right = $1.recommendations.first?.path ?? ""
+            if left != right { return left < right }
+            return $0.id < $1.id
+        }
     }
 
-    private static func riskOrder(_ risk: CleanupRisk) -> Int {
-        switch risk {
-        case .safe: return 0
-        case .review: return 1
-        case .protected: return 2
-        }
+    private static func largestFirst(_ lhs: CleanupRecommendation, _ rhs: CleanupRecommendation) -> Bool {
+        if lhs.physicalBytes != rhs.physicalBytes { return lhs.physicalBytes > rhs.physicalBytes }
+        if lhs.category.id != rhs.category.id { return lhs.category.id < rhs.category.id }
+        if lhs.path != rhs.path { return lhs.path < rhs.path }
+        if lhs.node.name != rhs.node.name { return lhs.node.name < rhs.node.name }
+        return lhs.risk.rawValue < rhs.risk.rawValue
     }
 
     var safeGroups: [Group] { groups.filter { $0.risk == .safe } }
@@ -673,13 +897,6 @@ struct CleanupReport: Sendable {
     var safeNodes: [FileNode] { safeGroups.flatMap(\.nodes) }
     var safeTotalBytes: Int64 { safeGroups.reduce(0) { $0 + $1.totalBytes } }
     var isEmpty: Bool { groups.isEmpty }
-
-    var rankedRecommendations: [CleanupRecommendation] {
-        recommendations.sorted {
-            if $0.risk != $1.risk { return Self.riskOrder($0.risk) < Self.riskOrder($1.risk) }
-            return $0.physicalBytes > $1.physicalBytes
-        }
-    }
 }
 
 // MARK: - Measurement and plan
@@ -792,7 +1009,7 @@ struct RescueCoverage: Codable, Equatable, Sendable {
         while let node = stack.popLast() {
             switch node.kind {
             case .hiddenSpace:
-                notes.append("Some space is outside the file scan, such as snapshots or protected data.")
+                notes.append("Hidden Space is unaccounted usage, not measured snapshot reclaim. Inspect snapshots with Disk Utility or Time Machine; protected data and other usage may also contribute.")
             case .cloudOnlyStorage:
                 notes.append("Some provider items are online-only or were not opened during the scan.")
             case .crossVolume:

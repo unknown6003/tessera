@@ -64,6 +64,7 @@ struct CollectorDock: View {
     @ObservedObject var vm: ScanViewModel
     @ObservedObject var drag: CollectorDragController
     var onReview: () -> Void
+    var onFinishTrash: (() -> Void)? = nil
     /// The summary the user dismissed, or one from before a source change.
     /// A new removal has a new id, so its result always shows, even when
     /// `isDeleting` changes too fast for SwiftUI to see both values.
@@ -121,6 +122,12 @@ struct CollectorDock: View {
                 }
             }
             Spacer(minLength: 8)
+            if vm.hasTrackedTrash, let onFinishTrash {
+                Button("Finish in Trash…", action: onFinishTrash)
+                    .tesseraButtonStyle(.flat).controlSize(.small)
+                    .disabled(vm.isScanning || vm.isDeleting || vm.isReadingTree)
+                    .help("Review only items moved by this cleanup before permanent removal.")
+            }
             if vm.collectorNotice == nil, let summary = shownSummary {
                 // Finder can put items back from Trash. Tessera offers no Undo
                 // of its own; it does not restore files itself.

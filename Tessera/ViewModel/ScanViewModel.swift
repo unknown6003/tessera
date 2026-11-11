@@ -23,6 +23,19 @@ final class ScanViewModel: ObservableObject {
         let failed: Int
         let permanently: Bool
     }
+    struct TrashFinishReview: Identifiable, Sendable {
+        var id: UUID { review.operationID }
+        let review: TrashOperation.Review
+        let source: URL
+        let rootID: ObjectIdentifier?
+        let revision: UInt64
+        let allocatedBytes: [UUID: Int64]
+    }
+    @Published private(set) var hasTrackedTrash = false
+    private var trashOperation: TrashOperation?
+    private var trashOperationSource: URL?
+    private var trashOperationBytes: [UUID: Int64] = [:]
+
     // MARK: - Published state
     @Published var rootNode: FileNode?
     @Published var currentRoot: FileNode?        // zoom target within the chart
@@ -160,6 +173,7 @@ final class ScanViewModel: ObservableObject {
 
     func startScan(volumeURL: URL) {
         guard !isDeleting else { return }
+        invalidateTrackedTrash()
         if isScanning, let activeScanTelemetry {
             Analytics.shared.capture(.scanCancelled, values: activeScanTelemetry.properties(outcome: "superseded"))
         }
@@ -425,6 +439,7 @@ final class ScanViewModel: ObservableObject {
             return true
         }
         guard url != scannedURL, let cached = scanCache[url] else { return false }
+        invalidateTrackedTrash()
         if isScanning {
             if let activeScanTelemetry {
                 Analytics.shared.capture(.scanCancelled, values: activeScanTelemetry.properties(outcome: "superseded"))
@@ -996,6 +1011,9 @@ final class ScanViewModel: ObservableObject {
             rescuePhase = .moving
         }
 
+        invalidateTrackedTrash()
+        let operation = permanently ? nil : TrashOperation()
+        var trackedBytes: [UUID: Int64] = [:]
         var attemptedTargets: [FileNode] = []
         var failures: [DeletionService.DeletionError] = []
         var heldTargets: [FileNode] = []
@@ -1010,11 +1028,25 @@ final class ScanViewModel: ObservableObject {
                 break
             }
             attemptedTargets.append(target)
-            let failure = try await Self.offMain {
-                DeletionService.perform(prepared, permanently: permanently)
+            if let operation {
+                let outcome = try await Self.offMain {
+                    DeletionService.performTracked(prepared, operation: operation)
+                }
+                if let failure = outcome.error { failures.append(failure) }
+                if let item = outcome.item { trackedBytes[item.id] = target.physicalSize }
+            } else {
+                let failure = try await Self.offMain {
+                    DeletionService.perform(prepared, permanently: permanently)
+                }
+                if let failure { failures.append(failure) }
             }
-            if let failure { failures.append(failure) }
             deletionProgress = index + 1
+        }
+        if let operation, !trackedBytes.isEmpty {
+            trashOperation = operation
+            trashOperationSource = source
+            trashOperationBytes = trackedBytes
+            hasTrackedTrash = true
         }
         let failedURLs = Set(failures.map { $0.url.standardizedFileURL })
         let movedBytes = attemptedTargets
@@ -1041,6 +1073,74 @@ final class ScanViewModel: ObservableObject {
         ])
         if let heldError { throw RescueActionError.ownerActive(heldError) }
         if let first = failures.first { throw first }
+    }
+
+    private func invalidateTrackedTrash() {
+        trashOperation?.invalidate()
+        trashOperation = nil
+        trashOperationSource = nil
+        trashOperationBytes = [:]
+        hasTrackedTrash = false
+    }
+
+    func reviewTrackedTrash() async throws -> TrashFinishReview {
+        guard !isDeleting, !isScanning, treeReaders == 0,
+              let operation = trashOperation, let source = trashOperationSource,
+              source == scannedURL, selectedSourceURL == nil || selectedSourceURL == source else {
+            throw RemovalStateError.busy
+        }
+        isDeleting = true
+        defer { isDeleting = false }
+        let owner = CleanupOwnerState.current()
+        let review = try await Self.offMain { operation.review(ownerState: owner) }
+        return TrashFinishReview(review: review, source: source, rootID: rootNode?.id,
+                                 revision: chartRevision, allocatedBytes: trashOperationBytes)
+    }
+
+    func finishTrackedTrash(_ snapshot: TrashFinishReview, selecting ids: Set<UUID>) async throws {
+        guard !isDeleting, !isScanning, treeReaders == 0,
+              let operation = trashOperation, snapshot.review.operationID == operation.id,
+              snapshot.source == scannedURL, snapshot.source == trashOperationSource,
+              selectedSourceURL == nil || selectedSourceURL == snapshot.source,
+              snapshot.rootID == rootNode?.id, snapshot.revision == chartRevision else {
+            throw RemovalStateError.busy
+        }
+        guard !ids.isEmpty else { return }
+        isDeleting = true
+        collectorNotice = nil
+        deletionTotal = ids.count
+        deletionProgress = 0
+        defer { isDeleting = false }
+        let owner = CleanupOwnerState.current()
+        let results = try await Self.offMain {
+            operation.finish(snapshot.review, selecting: ids, ownerState: owner)
+        }
+        var removed = 0
+        var held = 0
+        var failed = 0
+        var bytes: Int64 = 0
+        for result in results {
+            switch result {
+            case .removed(let item):
+                removed += 1
+                bytes += snapshot.allocatedBytes[item.id] ?? 0
+                trashOperationBytes.removeValue(forKey: item.id)
+            case .held, .rejected: held += 1
+            case .failed: failed += 1
+            }
+        }
+        deletionProgress = results.count
+        hasTrackedTrash = !trashOperationBytes.isEmpty
+        lastRemovalSummary = RemovalSummary(moved: removed, movedBytes: bytes,
+                                            held: held, failed: failed, permanently: true)
+        // A fresh scan measures free space. Deleted allocated bytes are not a
+        // claim about reclaimed blocks, clones, snapshots or whole-volume use.
+        Analytics.shared.capture(.cleanupCompleted, values: [
+            "items": .integer(ids.count), "moved": .integer(removed),
+            "held": .integer(held), "failed": .integer(failed),
+            "method": .text("permanent"),
+            "outcome": .text(held == 0 && failed == 0 ? "complete" : "partial")
+        ])
     }
 
     private enum RemovalStateError: LocalizedError {

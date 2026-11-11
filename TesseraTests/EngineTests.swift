@@ -657,8 +657,11 @@ struct EngineTests {
 
         root.addScanCoverageGap("/Users/test/Library/Private")
         let partialReport = CleanupClassifier.classify(root: root)
-        #expect(partialReport.safeGroups.isEmpty)
-        #expect(partialReport.reviewGroups.contains {
+        #expect(partialReport.safeGroups.contains { $0.category.id == "xcode.deriveddata" })
+        root.addScanCoverageGap("/Users/test/Library/Developer/Xcode/DerivedData/private")
+        let relevantGapReport = CleanupClassifier.classify(root: root)
+        #expect(relevantGapReport.safeGroups.isEmpty)
+        #expect(relevantGapReport.reviewGroups.contains {
             $0.category.id == "xcode.deriveddata"
                 && $0.recommendations.first?.reason.contains("coverage gaps") == true
         })
@@ -695,7 +698,7 @@ struct EngineTests {
         let protectedIDs = Set(report.protectedGroups.map { $0.category.id })
         #expect(protectedIDs == [
             "owner.backup", "owner.cloud", "owner.communication", "owner.profile",
-            "owner.virtualdisk",
+            "owner.docker",
         ])
         #expect(report.safeGroups.isEmpty)
         #expect(report.reviewGroups.isEmpty)
@@ -703,7 +706,7 @@ struct EngineTests {
         #expect(CleanupClassifier.protectedCategory(
             for: "/Users/test/Library/Messages/Attachments/item.bin")?.id == "owner.communication")
         #expect(CleanupClassifier.protectedCategory(
-            for: "/Users/test/.docker/volumes/data")?.id == "owner.virtualdisk")
+            for: "/Users/test/.docker/volumes/data")?.id == "owner.docker")
         let protectedNode = FileNode(
             url: URL(fileURLWithPath: "/Users/test/Library/Messages"),
             name: "Messages", isDirectory: true, size: 1,
@@ -1518,5 +1521,274 @@ struct EngineTests {
         #expect(failures.isEmpty)
         // Recoverable from the Finder Trash, but no longer at the original path.
         #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+}
+
+@Suite("Rescue discovery regressions")
+struct RescueDiscoveryTests {
+    private func item(_ path: String, bytes: Int64 = 100, directory: Bool = false,
+                      kind: FileNode.Kind = .regular, children: [FileNode] = [],
+                      identified: Bool = false) -> FileNode {
+        let url = URL(fileURLWithPath: path)
+        return FileNode(url: url, name: url.lastPathComponent, isDirectory: directory,
+                        size: bytes, kind: kind, children: children,
+                        identity: identified ? ScanIdentity(device: 1, inode: 2,
+                            resourceType: directory ? .directory : .file) : nil)
+    }
+
+    private let derivedPath = "/Users/test/Library/Developer/Xcode/DerivedData"
+
+    @Test("Regular VM disks are discovered, including a file used as the source")
+    func fileBackedDisks() {
+        let paths = ["Docker.raw", "Docker.qcow2", "guest.qcow2", "guest.vmdk", "guest.vdi",
+                     "guest.vhd", "guest.vhdx"]
+        let files = paths.map { item("/Users/test/Downloads/" + $0) }
+        let root = item("/Users/test/Downloads", bytes: 700, directory: true, children: files)
+        let report = CleanupClassifier.classify(root: root)
+        #expect(report.recommendations.count == paths.count)
+        #expect(report.recommendations.allSatisfy { $0.risk == .protected && $0.action == .handoff })
+        #expect(report.groups.reduce(0) { $0 + $1.totalBytes } == 700)
+        for file in files {
+            let single = CleanupClassifier.classify(root: file)
+            #expect(single.recommendations.count == 1)
+            #expect(single.recommendations.first?.node === file)
+        }
+        #expect(report.groups.first { $0.category.id == "owner.docker" }?.nodes.count == 2)
+        #expect(report.groups.first { $0.category.id == "owner.virtualdisk" }?.nodes.count == 5)
+    }
+
+    @Test("Owner stores and libraries keep their owner ahead of cache and disk suffix rules")
+    func ownerCategories() {
+        let fixtures: [(String, String)] = [
+            ("/Users/test/.docker/volumes/data.vmdk", "owner.docker"),
+            ("/Users/test/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", "owner.docker"),
+            ("/Users/test/.orbstack/data/data.img", "owner.orbstack"),
+            ("/Library/Developer/CoreSimulator/Images/runtime.dmg", "owner.simulators"),
+            ("/Users/test/Pictures/Main.photoslibrary/originals/guest.vmdk", "owner.photos"),
+            ("/Users/test/Movies/Edit.fcpbundle/Cache/file", "owner.media"),
+            ("/Users/test/Library/Mail/V10/Cache/item", "owner.mail"),
+            ("/Users/test/Library/Application Support/MobileSync/Backup/device", "owner.backup"),
+            ("/Users/test/Library/Developer/Xcode/Archives/2026/build.xcarchive", "owner.archives"),
+            ("/Volumes/Backup/Backups.backupdb/Mac", "owner.backup"),
+            ("/Volumes/Data/.snapshots/previous", "owner.snapshots"),
+            ("/Users/test/Library/CloudStorage/Provider/guest.vmdk", "owner.cloud"),
+            ("/Users/test/Library/Application Support/Google/Chrome/Default/Cache/guest.vmdk", "owner.profile"),
+            ("/Users/test/VMs/Guest.vmwarevm/guest.vmdk", "owner.virtualdisk"),
+        ]
+        for (path, id) in fixtures {
+            #expect(CleanupClassifier.protectedCategory(for: path)?.id == id)
+            let candidate = item(path, identified: true)
+            let report = CleanupClassifier.classify(root: candidate)
+            #expect(report.recommendations.first?.category.id == id)
+            #expect(report.recommendations.first?.risk == .protected)
+            #expect(DeletionService.preflight(candidate) == .protected)
+        }
+        #expect(CleanupClassifier.protectedCategory(for: "/Users/test/.docker-other/file") == nil)
+        #expect(CleanupClassifier.protectedCategory(for: "/Users/test/Library/Mailbox/file") == nil)
+    }
+
+    @Test("Caches splits package caches from other app data, including nested categories")
+    func cacheSplit() {
+        let brew = item("/Users/test/Library/Caches/Homebrew", bytes: 600, directory: true)
+        let other = item("/Users/test/Library/Caches/Other", bytes: 200, directory: true)
+        let installer = item("/Users/test/Library/Caches/Staging/tool.pkg", bytes: 90)
+        let personal = item("/Users/test/Library/Caches/Staging/notes", bytes: 10)
+        let staging = item("/Users/test/Library/Caches/Staging", bytes: 100, directory: true,
+                           children: [installer, personal])
+        let caches = item("/Users/test/Library/Caches", bytes: 900, directory: true,
+                          children: [other, staging, brew])
+        let report = CleanupClassifier.classify(root: caches)
+        #expect(report.groups.first { $0.category.id == "dev.packagecache" }?.totalBytes == 600)
+        #expect(report.groups.first { $0.category.id == "system.caches" }?.totalBytes == 210)
+        #expect(report.groups.first { $0.category.id == "user.installers" }?.totalBytes == 90)
+        #expect(!report.recommendations.contains { $0.node === caches || $0.node === staging })
+        #expect(report.recommendations.allSatisfy { $0.risk == .review })
+        #expect(report.groups.reduce(0) { $0 + $1.totalBytes } == 900)
+    }
+
+    @Test("Downloads keeps personal files in review and counts installers separately")
+    func downloadsSplit() {
+        let installer = item("/Users/test/Downloads/tool.dmg", bytes: 500)
+        let personal = item("/Users/test/Downloads/only-copy.pdf", bytes: 100)
+        let folder = item("/Users/test/Downloads/Personal", bytes: 200, directory: true)
+        let photos = item("/Users/test/Downloads/Main.photoslibrary", bytes: 900, directory: true, kind: .package)
+        let root = item("/Users/test/Downloads", bytes: 1700, directory: true,
+                        children: [personal, photos, installer, folder])
+        let report = CleanupClassifier.classify(root: root)
+        #expect(report.recommendations.count == 4)
+        #expect(report.groups.first { $0.category.id == "user.downloads" }?.totalBytes == 300)
+        #expect(report.groups.first { $0.category.id == "user.installers" }?.totalBytes == 500)
+        #expect(report.groups.first { $0.category.id == "owner.photos" }?.totalBytes == 900)
+        #expect(report.safeGroups.isEmpty)
+        #expect(report.groups.reduce(0) { $0 + $1.totalBytes } == root.physicalSize)
+        let paths = report.recommendations.map(\.path)
+        for path in paths {
+            #expect(!paths.contains { $0 != path && path.hasPrefix($0 + "/") })
+        }
+    }
+
+    @Test("An exact generated source root is classified and keeps identity and owner gates")
+    func exactSourceRoot() {
+        let root = item(derivedPath, bytes: 500, directory: true, identified: true)
+        let ready = CleanupClassifier.classify(root: root)
+        #expect(ready.safeTotalBytes == 500)
+        #expect(ready.recommendations.first?.node === root)
+        #expect(ready.recommendations.first?.action == .stage)
+        #expect(CleanupClassifier.classify(root: root, ownerState: .active).safeGroups.isEmpty)
+        #expect(CleanupClassifier.classify(root: root, ownerState: .unknown).safeGroups.isEmpty)
+        let unidentified = item(derivedPath, directory: true)
+        #expect(CleanupClassifier.classify(root: unidentified).safeGroups.isEmpty)
+        let fileAtGeneratedPath = item(derivedPath, identified: true)
+        #expect(CleanupClassifier.classify(root: fileAtGeneratedPath).safeGroups.isEmpty)
+        let wrongIdentity = FileNode(url: URL(fileURLWithPath: derivedPath), name: "DerivedData",
+            isDirectory: true, size: 500, identity: ScanIdentity(path: "/some/other/path",
+                device: 1, inode: 2, resourceType: .directory))
+        #expect(CleanupClassifier.classify(root: wrongIdentity).safeGroups.isEmpty)
+    }
+
+    @Test("Specific containers subsume descendants without counting either twice")
+    func noOverlap() {
+        let nested = item("/Users/test/Projects/app/node_modules/sub/node_modules", bytes: 40, directory: true)
+        let outer = item("/Users/test/Projects/app/node_modules", bytes: 100, directory: true, children: [nested])
+        let root = item("/Users/test/Projects/app", bytes: 100, directory: true, children: [outer])
+        let report = CleanupClassifier.classify(root: root)
+        #expect(report.recommendations.count == 1)
+        #expect(report.recommendations.first?.node === outer)
+        #expect(report.groups.first?.totalBytes == 100)
+    }
+
+    @Test("Measured size leads across risks, with stable equal-size category and path order")
+    func rankedOrder() {
+        let protected = item("/Users/test/VMs/guest.vmdk", bytes: 1000)
+        let generated = item(derivedPath, bytes: 10, directory: true, identified: true)
+        let first = item("/Users/test/Downloads/a.dmg", bytes: 100)
+        let last = item("/Users/test/Downloads/z.dmg", bytes: 100)
+        let cache = item("/Users/test/Library/Caches", bytes: 100, directory: true)
+        let matches = [(CleanupCatalog.xcodeDerived, generated), (CleanupCatalog.installers, last),
+                       (CleanupCatalog.userCaches, cache), (CleanupCatalog.protectedVirtualDisk, protected),
+                       (CleanupCatalog.installers, first)]
+        let left = CleanupReport(matches: matches)
+        let right = CleanupReport(matches: Array(matches.reversed()))
+        #expect(left.groups.first?.category.id == "owner.virtualdisk")
+        #expect(left.rankedRecommendations.first?.node === protected)
+        #expect(left.groups.map(\.id) == right.groups.map(\.id))
+        #expect(left.rankedRecommendations.map(\.id) == right.rankedRecommendations.map(\.id))
+        #expect(left.rankedRecommendations.filter { $0.category.id == "user.installers" }.map(\.node.name)
+                == ["a.dmg", "z.dmg"])
+        #expect(left.safeGroups.first?.nodes.first === generated)
+        let equalGroups = CleanupReport(matches: [(CleanupCatalog.installers, first),
+                                                  (CleanupCatalog.userCaches, cache)])
+        #expect(equalGroups.groups.map(\.category.id) == ["system.caches", "user.installers"])
+    }
+
+    @Test("Located gaps affect only overlapping candidates and unlocated failures remain held")
+    func relevantCoverage() {
+        let generated = item(derivedPath, bytes: 500, directory: true, identified: true)
+        let hidden = item("/Users/test/Hidden Space", bytes: 2000, kind: .hiddenSpace)
+        let root = item("/Users/test/Library/Developer/Xcode", directory: true, children: [generated, hidden])
+        root.addScanCoverageGap("/Users/test/Library/Private")
+        #expect(CleanupClassifier.classify(root: root, coverageComplete: false).safeTotalBytes == 500)
+        root.addScanCoverageGap(derivedPath + "-other/private")
+        #expect(CleanupClassifier.classify(root: root, coverageComplete: false).safeTotalBytes == 500)
+        root.addScanCoverageGap(derivedPath + "/unreadable")
+        #expect(CleanupClassifier.classify(root: root, coverageComplete: true).safeGroups.isEmpty)
+        #expect(CleanupClassifier.classify(root: generated).safeGroups.isEmpty)
+        let unknownFailure = item(derivedPath, directory: true, identified: true)
+        #expect(CleanupClassifier.classify(root: unknownFailure, coverageComplete: false).safeGroups.isEmpty)
+        unknownFailure.addScanCoverageGap("/Users/test/Library")
+        #expect(CleanupClassifier.classify(root: unknownFailure).safeGroups.isEmpty)
+    }
+
+    @Test("Packages and cloud boundaries do not expose internal cleanup candidates")
+    func opaqueBoundaries() {
+        let internalCache = item("/Users/test/App.app/node_modules", bytes: 50, directory: true)
+        let app = item("/Users/test/App.app", bytes: 50, directory: true, kind: .package, children: [internalCache])
+        let cloudFile = item("/Users/test/Library/CloudStorage/Provider/tool.dmg", bytes: 200)
+        let cloud = item("/Users/test/Library/CloudStorage", bytes: 200, directory: true, children: [cloudFile])
+        let remote = item("/Users/test/Remote", bytes: 5000, directory: true, kind: .cloudOnlyStorage,
+                          children: [item("/Users/test/Remote/tool.dmg")])
+        let mount = item("/Users/test/Mount", bytes: 6000, directory: true, kind: .crossVolume)
+        let library = item("/Users/test/Library", directory: true, children: [cloud])
+        let root = item("/Users/test", directory: true, children: [app, library, remote, mount])
+        let report = CleanupClassifier.classify(root: root)
+        #expect(report.recommendations.count == 1)
+        #expect(report.recommendations.first?.node === cloud)
+        #expect(report.groups.first?.totalBytes == 200)
+        let safe = item(derivedPath, bytes: 500, directory: true, children: [remote], identified: true)
+        #expect(CleanupClassifier.classify(root: safe).safeGroups.isEmpty)
+        let disk = item(derivedPath + "/guest.qcow2", bytes: 100)
+        safe.setChildren([disk])
+        #expect(CleanupClassifier.classify(root: safe).safeGroups.isEmpty)
+        let package = item(derivedPath + "/App.app", bytes: 100, directory: true, kind: .package)
+        package.addScanCoverageGap(derivedPath + "/App.app/private")
+        safe.setChildren([package])
+        #expect(CleanupClassifier.classify(root: safe).safeGroups.isEmpty)
+    }
+
+    @Test("Owner footprint excludes mounted views and other synthetic residual bytes")
+    func ownerFootprintExcludesBoundaries() {
+        let image = item("/Library/Developer/CoreSimulator/runtime.dmg", bytes: 100)
+        let mounted = item("/Library/Developer/CoreSimulator/Volumes/runtime", bytes: 1000,
+                           directory: true, kind: .crossVolume)
+        let root = item("/Library/Developer/CoreSimulator", bytes: 1100, directory: true,
+                        children: [image, mounted])
+        let report = CleanupClassifier.classify(root: root)
+        #expect(report.recommendations.count == 1)
+        #expect(report.recommendations.first?.category.id == "owner.simulators")
+        #expect(report.recommendations.first?.physicalBytes == 100)
+        #expect(report.groups.first?.totalBytes == 100)
+        #expect(root.physicalSize == 1100)
+    }
+
+    @Test("Large unclassified files use allocated size and any age without a safety claim")
+    func unclassifiedLargeFiles() {
+        let large = item("/Users/test/Documents/only-copy.mov", bytes: 1_073_741_824)
+        let small = item("/Users/test/Documents/small.mov", bytes: 1_073_741_823)
+        let root = item("/Users/test/Documents", directory: true, children: [large, small])
+        let report = CleanupClassifier.classify(root: root)
+        #expect(report.recommendations.count == 1)
+        #expect(report.recommendations.first?.node === large)
+        #expect(report.recommendations.first?.category.id == "user.largefiles")
+        #expect(report.recommendations.first?.risk == .review)
+        #expect(report.recommendations.first?.action == .inspect)
+    }
+
+    @Test("Hidden Space guidance does not turn residual usage into a snapshot recommendation")
+    func hiddenSpaceGuidance() {
+        let hidden = item("/Hidden Space", bytes: 10000, kind: .hiddenSpace)
+        let root = item("/", directory: true, children: [hidden])
+        #expect(CleanupClassifier.classify(root: root).isEmpty)
+        let coverage = RescueCoverage.inspect(root: root, sourceIsReadable: true)
+        #expect(coverage.state == .partial)
+        #expect(coverage.notes.contains { $0.contains("not measured snapshot reclaim") })
+    }
+
+    @Test("Wide Downloads construction keeps every item once and cancellation publishes no partial report")
+    func wideDirectory() {
+        let children = (0..<20_000).map { index in
+            item("/Users/test/Downloads/item-\(index)" + (index.isMultiple(of: 2) ? ".pkg" : ".txt"), bytes: 1)
+        }
+        let root = item("/Users/test/Downloads", bytes: 20_000, directory: true, children: children)
+        root.setScanCoverageGaps((0..<2_000).map { "/Users/test/Private/gap-\($0)" })
+        let report = CleanupClassifier.classify(root: root, coverageComplete: false)
+        #expect(report.recommendations.count == 20_000)
+        #expect(report.groups.count == 2)
+        #expect(report.groups.allSatisfy { $0.totalBytes == 10_000 })
+        #expect(Set(report.rankedRecommendations.map(\.id)).count == 20_000)
+        #expect(CleanupClassifier.classify(root: root, shouldStop: { true }).isEmpty)
+        let stop = RescueDiscoveryStopProbe()
+        #expect(CleanupClassifier.classify(root: root, shouldStop: { stop.shouldStop() }).isEmpty)
+    }
+}
+
+private final class RescueDiscoveryStopProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0
+
+    func shouldStop() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        calls += 1
+        return calls > 100
     }
 }
