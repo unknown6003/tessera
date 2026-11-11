@@ -166,3 +166,28 @@ unchanged and all job processes stopped. Release remains unqualified.
 
 The separate Spec review of `abd0491..921afad` found no mismatch in the six UI
 repairs. Native focus timing and the actual keyboard paths still need proof.
+
+
+## Search-only container access
+
+A narrow probe reproduced EPERM for the read-only Trash open from a child of
+XCTest. The shell control could open it, so shell success alone was insufficient.
+In that failing host context, a search-only Trash descriptor passed every required
+operation: stat, filesystem checks, no-follow lookup, creation of a new private
+staging folder, exclusive rename, exact-name unlink, fsync and F_FULLFSYNC. The
+journal was durable before acquisition. Only the owned staging folder was read
+for the helper's directory-name check. Private fixture controls also passed.
+Evidence: `/Users/abdwy/.local/share/tessera-search-fd-514275e22ca0/`.
+
+The helper now opens absolute directory ancestors and the Trash container with
+`O_SEARCH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC`. It never lists those directories.
+Read-only access remains required for staging and reviewed item directories that
+it must enumerate. All identity, owner, device, volume, manifest, exclusive-rename
+and durability checks remain. The new regression denies listing access to both
+a fixture ancestor and its Trash container, while permitting traversal and changes.
+Native red/green, both suites and the public real-Trash adapter must qualify this
+patch. A probe is not full-flow proof.
+
+The native probe's final leftover check used a shell glob for its own prefix.
+That enumerated Trash names, contrary to its brief. It read no item content and
+changed nothing. Future cleanup checks must use the exact recorded names only.

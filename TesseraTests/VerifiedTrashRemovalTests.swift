@@ -83,6 +83,33 @@ struct VerifiedTrashRemovalTests {
         }
     }
 
+    @Test("Removal needs traversal, not listing access, to ancestors and the Trash container")
+    func searchOnlyContainer() throws {
+        let f = try Fixture()
+        defer { f.clean() }
+        let manifest = try f.manifest()
+        let unrelated = f.trash.appendingPathComponent("unrelated")
+        try Data([9]).write(to: unrelated)
+        defer {
+            _ = chmod(f.base.path, 0o700)
+            _ = chmod(f.trash.path, 0o700)
+        }
+        try #require(chmod(f.base.path, 0o111) == 0)
+        try #require(chmod(f.trash.path, 0o300) == 0)
+        let readable = Darwin.open(f.trash.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        let readError = errno
+        if readable >= 0 { Darwin.close(readable) }
+        try #require(readable == -1 && readError == EACCES)
+
+        try f.run(manifest)
+
+        #expect(!FileManager.default.fileExists(atPath: f.target.path))
+        #expect(try Data(contentsOf: unrelated) == Data([9]))
+        try #require(chmod(f.base.path, 0o700) == 0)
+        try #require(chmod(f.trash.path, 0o700) == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: f.trash.path) == ["unrelated"])
+    }
+
     @Test("Root replacement acquired by rename is held without removing either tree")
     func rootReplacement() throws {
         let f = try Fixture()

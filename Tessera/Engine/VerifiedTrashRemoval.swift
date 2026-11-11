@@ -260,10 +260,12 @@ enum VerifiedTrashRemoval {
 
         func openAbsoluteDirectory(_ url: URL) throws -> Descriptor {
             guard url.isFileURL, url.path.hasPrefix("/") else { throw Stop(reason: .unsupported) }
-            var fd = try Descriptor(Darwin.open("/", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC))
+            // Ancestors and the Trash container are traversed, never enumerated.
+            let flags = O_SEARCH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+            var fd = try Descriptor(Darwin.open("/", flags))
             for part in url.path.split(separator: "/") {
                 guard VerifiedTrashRemoval.validName(String(part)) else { throw Stop(reason: .unsupported) }
-                fd = try openDirectory(fd.value, String(part))
+                fd = try Descriptor(openat(fd.value, String(part), flags))
             }
             return fd
         }
