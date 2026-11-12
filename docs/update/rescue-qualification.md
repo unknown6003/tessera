@@ -557,3 +557,52 @@ Production state and all nine Sample files matched fresh snapshots. Own
 processes, test domains and rebuildable caches were cleaned up. The tests prove
 model behavior, not rendered owner text or the reveal button in the app.
 Both external lanes must qualify the final commit. No new narration work is required.
+
+
+## Unicode rule-search repair after 29377e6
+
+Native CI at `29377e66e36805ded468e07df5bf629894fd66e5` passed all
+163 tests, Release and all 400 complete pipelines, then failed the unchanged
+heartbeat gate. Unicode trials 072 and 073 recorded 7662 and 1255 ms gaps.
+Unicode p99 was 5960 ms and also failed the baseline comparison when replayed
+separately. Exact installed analyzer output matched the saved performance file.
+The gaps coincide with a Simulator boot; that correlation does not prove cause.
+Evidence: `/tmp/tessera-diag-29377e6.hl4Z/`.
+
+A separate 72-trial phase probe and a real stack sample located sustained
+classification cost in rule matching. Unicode classification was about 392 ms;
+coverage was below 1 ms and measurement about 10 ms. The sample recorded about
+603 observations in rule matching, not a CPU percentage. Opus hit its rate
+limit after collecting the first runs; Codex completed the sample and cleanup.
+Evidence: `/tmp/tessera-phase2937.LjA1/REPORT.txt`.
+
+The two-file repair caches a canonically decomposed Unicode search string once.
+It rejects absent ASCII rule text with a byte search. Possible Unicode matches
+still use the original Foundation comparison. Rule order, protected boundaries,
+ASCII behavior and NUL/non-ASCII-needle fallbacks stay intact. Patch SHA-256:
+`cc882a0ce5eeadc5097d2989b65f4b97c78771192b2ac6f92d4d07ee08dadfb6`.
+Sol round 5 approved the source with no Standards, Spec or Risk findings.
+
+Native differential proof passed 11,120,640 single-scalar contains comparisons.
+A separate 1190-value, 87-needle matrix completed 621,180 Boolean comparisons
+with no new-versus-old mismatch and no strict rule-text or changed-Unicode
+failure. Ten shared old/new differences from Foundation remain recorded. These
+include CRLF containing LF through the existing ASCII byte path; no rule query
+uses CR or LF. No matrix case was removed. This known control difference is
+not a new regression.
+
+Debug passed 163/163 tests and unsigned universal Release succeeded. On the same
+M1 Max, macOS 27.0.1 host with warm synthetic fixtures, an old/new/old diagnostic
+run used five Unicode-2k and five wide-100k trials per run, 30 total. Diagnosis
+medians were 440/62/429 ms for Unicode and 387/406/389 ms for wide. All counts
+matched, coverage gaps were zero and no heartbeat exceeded 500 ms. These are
+small-sample diagnostic medians, not p99 qualification. The old binary includes
+private phase instrumentation; the candidate uses its normal phase logs.
+
+Evidence: `/tmp/tessera-proof2937.ylsulexs/continuation/REPORT.md`. The cache-copy
+step inherited a symlink to the pinned shared cache rather than a private clone.
+Builds used that cache target; cleanup removed only the owned link. Both builds
+passed before cleanup reported the symlink mismatch. Final exact-executable
+process checks and production/all-nine-Sample preservation passed. Own outputs
+and preference domains were removed. Full external qualification is required
+for the next clean commit; no CI limit, sample requirement or baseline changed.

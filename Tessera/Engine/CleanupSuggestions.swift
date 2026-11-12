@@ -192,24 +192,29 @@ struct CleanupRule: Sendable {
     let matches: @Sendable (_ lowerName: String, _ lowerPath: CleanupPath) -> Bool
 }
 
-/// ASCII filesystem paths do not need Foundation's Unicode substring search.
-/// Keep its original behavior for Unicode and embedded NUL in hand-built input.
+/// Reject absent ASCII rule text before Foundation's Unicode substring search.
+/// Possible Unicode matches and embedded NUL keep the original comparison.
 struct CleanupPath: Sendable {
     private let value: String
+    private let searchValue: String
     private let isCStringASCII: Bool
+    private let isCString: Bool
 
     init(_ value: String) {
         self.value = value
         self.isCStringASCII = !value.isEmpty && value.utf8.allSatisfy { $0 > 0 && $0 < 128 }
+        self.isCString = !value.utf8.contains(0)
+        self.searchValue = isCStringASCII ? value : value.decomposedStringWithCanonicalMapping
     }
 
     func contains(_ part: String) -> Bool {
-        guard !part.isEmpty, isCStringASCII, part.utf8.allSatisfy({ $0 > 0 && $0 < 128 }) else {
+        guard !part.isEmpty, isCString, part.utf8.allSatisfy({ $0 > 0 && $0 < 128 }) else {
             return value.contains(part)
         }
-        return value.withCString { path in
+        let found = searchValue.withCString { path in
             part.withCString { strstr(path, $0) != nil }
         }
+        return found && (isCStringASCII || value.contains(part))
     }
 
     func isWithin(_ root: String) -> Bool { hasSuffix(root) || contains(root + "/") }
