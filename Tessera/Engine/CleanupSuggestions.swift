@@ -667,9 +667,7 @@ enum CleanupClassifier {
                          coverageComplete: Bool? = nil,
                          shouldStop: @Sendable () -> Bool = { false }) -> CleanupReport {
         var recommendations: [CleanupRecommendation] = []
-        var stack: [(node: FileNode, lowerPath: String, fallback: CleanupCategory?)] = [
-            (root, root.url.standardizedFileURL.path.lowercased(), nil)
-        ]
+        var stack: [(node: FileNode, fallback: CleanupCategory?)] = [(root, nil)]
         let rootProtection = protectedCategory(for: root.url.standardizedFileURL.path)
         let coverage = CandidateCoverage(root: root, shouldStop: shouldStop)
         guard !shouldStop() else { return CleanupReport(recommendations: []) }
@@ -688,22 +686,19 @@ enum CleanupClassifier {
                 measuredPhysicalBytes: coverage.measuredBytes(node)))
         }
 
-        while let (node, lowerPath, fallback) = stack.popLast() {
+        while let (node, fallback) = stack.popLast() {
             // Do not publish an incomplete diagnosis if cancellation interrupts a
             // descendant safety walk or enumeration of a very wide directory.
             if shouldStop() { return CleanupReport(recommendations: []) }
             guard !node.isSynthetic else { continue }
-            let path = CleanupPath(lowerPath)
-            let lowerName = node.name.lowercased()
             let category = (node === root ? rootProtection : nil)
-                ?? rules.first { $0.matches(lowerName, path) }?.category
+                ?? coverage.category(for: node)
             let broad = category?.id == CleanupCatalog.userCaches.id
                 || category?.id == CleanupCatalog.downloads.id
             if broad, node.isDirectory, node.kind != .package, !node.children.isEmpty {
                 for child in node.children {
                     if shouldStop() { return CleanupReport(recommendations: []) }
-                    stack.append((child, lowerPath == "/" ? "/" + child.name.lowercased()
-                                  : lowerPath + "/" + child.name.lowercased(), category))
+                    stack.append((child, category))
                 }
                 continue
             }
@@ -723,8 +718,7 @@ enum CleanupClassifier {
             }
             for child in node.children {
                 if shouldStop() { return CleanupReport(recommendations: []) }
-                stack.append((child, lowerPath == "/" ? "/" + child.name.lowercased()
-                              : lowerPath + "/" + child.name.lowercased(), fallback))
+                stack.append((child, fallback))
             }
         }
         return shouldStop() ? CleanupReport(recommendations: [])
@@ -738,6 +732,13 @@ enum CleanupClassifier {
         let hasLocatedBoundary: Bool
         private let specificDescendants: Set<ObjectIdentifier>
         private let opaqueBytes: [ObjectIdentifier: Int64]
+        private let categories: [ObjectIdentifier: CleanupCategory]
+
+        // The coverage pass already matches every inspected node. Reuse those
+        // matches for discovery instead of repeating path rules over the tree.
+        func category(for node: FileNode) -> CleanupCategory? {
+            categories[ObjectIdentifier(node)]
+        }
 
         func measuredBytes(_ node: FileNode) -> Int64 {
             let physical = max(0, node.physicalSize)
@@ -762,6 +763,7 @@ enum CleanupClassifier {
             }
             var specific = Set<ObjectIdentifier>()
             var opaque: [ObjectIdentifier: Int64] = [:]
+            var matched: [ObjectIdentifier: CleanupCategory] = [:]
             func addOpaque(_ bytes: Int64, to node: FileNode) {
                 guard bytes > 0 else { return }
                 let id = ObjectIdentifier(node)
@@ -778,6 +780,7 @@ enum CleanupClassifier {
                     let lowerName = node.name.lowercased()
                     let input = CleanupPath(path)
                     let category = CleanupClassifier.rules.first { $0.matches(lowerName, input) }?.category
+                    if let category { matched[ObjectIdentifier(node)] = category }
                     let isSpecific = category != nil && category?.id != CleanupCatalog.userCaches.id
                         && category?.id != CleanupCatalog.downloads.id
                     if node !== root, isSpecific || specific.contains(ObjectIdentifier(node)),
@@ -810,6 +813,7 @@ enum CleanupClassifier {
             }
             specificDescendants = specific
             opaqueBytes = opaque
+            categories = matched
             gaps = paths
             sortedGaps = paths.sorted()
             hasLocatedBoundary = boundary || !paths.isEmpty

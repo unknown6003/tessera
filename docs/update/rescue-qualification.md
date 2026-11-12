@@ -444,3 +444,67 @@ agent removed its own 13 preference files and build caches; no owned process
 remains. After this run, the owner removed narration from scope and the
 experimental announcement block was deleted. Version metadata is 0.2.3/15.
 Both external CI lanes must still qualify the final clean commit.
+
+## Exact-head native p99 rejection at 36e80ff
+
+The native report for `36e80ff42baf515034ac4466647e3790e84d9da1`
+authenticates but does not pass the release verifier. All 160 tests, unsigned
+universal Release and all 12 command steps passed. All 400 trials completed
+with matching counts and no coverage gaps. The heartbeat gate passed; its
+maximum was 318.6 ms. The p99 regression gate rejected `unicode2k` first.
+`wide100k` also exceeds both regression conditions.
+
+| Cohort | Samples | Current p99 ms | Baseline p99 ms | Increase ms | Regression gate |
+| --- | ---: | ---: | ---: | ---: | --- |
+| deep420 | 100 | 439.6 | 402.5 | 37 | Pass |
+| mixed20k | 100 | 599.0 | 374.2 | 225 | Pass |
+| unicode2k | 100 | 1212.1 | 408.5 | 804 | Fail |
+| wide100k | 100 | 1132.6 | 549.2 | 583 | Fail |
+
+These are nearest-rank p99 values for warm synthetic fixtures on this M1 Max,
+32 GB, macOS 27.0.1, Xcode 27.2 host under the installed Standard/Nice 10/low-I/O
+recipe. Baseline metadata matches. This is not a population performance claim.
+The current minimums for the two failed cohorts also exceed the baseline p99.
+The analyzer reproduced its saved output byte for byte. The exact installed
+gate replay on retained inputs raises `Full-pipeline p99 regressed in unicode2k`.
+Private evidence: `/tmp/tessera-diag-36e80ff.S06Z/`. No sample, threshold or
+baseline changed, and the completed failure was not retried.
+
+A separate old/current/old comparison used existing hashed binaries, one owned
+2,000-file Unicode fixture, and ten trials per run. Median whole-trial times
+were 292/1115/289 ms. Diagnosis medians were 28/848/32 ms; enumeration medians
+were 52/46/46 ms. Every count matched. These are medians from a diagnostic
+comparison, not p99 or CI qualification. Private evidence:
+`/tmp/tessera-perfab-36e80ff.Edp1uQ/`. No UI ran with this comparison.
+
+The proposed change reuses category matches from the existing coverage pass.
+It keeps file discovery, protection, package boundaries and rule order. Its native tests and controlled comparison are recorded below. Exact-head
+external qualification remains required.
+
+## One-pass classifier candidate proof
+
+The patch reuses category matches from the coverage pass instead of repeating
+rule matching and lowercase path assembly in discovery. The native patch has
+SHA-256 `2c93869bcd82feaa0dd42b35617aaf7e8e2da0d9b024c216c5f8ce5d65c2b4ef`;
+`CleanupSuggestions.swift` is
+`4ec071fa077792772b8de4b986e71ab7d0c9d4c3180a39256710d28b20b3a076`.
+Sol round 3 approved this source delta with no Standards, Spec or Risk findings.
+
+The private archive matched all 372 base blobs and XcodeGen produced no project
+change. Debug passed 160/160 tests with no failures or skips. Unsigned universal
+Release succeeded. Evidence: `/tmp/tessera-clsfy-36e80ff.B3gpaw/`.
+
+A current/patched/current diagnostic comparison used five trials per cohort
+per run, 30 trials total, on identical warm synthetic Unicode-2k and wide-100k
+fixtures. All counts matched, coverage gaps were zero, and no heartbeat exceeded
+500 ms. Diagnosis medians changed from 839–869 to 436 ms for Unicode and from
+705–720 to 377 ms for wide. Patched whole-trial medians were 703 and 766 ms.
+These are diagnostic medians, not p99 qualification. This M1 Max host had load
+averages about 22–25 during the comparison.
+
+The native report mistakenly used baseline p99 values (408/549 ms) as absolute
+limits and concluded the patch would fail. The actual reviewed gate rejects
+only when both `after > before * 1.5` and `after - before > 500` hold. The
+medians above do not trip that condition. Five samples do not establish what
+the full campaign will do; both external lanes must qualify the next exact
+clean commit. No baseline, threshold, fixture or sample requirement changed.
