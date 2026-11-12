@@ -1,0 +1,82 @@
+{
+  "report": {
+    "revision": "29377e66e36805ded468e07df5bf629894fd66e5",
+    "lane": "native",
+    "policy": "1119c5277f5130bc0fa1bd4f7b540b5464ef51b4eb1e93fb7ddb8640bb4befc0",
+    "startedAt": 1794447194.031023,
+    "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "steps": [
+      {
+        "name": "release-policy",
+        "result": "success",
+        "durationSeconds": 0.055
+      },
+      {
+        "name": "tool-regressions",
+        "result": "success",
+        "durationSeconds": 13.886
+      },
+      {
+        "name": "xcodegen",
+        "result": "success",
+        "durationSeconds": 0.102
+      },
+      {
+        "name": "debug-tests",
+        "result": "success",
+        "durationSeconds": 132.944
+      },
+      {
+        "name": "test-summary",
+        "result": "success",
+        "durationSeconds": 0.51
+      },
+      {
+        "name": "release-build",
+        "result": "success",
+        "durationSeconds": 73.296
+      },
+      {
+        "name": "scanner",
+        "result": "success",
+        "durationSeconds": 1.849
+      },
+      {
+        "name": "rescan",
+        "result": "success",
+        "durationSeconds": 0.625
+      },
+      {
+        "name": "hardware",
+        "result": "success",
+        "durationSeconds": 0.018
+      },
+      {
+        "name": "memory",
+        "result": "success",
+        "durationSeconds": 0.016
+      },
+      {
+        "name": "full-pipeline-400",
+        "result": "success",
+        "durationSeconds": 242.737
+      },
+      {
+        "name": "performance-goals",
+        "result": "success",
+        "durationSeconds": 0.255
+      }
+    ],
+    "result": "failure",
+    "tests": {
+      "totalTestCount": 163,
+      "passedTests": 163,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    "binarySHA256": "0018276aa34b9305d8d022658756418ccc08828857c7e214f0982061ffc84d1b",
+    "failure": "ValueError",
+    "finishedAt": 1794447703.369947
+  },
+  "signature": "8a3c00251b6fda6ec545669db23871662286ab53f5e49748b1db56af9251d5b5"
+}
