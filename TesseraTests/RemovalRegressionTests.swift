@@ -11,6 +11,59 @@ struct RemovalRegressionTests {
         return url
     }
 
+    @Test("Finishing tracked Trash replaces and saves the operation result", arguments: [false, true])
+    func finishPublishesResult(partial: Bool) async throws {
+        let fs = try TrashOperationTests.Fixture()
+        defer { fs.clean() }
+        for name in ["a.bin", "b.bin", "c.bin"] {
+            try Data(repeating: 1, count: 4096).write(to: fs.source.appendingPathComponent(name))
+        }
+        let sentinel = fs.trash.appendingPathComponent("unrelated.bin")
+        try Data([9]).write(to: sentinel)
+        let domain = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let vm = ScanViewModel(defaults: defaults, makeTrashOperation: { TrashOperation(fileSystem: fs) })
+        vm.startScan(volumeURL: fs.source)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, .now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(!vm.isScanning)
+        let root = try #require(vm.rootNode)
+        try await vm.moveToTrash(root.children)
+        #expect(vm.rescueVerification?.removalMethod == .trash)
+        let snapshot = try await vm.reviewTrackedTrash()
+        try #require(snapshot.review.items.count == 3)
+        try #require(snapshot.review.items.allSatisfy { $0.hold == nil })
+        if partial {
+            try Data(repeating: 2, count: 8192).write(to: fs.trash.appendingPathComponent("b.bin"))
+            fs.removalFailureNames = ["c.bin"]
+        }
+        let before = vm.rescuePlan?.measurement
+        try await vm.finishTrackedTrash(snapshot, selecting: Set(snapshot.review.items.map(\.id)))
+        let result = try #require(vm.rescueVerification)
+        #expect(result.removalMethod == .permanent)
+        #expect(result.removalTitle == "Deleted permanently")
+        #expect(!result.recoveryNote.contains("empty it"))
+        #expect(result.before == before)
+        #expect(result.after == vm.rescuePlan?.measurement)
+        #expect(result.after?.measuredAt != before?.measuredAt)
+        #expect(result.movedPaths?.count == (partial ? 1 : 3))
+        #expect(result.heldPaths?.count == (partial ? 1 : 0))
+        #expect(result.failedPaths.count == (partial ? 1 : 0))
+        #expect(result.heldPaths?.allSatisfy { $0.hasSuffix("b.bin") } == true)
+        #expect(result.failedPaths.allSatisfy { $0.hasSuffix("c.bin") })
+        let removedIDs = snapshot.review.items.filter { !partial || $0.item.trashURL.lastPathComponent == "a.bin" }.map(\.id)
+        #expect(result.movedBytes == removedIDs.reduce(0) { $0 + (snapshot.allocatedBytes[$1] ?? 0) })
+        #expect(vm.savedRescueCase?.verification == result)
+        #expect(vm.savedRescueCase?.measurement == result.after)
+        #expect(try RescueCaseStore.load(defaults: defaults)?.verification == result)
+        #expect(vm.lastRemovalSummary?.permanently == true)
+        #expect(vm.lastRemovalSummary?.held == (partial ? 1 : 0))
+        #expect(vm.lastRemovalSummary?.failed == (partial ? 1 : 0))
+        #expect(vm.hasTrackedTrash == partial)
+        #expect(try Data(contentsOf: sentinel) == Data([9]))
+    }
+
     @Test("A coverage gap blocks overlapping targets and leaves known siblings usable")
     func scopedCoverage() async throws {
         let url = try fixture()

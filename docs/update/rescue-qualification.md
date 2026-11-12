@@ -9,14 +9,14 @@ The full goal is the confirmed design in `docs/research/rescue-2026-11-11/design
 | Requirement | Evidence so far | Required before release |
 | --- | --- | --- |
 | Largest-first discovery and 12 consumer families | Core patch passed 160 native tests; native fixture ranking and managed rows passed at 84df90d and 921afad | Exact release commit CI |
-| Group review, explicit selection, Back, exclusions | Native keyboard, filtered Select all, Keep/Restore and Back passed. bfac606 exercised a 100,000-item review, search, End/Home, Select all/Clear and staging one item | Current row-button Tab/Space repair needs native proof. Large-review observations are not p99 or staging-all proof |
-| Owner routes, Retry, return refresh | Installed bundle IDs checked. Native bfac606 Finder handoff refreshed once; ordinary switching and missing UTM did not refresh. Native coordinator tests cover source changes and busy deferral | Current Checking again/Cancel rendering needs native proof |
+| Group review, explicit selection, Back, exclusions | Native keyboard, filtered Select all, Keep/Restore and Back passed. bfac606 exercised a 100,000-item review, search, End/Home, Select all/Clear and staging one item | Post-stage Tab/Space passed on the matching Views source. Earlier large-review observations are not p99 or staging-all proof |
+| Owner routes, Retry, return refresh | Installed bundle IDs checked. Native bfac606 Finder handoff refreshed once; ordinary switching and missing UTM did not refresh. Native coordinator tests cover source changes and busy deferral | Native Checking again and Cancel retention passed; exact release commit CI remains required |
 | Additional-GB goal and capacity labels | Native keyboard set a 1 GB goal; staged bytes did not advance it. Native coordinator tests cover negative, unknown and changed-volume readings | Exact release tests and post-action capacity check; no allocated-byte recovery claim |
 | Recoverable moves and actual Trash destinations | Three real home-volume Finder Trash runs passed at 4f74c94; actual destinations and identity recorded | Exact release build and existing unsupported-volume holds remain enforced |
 | Operation-scoped permanent finishing | Three public-adapter runs passed at 4f74c94; 921afad real UI removed only its owned item, sentinel preserved. Current private VM probe also passed root move, no-tree Finish and capacity reread with its unrelated sentinel intact | Final native preservation report and exact release gates; retain recovery fixtures and metadata-only limits |
 | Confirmations and held results | Both native confirmations focused Cancel and cancelled on Return/Escape; review and files stayed; explicit confirmations succeeded | Combined-candidate acceptance and exact release tests |
 | Window and appearance | Native captures passed at 820x652, 1100x700 and 1600x900. dde90cb proved initial Back/goal focus and Settings-already-key guard | Current keyboard delta and exact release checks |
-| Keyboard and settings | Initial focus and Cancel checks passed. Contrast was enabled and restored with a cyan outline under accent 6. Motion settings were read back and restored; source disables press scaling when Reduce Motion is on | Current row-button Tab/Space repair needs its ordinary keyboard check. No VoiceOver or narration gate |
+| Keyboard and settings | Initial focus and Cancel checks passed. Contrast was enabled and restored with a cyan outline under accent 6. Motion settings were read back and restored; source disables press scaling when Reduce Motion is on | Post-stage Tab/Space passed. List arrows/Space were not repeated in that run; earlier native list checks remain separate. No VoiceOver or narration gate |
 | Privacy and analytics | No new path-bearing analytics in reviewed changes; production policy unchanged | Automated-run exclusion and allowed new-flow payload checks; no names, paths, search, exclusion identity or raw errors sent |
 | Release CI | Existing owned-hardware lanes and exact-head gates | Both signed reports for the final clean commit, full 400-trial campaign, unchanged limits and valid baseline comparison |
 | Publication and updater | Existing 0.2.2 release infrastructure | Next 0.x version/build, signing and smoke, matching symbols, verified Sparkle feed and DMG, public asset readback and update path |
@@ -508,3 +508,52 @@ only when both `after > before * 1.5` and `after - before > 500` hold. The
 medians above do not trip that condition. Five samples do not establish what
 the full campaign will do; both external lanes must qualify the next exact
 clean commit. No baseline, threshold, fixture or sample requirement changed.
+
+## External qualification at a7420c8 and corrected native paths
+
+Both reports for `a7420c8d0187b0b3472ad591a9c5d52074bacbb2` passed HMAC,
+recipe and exact-revision checks. Native passed 160 tests, universal Release
+and all 400 trials. Every cohort has 100 complete samples with matching counts,
+zero coverage gaps and no heartbeat over 500 ms. The unchanged baseline
+regression gate passed. Warm synthetic p99 values on the same M1 Max/macOS
+27.0.1/Xcode 27.2 host were deep 443.3 ms, mixed 462.7 ms, Unicode 805.2 ms and
+wide 834.5 ms. These are this host's cohort results, not population p99.
+
+The corrected UI run at `/tmp/tessera-pr5-ui2-kqSB/` used the retained 36e80ff
+app after verifying its Views sources match a7420c8. It ran only after CI
+stopped and held the runner lock during one quiet 38-second input window.
+AX staged the first cache item. Two real Tabs reached the second row's select
+button, and real Space selected it while the first stayed in the Cleanup List.
+Focus returned to the review scroll area. List arrows/Space were not repeated:
+the driver rejected AXScrollArea as a list target and sent no keys.
+
+In Rescue, an AX Rescan kept the old group and checked time while showing
+Checking again. A guarded HID click on Cancel changed the text to Scan stopped,
+showing previous results; the same group and checked time remained. The scan
+did not publish a second result. Existing legacy scripts had missed Rescue mode,
+read labels instead of AXValue, and lost target-miss exit codes through tee.
+The private corrected driver verifies focus before each action and spaces keys.
+
+All nine Sample files, production process/preferences, existing CI domain bytes
+and the original checkout matched fresh baselines. Created automation domains
+were backed up and removed. No owned process or runner lock remains.
+
+## Three retained state findings
+
+GitHub review identified three intended-use bugs still present at a7420c8:
+a mixed managed category could use its largest item's owner route for another
+app's item; finishing tracked Trash left the old Trash-move verification and
+saved case; and a goal could read an unscanned selected source while another
+report remained displayed. Parent fixes and three regression declarations
+(including all/partial Finish parameters) are prepared. Sol round 4 approved
+all six changed files with zero Standards, Spec or Risk findings. Controlled
+native proof passed for this exact six-file patch, SHA-256
+`4b941b82ef6fcb9080748161121f2ba70ef7a674c065e5f149d511fc60aed5ce`.
+RED compiled and failed all three focused tests on 22 intended assertions.
+GREEN passed the three focused tests, including both Finish parameters, all
+163 Debug tests and unsigned universal Release. XcodeGen left the project
+unchanged. Evidence: `/tmp/tessera-g123-test-20261112042231-17100/REPORT.md`.
+Production state and all nine Sample files matched fresh snapshots. Own
+processes, test domains and rebuildable caches were cleaned up. The tests prove
+model behavior, not rendered owner text or the reveal button in the app.
+Both external lanes must qualify the final commit. No new narration work is required.

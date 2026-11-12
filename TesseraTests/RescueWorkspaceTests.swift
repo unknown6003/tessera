@@ -405,6 +405,57 @@ struct RescueWorkspaceTests {
         if case .unverified = model.goal?.status {} else { Issue.record("an unknown reading must not verify the goal") }
     }
 
+    @Test("A goal reads the displayed report source when another source is selected")
+    func goalUsesDisplayedSource() {
+        let (defaults, name) = freshDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        var reads: [String] = []
+        var displayedFree: Int64 = 10_000_000_000
+        let (model, host, _) = fixture(defaults: defaults, capacity: { url in
+            reads.append(url.path)
+            return RescueCapacityReading(volumeID: url.path,
+                freeBytes: url.path == "/fixture" ? displayedFree : 100_000_000_000,
+                availableBytes: nil, checkedAt: Date())
+        })
+        host.rescueSelectedSource = URL(fileURLWithPath: "/other-drive")
+        model.setGoal(additionalGB: 1)
+        #expect(reads == ["/fixture"])
+        displayedFree += 500_000_000
+        model.checkGoal()
+        #expect(reads == ["/fixture", "/fixture"])
+        #expect(model.goal?.status == .progress(change: 500_000_000, remaining: 500_000_000))
+    }
+
+    @Test("Mixed communication stores route the visible or inspected item to its owner")
+    func mixedOwnerRoutes() async throws {
+        let (defaults, name) = freshDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let messages = FileNode(url: URL(fileURLWithPath: "/fixture/Users/q/Library/Messages"),
+            name: "Messages", isDirectory: true, size: 300)
+        let signal = FileNode(url: URL(fileURLWithPath: "/fixture/Users/q/Library/Application Support/Signal"),
+            name: "Signal", isDirectory: true, size: 100)
+        let recommendations = [messages, signal].map {
+            CleanupRecommendation(node: $0, category: CleanupCatalog.protectedCommunication)
+        }
+        let root = FileNode(url: URL(fileURLWithPath: "/fixture"), name: "fixture",
+            isDirectory: true, size: 400, children: [messages, signal])
+        let host = FakeRescueHost(report: CleanupReport(recommendations: recommendations), root: root)
+        let model = RescueWorkspaceModel(host: host, opener: FakeOpener(), defaults: defaults,
+            observeApp: false)
+        let row = try #require(model.rows.first)
+        #expect(model.route(for: row)?.bundleID == nil)
+        model.openReview(row)
+        try await waitForReview(model)
+        #expect(model.reviewOwnerRoute?.bundleID == nil)
+        model.reviewSearch = "Signal"
+        #expect(model.reviewOwnerRoute?.ownerName == "Finder")
+        #expect(model.reviewOwnerPaths == [signal.url.path])
+        model.reviewSearch = ""
+        model.detailItemID = recommendations[0].id
+        #expect(model.reviewOwnerRoute?.bundleID == "com.apple.MobileSMS")
+        #expect(model.reviewOwnerPaths == [messages.url.path])
+    }
+
     @Test("Owner return refreshes once, only after leaving through this flow")
     func ownerReturnOnce() async {
         let (defaults, name) = freshDefaults()

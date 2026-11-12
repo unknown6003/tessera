@@ -38,7 +38,7 @@ struct RescueReviewView: View {
             header
                 .background { RevealOnAppear() }
 
-            if let route = review.route { ownerGuidance(route) }
+            if let route = workspace.reviewOwnerRoute { ownerGuidance(route) }
             if review.kind == .files { selectionBar }
 
             if let notice = workspace.reviewNotice {
@@ -107,7 +107,7 @@ struct RescueReviewView: View {
 
     private func ownerGuidance(_ route: RescueOwnerRoute) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Manage with \(route.ownerName == "Finder" ? (review.items.first?.recommendation.owner ?? "its app") : route.ownerName)")
+            Text("Manage with \(route.ownerName == "Finder" ? "the owning app" : route.ownerName)")
                 .font(.headline)
             Text(route.steps)
                 .font(.subheadline)
@@ -125,7 +125,7 @@ struct RescueReviewView: View {
                     .foregroundStyle(.secondary)
             }
             Button {
-                let paths = workspace.reviewItems.prefix(1).map(\.recommendation.path)
+                let paths = workspace.reviewOwnerPaths
                 Task { await workspace.openOwner(route, revealing: paths) }
             } label: {
                 Label(route.actionTitle, systemImage: route.bundleID == nil ? "folder" : "arrow.up.forward.app")

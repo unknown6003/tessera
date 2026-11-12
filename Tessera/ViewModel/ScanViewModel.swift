@@ -164,9 +164,12 @@ final class ScanViewModel: ObservableObject {
     private(set) var scanTaskWasCancelled = false
 
     private let defaults: UserDefaults
+    private let makeTrashOperation: () -> TrashOperation
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         makeTrashOperation: @escaping () -> TrashOperation = { TrashOperation() }) {
         self.defaults = defaults
+        self.makeTrashOperation = makeTrashOperation
         savedRescueCase = nil
         do {
             savedRescueCase = try RescueCaseStore.load(defaults: defaults)
@@ -1029,7 +1032,7 @@ final class ScanViewModel: ObservableObject {
         }
 
         invalidateTrackedTrash()
-        let operation = permanently ? nil : TrashOperation()
+        let operation = permanently ? nil : makeTrashOperation()
         var trackedBytes: [UUID: Int64] = [:]
         var attemptedTargets: [FileNode] = []
         var failures: [DeletionService.DeletionError] = []
@@ -1158,24 +1161,39 @@ final class ScanViewModel: ObservableObject {
         var held = 0
         var failed = 0
         var bytes: Int64 = 0
+        var removedPaths: [String] = []
+        var heldPaths: [String] = []
+        var failedPaths: [String] = []
+        var heldBytes: Int64 = 0
+        var failedBytes: Int64 = 0
+        let before = rescuePlan?.measurement
         for result in results {
             switch result {
             case .removed(let item):
                 removed += 1
                 bytes += snapshot.allocatedBytes[item.id] ?? 0
+                removedPaths.append(item.trashURL.path)
                 trashOperationBytes.removeValue(forKey: item.id)
             case .held(let item, _):
                 held += 1
+                heldBytes += snapshot.allocatedBytes[item.id] ?? 0
+                heldPaths.append(item.trashURL.path)
                 trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: item.trashURL,
                     message: "Held because this item could not be verified. Inspect it in Finder."))
             case .rejected(let id, _):
                 held += 1
+                heldBytes += snapshot.allocatedBytes[id] ?? 0
+                if let item = snapshot.review.items.first(where: { $0.id == id })?.item {
+                    heldPaths.append(item.trashURL.path)
+                }
                 trashFinishIssues.append(TrashFinishIssue(id: id, trashURL: nil,
                     message: "This selection could not be verified. Close the review and check this cleanup again."))
             case .failed(let item, let error):
                 failed += 1
                 let recovery = error as? VerifiedTrashRemoval.Failure
                 let path = recovery?.recoveryURL ?? item.trashURL
+                failedBytes += snapshot.allocatedBytes[item.id] ?? 0
+                failedPaths.append(path.path)
                 let partial = (recovery?.removedEntryCount ?? 0) > 0
                 trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: path,
                     message: partial
@@ -1193,7 +1211,16 @@ final class ScanViewModel: ObservableObject {
             if let root { return RescueMeasurement.capture(volumeURL: source, root: root) }
             return RescueMeasurement.captureCapacity(volumeURL: source)
         }
-        if scannedURL == source { rescuePlan = rescuePlan?.updatingMeasurement(measurement) }
+        if scannedURL == source {
+            rescuePlan = rescuePlan?.updatingMeasurement(measurement)
+            rescueVerification = RescueVerification(requestedBytes: nil, movedBytes: bytes,
+                movedPaths: removedPaths, failedBytes: failedBytes, failedPaths: failedPaths,
+                heldBytes: heldBytes, heldPaths: heldPaths, measurementMismatchPaths: nil,
+                before: before, after: measurement, removalMethod: .permanent)
+            lastRescueError = trashFinishIssues.isEmpty ? nil : "Some Trash items could not be removed. Inspect the held and failed paths."
+            rescuePhase = .result
+            persistRescueCase(candidateIDs: stagedRescueCandidateIDs())
+        }
         // Measured Free now, rather than deleted allocated bytes, updates goals.
         Analytics.shared.capture(.cleanupCompleted, values: [
             "items": .integer(ids.count), "moved": .integer(removed),

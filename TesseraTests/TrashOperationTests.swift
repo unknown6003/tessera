@@ -7,7 +7,7 @@ import Darwin
 struct TrashOperationTests {
     /// Every move/remove stays below one owned disposable directory. This never
     /// invokes Finder Trash, including when run on macOS.
-    fileprivate final class Fixture: TrashFileSystem {
+    final class Fixture: TrashFileSystem {
         let base: URL
         let source: URL
         let trash: URL
@@ -15,6 +15,7 @@ struct TrashOperationTests {
         var omitDestination = false
         var failMove = false
         var failRemoval = false
+        var removalFailureNames = Set<String>()
         var unknownRoot = false
         var removals: [URL] = []
         var afterListing: ((URL) throws -> Void)?
@@ -71,7 +72,9 @@ struct TrashOperationTests {
             return result
         }
         func remove(at url: URL, expected: [String: TrashFileState]) throws {
-            if failRemoval { throw CocoaError(.fileWriteNoPermission) }
+            if failRemoval || removalFailureNames.contains(url.lastPathComponent) {
+                throw CocoaError(.fileWriteNoPermission)
+            }
             // This assertion also protects fixtures from an accidental broad cleanup.
             try #require(url.deletingLastPathComponent().path == trash.path)
             removals.append(url)

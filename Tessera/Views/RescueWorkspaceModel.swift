@@ -562,7 +562,34 @@ final class RescueWorkspaceModel: ObservableObject {
     }
 
     func route(for row: RescueGroupRow) -> RescueOwnerRoute? {
-        row.kind == .managed ? RescueOwnerRoute.route(categoryID: row.categoryID, path: row.firstPath ?? "") : nil
+        guard row.kind == .managed,
+              let group = host?.rescueReport?.groups.first(where: { $0.id == row.id }) else { return nil }
+        return commonOwnerRoute(group.recommendations)
+    }
+
+    private func commonOwnerRoute(_ recommendations: [CleanupRecommendation]) -> RescueOwnerRoute? {
+        guard let first = recommendations.first else { return nil }
+        let route = RescueOwnerRoute.route(categoryID: first.category.id, path: first.path)
+        for item in recommendations.dropFirst() {
+            if RescueOwnerRoute.route(categoryID: item.category.id, path: item.path) != route {
+                return RescueOwnerRoute.route(categoryID: "", path: "")
+            }
+        }
+        return route
+    }
+
+    var reviewOwnerPaths: [String] {
+        if let detailItem { return [detailItem.recommendation.path] }
+        return reviewItems.map(\.recommendation.path)
+    }
+
+    var reviewOwnerRoute: RescueOwnerRoute? {
+        guard review?.kind == .managed else { return nil }
+        if let item = detailItem {
+            return RescueOwnerRoute.route(categoryID: item.recommendation.category.id,
+                                          path: item.recommendation.path)
+        }
+        return commonOwnerRoute(reviewItems.map(\.recommendation))
     }
 
     // MARK: Review
@@ -819,7 +846,8 @@ final class RescueWorkspaceModel: ObservableObject {
     /// source's drive at this moment.
     func setGoal(additionalGB: Double) {
         guard additionalGB.isFinite, additionalGB > 0, additionalGB < 100_000,
-              let source = host?.rescueSelectedSource else { return }
+              let path = host?.rescueReportSource else { return }
+        let source = URL(fileURLWithPath: path)
         let reading = readCapacity(source)
         let bytes = Int64((additionalGB * 1_000_000_000).rounded())
         goal = RescueSpaceGoal(additionalBytes: bytes, baseline: reading, latest: reading)
@@ -829,7 +857,8 @@ final class RescueWorkspaceModel: ObservableObject {
 
     /// Read Free now again. Staged and Trash bytes never enter this figure.
     func checkGoal() {
-        guard var current = goal, let source = host?.rescueSelectedSource else { return }
+        guard var current = goal, let path = host?.rescueReportSource else { return }
+        let source = URL(fileURLWithPath: path)
         current.latest = readCapacity(source)
         goal = current
     }
