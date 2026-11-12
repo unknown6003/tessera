@@ -1,0 +1,172 @@
+{
+  "report": {
+    "revision": "27898e47a3e4a6e6b9494ff2ef5c7fac9e763db6",
+    "lane": "native",
+    "policy": "1119c5277f5130bc0fa1bd4f7b540b5464ef51b4eb1e93fb7ddb8640bb4befc0",
+    "startedAt": 1794450127.444035,
+    "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "steps": [
+      {
+        "name": "release-policy",
+        "result": "success",
+        "durationSeconds": 0.103
+      },
+      {
+        "name": "tool-regressions",
+        "result": "success",
+        "durationSeconds": 13.508
+      },
+      {
+        "name": "xcodegen",
+        "result": "success",
+        "durationSeconds": 0.132
+      },
+      {
+        "name": "debug-tests",
+        "result": "success",
+        "durationSeconds": 132.002
+      },
+      {
+        "name": "test-summary",
+        "result": "success",
+        "durationSeconds": 0.474
+      },
+      {
+        "name": "release-build",
+        "result": "success",
+        "durationSeconds": 66.201
+      },
+      {
+        "name": "scanner",
+        "result": "success",
+        "durationSeconds": 1.916
+      },
+      {
+        "name": "rescan",
+        "result": "success",
+        "durationSeconds": 0.59
+      },
+      {
+        "name": "hardware",
+        "result": "success",
+        "durationSeconds": 0.013
+      },
+      {
+        "name": "memory",
+        "result": "success",
+        "durationSeconds": 0.011
+      },
+      {
+        "name": "full-pipeline-400",
+        "result": "success",
+        "durationSeconds": 187.343
+      },
+      {
+        "name": "performance-goals",
+        "result": "success",
+        "durationSeconds": 0.187
+      }
+    ],
+    "result": "success",
+    "tests": {
+      "totalTestCount": 163,
+      "passedTests": 163,
+      "failedTests": 0,
+      "skippedTests": 0
+    },
+    "binarySHA256": "964cab464751f0d1debbcbd2a6b36beb461279e4beb8f9f3305c22d592a3c27b",
+    "performance": {
+      "revision": "27898e47a3e4a6e6b9494ff2ef5c7fac9e763db6",
+      "method": "nearest rank; full pipeline plus 100 ms UI settle; slow and failed trials retained",
+      "scope": "Empirical p99 for these local fixture cohorts and this host. Population and other-device p99 are not established.",
+      "metadata": {
+        "hardware": "MacBookPro18,2",
+        "os": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "memoryBytes": 34359738368,
+        "runnerScheduling": {
+          "ProcessType": "Standard",
+          "Nice": 10,
+          "LowPriorityIO": true
+        },
+        "cacheState": "warm; fixtures created before measurement; mixed cohort scanned earlier",
+        "workload": [
+          {
+            "cohort": "mixed20k",
+            "files": 20000,
+            "directories": 251,
+            "trials": 100
+          },
+          {
+            "cohort": "wide100k",
+            "files": 100000,
+            "directories": 1,
+            "trials": 100
+          },
+          {
+            "cohort": "deep420",
+            "files": 420,
+            "directories": 421,
+            "trials": 100
+          },
+          {
+            "cohort": "unicode2k",
+            "files": 2000,
+            "directories": 1,
+            "trials": 100
+          }
+        ],
+        "xcode": "Xcode 27.2\nBuild version 27B52",
+        "loadAverage": [
+          12.84716796875,
+          9.18017578125,
+          10.06982421875
+        ]
+      },
+      "cohorts": {
+        "deep420": {
+          "samples": 100,
+          "empiricalP99MS": 461.721125,
+          "maxMS": 462.603625,
+          "over120Seconds": 0,
+          "failedOrPartial": 0,
+          "cloudRemoteOrUnknown": 0,
+          "longestHeartbeatMS": 260.87825,
+          "goalMetForThisCohort": true
+        },
+        "mixed20k": {
+          "samples": 100,
+          "empiricalP99MS": 446.384375,
+          "maxMS": 458.524583,
+          "over120Seconds": 0,
+          "failedOrPartial": 0,
+          "cloudRemoteOrUnknown": 0,
+          "longestHeartbeatMS": 279.605667,
+          "goalMetForThisCohort": true
+        },
+        "unicode2k": {
+          "samples": 100,
+          "empiricalP99MS": 467.00675,
+          "maxMS": 492.15325,
+          "over120Seconds": 0,
+          "failedOrPartial": 0,
+          "cloudRemoteOrUnknown": 0,
+          "longestHeartbeatMS": 258.178875,
+          "goalMetForThisCohort": true
+        },
+        "wide100k": {
+          "samples": 100,
+          "empiricalP99MS": 868.571084,
+          "maxMS": 1059.027209,
+          "over120Seconds": 0,
+          "failedOrPartial": 0,
+          "cloudRemoteOrUnknown": 0,
+          "longestHeartbeatMS": 280.343792,
+          "goalMetForThisCohort": true
+        }
+      }
+    },
+    "baselineCompared": true,
+    "finishedAt": 1794450569.172491
+  },
+  "signature": "761a74fad18f49d88d228a33219e304e30eeedf877010c64c39105b01abc1bf0"
+}
