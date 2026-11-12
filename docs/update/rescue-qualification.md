@@ -402,3 +402,18 @@ removed source was the scan root and no tree remains. A missing source keeps
 capacity unknown and the goal unverified. The root-removal native follow-up must
 exercise this branch through the VM and the real tracked operation, including
 continued access to Finish and the unrelated-item sentinel.
+
+## Release-fix test results received before the final report
+
+The native task's recorded xcresult summaries establish that the earlier
+39a9f6b6 patch passed all 12 removal regressions and all 160 Debug tests in
+12 suites, with zero failures or skips. The source manifest matched after both
+runs. The red control compiled and failed only the seven intended assertions
+across three tests: legacy status, new and saved requested bytes, and the stale
+root and recommendations. The recorded full-Debug command exited 0.
+
+Evidence is under `/tmp/tessera-sol-test-20261112024653-35630/evidence/` on the
+Mac. Its Release command and final preservation/cleanup report are still
+pending. These results do not cover the later row-button focus bindings, actor
+annotations, source-path normalization, AppKit announcement or no-tree Finish
+capacity read. They do not qualify the current commit for release.
