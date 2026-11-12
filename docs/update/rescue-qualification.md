@@ -413,7 +413,10 @@ across three tests: legacy status, new and saved requested bytes, and the stale
 root and recommendations. The recorded full-Debug command exited 0.
 
 Evidence is under `/tmp/tessera-sol-test-20261112024653-35630/evidence/` on the
-Mac. Its Release command and final preservation/cleanup report are still
-pending. These results do not cover the later row-button focus bindings, actor
+Mac. The final report now also confirms unsigned universal Release passed,
+matching app/dSYM UUIDs, preserved production state and all nine sample files,
+and cleanup of only the job's own domains and build output. The report is
+`/tmp/tessera-sol-test-20261112024653-35630/REPORT.md`.
+These results do not cover the later row-button focus bindings, actor
 annotations, source-path normalization, AppKit announcement or no-tree Finish
 capacity read. They do not qualify the current commit for release.
