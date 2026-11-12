@@ -361,8 +361,9 @@ The bfac606 native pass built unsigned universal Release and verified all 372
 source blobs. Actual VoiceOver spoke the new owner label, selected state and
 Add action. It did not speak the Added result in three attempts. The text was
 on screen, and focus returned to the rows. This does not prove whether the
-announcement was skipped or replaced. A window-targeted AppKit announcement is
-a diagnostic candidate, not an applied fix. Evidence:
+announcement was skipped or replaced. The candidate now uses AppKit's
+window-targeted announcement with the same existing focus and review guards.
+It is unverified. Evidence:
 `/tmp/tessera-bfac-ui/REPORT.md`.
 
 The same run verified the owned 100,000-file group. End, Home, single-item
@@ -390,3 +391,8 @@ was already running on the earlier release-fix patch. Keep that task and its
 evidence separate from the later row-focus and warning changes. A new native
 announcement probe could not start. No final review or publication is justified
 until the missing native checks and both exact-head CI lanes pass.
+
+The replacement uses Apple's documented [announcementRequested API](https://developer.apple.com/documentation/appkit/nsaccessibility-swift.struct/notification/announcementrequested).
+Actual narration is still required. A native probe must distinguish a skipped
+guard, a focus change overtaking the announcement and a posting-API difference.
+No delay, retry, synthetic speech or bypass of the own-window guard was added.
