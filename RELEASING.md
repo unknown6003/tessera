@@ -1,8 +1,8 @@
 # Release Tessera from owned hardware
 
 Tessera releases stay in `0.x.x`. The latest public release is `0.2.2`,
-build `14`, published on 10 November 2026. The Rescue redesign is planned for
-`0.2.3`, build `15`. Its version is not bumped until native qualification is ready.
+build `14`, published on 10 November 2026. The Rescue redesign candidate is
+`0.2.3`, build `15`. Native acceptance and exact-commit release gates are pending.
 `0.2.0`, build `12`, was a candidate that was not published. Withdrawn `1.0.0`,
 build `11`, stays a draft. A major version needs Ammar's explicit permission.
 The public release stays latest until the new candidate passes all gates and

@@ -1,6 +1,6 @@
 # Rescue release qualification
 
-Current status: incomplete. No Rescue redesign release is published. The working version remains 0.2.2 build 14 until the next release candidate is prepared.
+Current status: incomplete. No Rescue redesign release is published. The candidate is 0.2.3 build 15. The public release remains 0.2.2 build 14.
 
 The full goal is the confirmed design in `docs/research/rescue-2026-11-11/design-spec.md`. A passing compiler, a source review or a mocked filesystem does not prove the whole flow. The release stays in 0.x.x.
 

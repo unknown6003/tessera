@@ -1,6 +1,6 @@
 # Rescue redesign release notes draft
 
-Planned version: 0.2.3, build 15. Not published or qualified yet. Use these notes
+Candidate version: 0.2.3, build 15. Not published or qualified yet. Use these notes
 only after the final candidate passes native acceptance and both external lanes.
 
 - Rescue lists the largest storage consumers first. App-managed stores show
