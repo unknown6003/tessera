@@ -1,582 +1,512 @@
 import SwiftUI
 import AppKit
 
-/// The Rescue task surface. It keeps the capacity target, measurement, and
-/// ranked review list in one readable path.
+/// The Rescue task surface: one ranked list of storage consumers, largest
+/// allocated footprint first. A group opens for review in this same area.
+/// Nothing here removes a file.
 struct CleanupSuggestionsView: View {
     @ObservedObject var vm: ScanViewModel
     /// Shows the in-page review button. The caller passes it only when the
     /// window's Cleanup List dock, which has its own filled review button, is
     /// not on screen, so the window never shows two filled review buttons.
-    var onMoveToTrash: (() -> Void)? = nil
+    var onMoveToTrash: (() -> Void)?
+    /// Opens the parent's separate, operation-scoped Trash finishing step.
+    /// The parent passes it only while that step can be safely reviewed.
+    var onFinishTrash: (() -> Void)?
 
-    @State private var expandedGroups = Set<String>()
-    /// The group the user just opened. Only that one scrolls into sight, so
-    /// returning to Rescue with open groups does not move the page.
-    @State private var revealedGroup: String?
+    @StateObject private var workspace: RescueWorkspaceModel
+    @FocusState private var focusedRow: String?
+    @State private var goalDraft = ""
+    @State private var isEditingGoal = false
+    @FocusState private var goalFocused: Bool
+
+    init(vm: ScanViewModel, onMoveToTrash: (() -> Void)? = nil, onFinishTrash: (() -> Void)? = nil) {
+        self.vm = vm
+        self.onMoveToTrash = onMoveToTrash
+        self.onFinishTrash = onFinishTrash
+        _workspace = StateObject(wrappedValue: RescueWorkspaceModel(vm: vm))
+    }
+
+    /// For a parent that owns the coordinator, so a pending owner return and
+    /// the Back position survive switching between Explore and Rescue.
+    init(vm: ScanViewModel, workspace: RescueWorkspaceModel,
+         onMoveToTrash: (() -> Void)? = nil, onFinishTrash: (() -> Void)? = nil) {
+        self.vm = vm
+        self.onMoveToTrash = onMoveToTrash
+        self.onFinishTrash = onFinishTrash
+        _workspace = StateObject(wrappedValue: workspace)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // With a plan, the header comes first and the saved case sits
-            // under it as a banner (see planView).
-            if vm.rescuePlan == nil, let saved = vm.savedRescueCase {
-                savedCaseRow(saved, showsPath: true)
-            }
-
-            if let plan = vm.rescuePlan {
-                planView(plan)
-                if let onMoveToTrash, !vm.collector.isEmpty {
-                    reviewFooter(onMoveToTrash)
-                }
+        VStack(alignment: .leading, spacing: 18) {
+            if let review = workspace.review {
+                RescueReviewView(vm: vm, workspace: workspace, review: review)
+            } else if workspace.showsExcluded {
+                excludedView
             } else {
-                emptyPlan
+                if vm.rescuePlan == nil, let saved = vm.savedRescueCase {
+                    savedCaseRow(saved, showsPath: true)
+                }
+                if let plan = vm.rescuePlan {
+                    resultsView(plan)
+                    if let onMoveToTrash, !vm.collector.isEmpty {
+                        reviewFooter(onMoveToTrash)
+                    }
+                } else {
+                    emptyPlan
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .disabled(vm.isDeleting || vm.isScanning)
         .onAppear {
             if vm.rescuePlan != nil { vm.beginRescueReview() }
         }
     }
 
+    // MARK: Results
+
     @ViewBuilder
-    private func planView(_ plan: RescuePlan) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            planHeader(plan)
-            if let saved = vm.savedRescueCase {
-                // The header already shows this path; show it again only if
-                // the saved case is for a different source.
-                savedCaseRow(saved, showsPath: saved.sourcePath != plan.sourcePath)
-            }
-            measurementCard(plan)
-
-            if let verification = vm.rescueVerification {
-                verificationCard(verification)
-            } else if let error = vm.lastRescueError {
-                resultErrorCard(error)
-            }
-
-            coverageCard(plan.coverage)
-
-            if let report = vm.cleanupReport, !report.isEmpty {
-                candidatesHeader(report)
-
-                if !report.safeGroups.isEmpty {
-                    candidateSection(
-                        title: "Safe to review",
-                        subtitle: "Known generated files. They can be rebuilt, but the next build may take longer.",
-                        groups: report.safeGroups,
-                        action: {
-                            vm.stageSafeCleanup()
-                        },
-                        actionTitle: vm.safeGroupsAllStaged
-                            ? "Added to review"
-                            : "Add all safe · \(Theme.format(report.safeTotalBytes))",
-                        actionDisabled: vm.safeGroupsAllStaged,
-                        // The one filled button only while the list is empty;
-                        // after that the dock's review button is the primary.
-                        prominent: vm.collector.isEmpty
-                    )
-                }
-
-                if !report.reviewGroups.isEmpty {
-                    candidateSection(
-                        title: "Review first",
-                        subtitle: "These may be useful, shared, active, or tied to an owner app. Nothing is added automatically.",
-                        groups: report.reviewGroups,
-                        action: nil,
-                        actionTitle: nil,
-                        actionDisabled: false,
-                        prominent: false
-                    )
-                }
-
-                if !report.protectedGroups.isEmpty {
-                    candidateSection(
-                        title: "Protected",
-                        subtitle: "Tessera will not stage these. Use the owner app or keep them in place.",
-                        groups: report.protectedGroups,
-                        action: nil,
-                        actionTitle: nil,
-                        actionDisabled: false,
-                        prominent: false
-                    )
-                }
-            } else {
-                emptyCandidates
-            }
-
-            // Secondary figures, the goal control and the definitions follow
-            // the groups, so the first group shows without scrolling.
-            measurementDetails(plan)
+    private func resultsView(_ plan: RescuePlan) -> some View {
+        header(plan)
+        if let saved = vm.savedRescueCase {
+            savedCaseRow(saved, showsPath: saved.sourcePath != plan.sourcePath)
         }
+        statusLines(plan)
+
+        if let verification = vm.rescueVerification {
+            verificationCard(verification)
+        } else if let error = vm.lastRescueError {
+            resultErrorCard(error)
+        }
+
+        listControls
+        rankedList
+        unmeasuredFindings(plan)
+        excludedLink
     }
 
-    private func planHeader(_ plan: RescuePlan) -> some View {
+    private func header(_ plan: RescuePlan) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Rescue space")
                     .font(.title2.weight(.semibold))
-                Text(plan.sourcePath)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                // File analysis is local; anonymous usage data is not, so this
-                // line says only what is true.
-                Text("File analysis runs on this Mac. Review the paths before anything moves.")
+                    .accessibilityAddTraits(.isHeader)
+                Text("\(URL(fileURLWithPath: plan.sourcePath).lastPathComponent) · checked \(plan.measurement.measuredAt.formatted(date: .abbreviated, time: .shortened))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(plan.sourcePath)
             }
-            // The result for this folder leads; the drive-wide figures follow.
-            if let summary = resultSummary {
-                Text(summary)
-                    .font(.headline)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            phaseBadge
-        }
-    }
-
-    /// One line with what this scan found, in task order: what is safe to
-    /// add now, then what needs a closer look.
-    private var resultSummary: String? {
-        guard let report = vm.cleanupReport, !report.isEmpty else { return nil }
-        var parts: [String] = []
-        if report.safeTotalBytes > 0 {
-            parts.append("\(Theme.format(report.safeTotalBytes)) safe to review")
-        }
-        let review = report.reviewGroups.count
-        if review > 0 {
-            parts.append(review == 1 ? "1 group to check first" : "\(review) groups to check first")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-
-    private var phaseBadge: some View {
-        Label(vm.rescuePhase.title, systemImage: vm.rescuePhase.symbol)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(phaseColor)
-    }
-
-    private var phaseColor: Color {
-        switch vm.rescuePhase {
-        case .result: return Theme.electricBlue
-        case .confirmingTrash, .moving, .verifying: return .orange
-        default: return .secondary
-        }
-    }
-
-    private func measurementCard(_ plan: RescuePlan) -> some View {
-        let primary = plan.measurement.primaryBytes
-        let fraction = capacityFraction(plan.measurement)
-
-        return VStack(alignment: .leading, spacing: 14) {
             ViewThatFits(in: .horizontal) {
-                // Available and target share one size and one baseline.
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(primary.map(Theme.format) ?? "Unknown")
-                            .font(.title2.weight(.semibold).monospacedDigit())
-                        Text(primaryLabel(plan.measurement))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer(minLength: 16)
-
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(targetTitle(plan))
-                            .font(.title2.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(targetColor(plan))
-                        Text(targetLabel(plan))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.trailing)
-                    }
-                }
-                .fixedSize(horizontal: true, vertical: false)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(primary.map(Theme.format) ?? "Unknown")
-                            .font(.title2.weight(.semibold).monospacedDigit())
-                        Text(primaryLabel(plan.measurement))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(targetTitle(plan))
-                            .font(.title2.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(targetColor(plan))
-                        Text(targetLabel(plan))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                HStack(alignment: .firstTextBaseline, spacing: 24) { capacityFigures(plan.measurement) }
+                    .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 8) { capacityFigures(plan.measurement) }
             }
-
-            if let fraction {
-                ProgressView(value: fraction)
-                    .tint(targetColor(plan))
-                    .accessibilityLabel(primaryLabel(plan.measurement))
-                    .accessibilityValue(primary.map(Theme.format) ?? "Unknown")
-                // The headline above already names the figure once, so this
-                // caption carries only the goal.
-                HStack {
-                    Spacer()
-                    Text("Goal: under \(capacityGoalPercent)% used")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func measurementDetails(_ plan: RescuePlan) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 20) {
-                    secondaryFreeMetric(plan.measurement)
-                    metric("Logical", Theme.format(plan.measurement.logicalBytes))
-                    metric("Physical", Theme.format(plan.measurement.physicalBytes))
-                }
-                .fixedSize(horizontal: true, vertical: false)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    secondaryFreeMetric(plan.measurement)
-                    metric("Logical", Theme.format(plan.measurement.logicalBytes))
-                    metric("Physical", Theme.format(plan.measurement.physicalBytes))
-                }
-            }
-
-            capacityGoalControl
-
-            Text("Measured locally · \(plan.measurement.primarySource)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            // Definitions follow the figures and the goal control, so the
-            // numbers and the one adjustable value come first.
-            capacityNotes(plan)
-        }
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Divider() }
-    }
-
-    private var capacityGoalControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Capacity goal")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            HStack(alignment: .center, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Keep used space under")
-                        .font(.subheadline.weight(.medium))
-                    Text("Adjust with the stepper.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 8)
-
-                Stepper(value: Binding(
-                    get: { vm.rescueCapacityGoal },
-                    set: { vm.updateRescueCapacityGoal($0) }
-                ), in: RescuePlan.capacityGoalRange, step: 0.05) {
-                    Text("\(capacityGoalPercent)%")
-                        .font(.headline.monospacedDigit())
-                        .frame(minWidth: 42, alignment: .trailing)
-                }
-                .controlSize(.small)
-                .accessibilityLabel("Used space limit")
-                .accessibilityValue("\(capacityGoalPercent) percent")
-            }
-        }
-        .padding(.vertical, 12)
-    }
-
-    private func coverageCard(_ coverage: RescueCoverage) -> some View {
-        let color: Color = coverage.state == .blocked
-            ? Theme.danger
-            : (coverage.state == .complete ? Theme.electricBlue : .orange)
-
-        return HStack(alignment: .top, spacing: 12) {
-            Image(systemName: coverage.state == .blocked
-                  ? "lock.fill"
-                  : (coverage.state == .complete ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"))
-                .font(.title3)
-                .foregroundStyle(color)
-                // The title names the state; the symbol is not read.
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(coverage.title)
-                    .font(.headline.weight(.semibold))
-                if coverage.notes.isEmpty {
-                    Text("The scan reported no gaps.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(coverage.notes, id: \.self) { note in
-                        Text(note)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-        }
-        .padding(.bottom, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func candidatesHeader(_ report: CleanupReport) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Suggested cleanup")
-                    .font(.title3.weight(.semibold))
-                Spacer()
-                Text(Theme.itemCount(report.recommendations.count))
+            goalLine
+            DisclosureGroup("About these figures") {
+                Text("Available for use includes space macOS can reclaim from caches and other purgeable files. Free now is space that is free at this moment. Both cover the whole drive that holds this source. Sizes in the list are allocated space for the scanned source only. Moving items to the Trash does not free space until the Trash is emptied.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text("Add only what you want to the Cleanup List. Tessera never removes a file from this screen.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            .font(.caption)
         }
     }
 
     @ViewBuilder
-    private func candidateSection(
-        title: String,
-        subtitle: String,
-        groups: [CleanupReport.Group],
-        action: (() -> Void)?,
-        actionTitle: String?,
-        actionDisabled: Bool,
-        prominent: Bool
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline.weight(.semibold))
-            Text(subtitle)
+    private func capacityFigures(_ measurement: RescueMeasurement) -> some View {
+        if let available = measurement.availableBytes {
+            metric("Available for use", Theme.format(available))
+        }
+        metric("Free now", measurement.freeBytes.map(Theme.format) ?? "Unknown")
+    }
+
+    // MARK: Goal
+
+    @ViewBuilder
+    private var goalLine: some View {
+        if isEditingGoal {
+            HStack(spacing: 8) {
+                Text("Free up")
+                    .font(.subheadline)
+                TextField("GB", text: $goalDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 70)
+                    .accessibilityLabel("Additional gigabytes to free")
+                    .focused($goalFocused)
+                    .onSubmit(commitGoal)
+                Text("more GB")
+                    .font(.subheadline)
+                Button("Set", action: commitGoal)
+                    .tesseraButtonStyle(.flat)
+                    .controlSize(.small)
+                    .disabled(parsedGoal == nil)
+                Button("Cancel") { isEditingGoal = false }
+                    .tesseraButtonStyle(.flat)
+                    .controlSize(.small)
+            }
+        } else if let goal = workspace.goal {
+            HStack(spacing: 8) {
+                Text(goalText(goal))
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(goalColor(goal))
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Check again") { workspace.checkGoal() }
+                    .tesseraButtonStyle(.flat)
+                    .controlSize(.small)
+                Button("Clear goal") { workspace.clearGoal() }
+                    .tesseraButtonStyle(.flat)
+                    .controlSize(.small)
+            }
+        } else {
+            Button("Set a space goal") {
+                goalDraft = ""
+                isEditingGoal = true
+                goalFocused = true
+            }
+            .tesseraButtonStyle(.flat)
+            .controlSize(.small)
+            .accessibilityHint("Measures added free space on this drive from now.")
+        }
+    }
+
+    private var parsedGoal: Double? {
+        let value = Double(goalDraft.replacingOccurrences(of: ",", with: "."))
+        return value.flatMap { $0 > 0 && $0 < 100_000 ? $0 : nil }
+    }
+
+    private func commitGoal() {
+        guard let value = parsedGoal else { return }
+        workspace.setGoal(additionalGB: value)
+        isEditingGoal = false
+    }
+
+    private func goalText(_ goal: RescueSpaceGoal) -> String {
+        let target = Theme.format(goal.additionalBytes)
+        let time = goal.latest.checkedAt.formatted(date: .omitted, time: .shortened)
+        switch goal.status {
+        case .unverified(let reason):
+            return "Goal: \(target) more free. Not verified. \(reason)"
+        case .progress(let change, let remaining):
+            if change == 0 {
+                return "Goal: \(target) more free. Free now has not changed, \(Theme.format(remaining)) to go. Checked \(time)."
+            }
+            let sign = change < 0 ? "−" : "+"
+            return "Goal: \(target) more free. Free now changed \(sign)\(Theme.format(abs(change))) since you set it, \(Theme.format(remaining)) to go. Checked \(time)."
+        case .reached(let change):
+            return "Goal reached: Free now is up \(Theme.format(change)). Checked \(time). Other apps can also change this figure."
+        }
+    }
+
+    private func goalColor(_ goal: RescueSpaceGoal) -> Color {
+        switch goal.status {
+        case .unverified: return .orange
+        case .progress: return .primary
+        case .reached: return Theme.electricBlue
+        }
+    }
+
+    // MARK: Status
+
+    @ViewBuilder
+    private func statusLines(_ plan: RescuePlan) -> some View {
+        if vm.isScanning {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text("Checking again. The list shows the result from \(plan.measurement.measuredAt.formatted(date: .omitted, time: .shortened)).")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Cancel") { vm.cancelScan() }
+                    .tesseraButtonStyle(.flat)
+                    .controlSize(.small)
+            }
+        }
+        RescueHandoffStatusView(workspace: workspace, font: .subheadline)
+        if plan.coverage.state != .complete {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(plan.coverage.title + ". Known items are shown; some areas were not checked.",
+                      systemImage: plan.coverage.state == .blocked ? "lock.fill" : "exclamationmark.triangle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        if let notice = workspace.reviewNotice {
+            Text(notice)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 
-            if let action, let actionTitle {
-                if prominent {
-                    Button(actionTitle, action: action)
-                        .tesseraButtonStyle(.flatProminent)
-                        .controlSize(.small)
-                        .disabled(actionDisabled)
-                } else {
-                    Button(actionTitle, action: action)
-                        .tesseraButtonStyle(.flat)
-                        .controlSize(.small)
-                        .disabled(actionDisabled)
-                }
+    private func unmeasuredFindings(_ plan: RescuePlan) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Not measured").font(.headline).accessibilityAddTraits(.isHeader)
+            Text("Snapshot and purgeable recovery is not measured by this file scan. These findings are not added to allocated totals.")
+                .font(.caption).foregroundStyle(Theme.mutedForeground)
+            ForEach(plan.coverage.notes, id: \.self) { note in
+                Text(note).font(.caption).foregroundStyle(Theme.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
+            Button("Inspect snapshots in Disk Utility") {
+                let route = RescueOwnerRoute.route(categoryID: "owner.snapshots", path: "")
+                Task { await workspace.openOwner(route, revealing: []) }
+            }.tesseraButtonStyle(.flat).controlSize(.small)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-            ForEach(groups) { group in
-                groupRow(group)
+    // MARK: Ranked list
+
+    private var listControls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                filterPicker
+                Spacer(minLength: 8)
+                searchField
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                filterPicker
+                searchField
             }
         }
+    }
+
+    private var filterPicker: some View {
+        Picker("Show", selection: $workspace.filter) {
+            ForEach(RescueFilter.allCases) { filter in
+                Text("\(filter.title) \(workspace.count(for: filter))").tag(filter)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .accessibilityLabel("Show groups")
+    }
+
+    private var searchField: some View {
+        TextField("Search groups", text: $workspace.searchText)
+            .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 140, maxWidth: 220)
+            .accessibilityLabel("Search groups on this Mac")
     }
 
     @ViewBuilder
-    private func groupRow(_ group: CleanupReport.Group) -> some View {
-        let expanded = Binding(
-            get: { expandedGroups.contains(group.id) },
-            set: { value in
-                if value { expandedGroups.insert(group.id); revealedGroup = group.id }
-                else { expandedGroups.remove(group.id) }
+    private var rankedList: some View {
+        let rows = workspace.visibleRows
+        if workspace.rows.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Nothing to suggest")
+                    .font(.headline)
+                Text("This scan found no known large storage consumers in the checked areas.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
-        )
-
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 10) {
-                // A Tessera button, not the system disclosure arrow: it shows
-                // the focus ring and scrolls into view on Tab.
-                Button { expanded.wrappedValue.toggle() } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .rotationEffect(.degrees(expanded.wrappedValue ? 90 : 0))
+            .padding(.vertical, 8)
+        } else if rows.isEmpty {
+            Text("No groups match this filter or search.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 8)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(rows) { row in
+                    groupRow(row)
+                    Divider()
                 }
-                .tesseraButtonStyle(.icon)
-                .controlSize(.small)
-                .accessibilityLabel(expanded.wrappedValue ? "Hide items in \(group.category.title)"
-                                                          : "Show items in \(group.category.title)")
-
-                Image(systemName: group.category.symbol)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(color(for: group.risk))
-                    .frame(width: 24)
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(group.category.title)
-                        .font(.subheadline.weight(.semibold))
-                    Text("\(group.nodes.count) item\(group.nodes.count == 1 ? "" : "s") · \(group.category.explanation)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            }
+            .overlay(alignment: .top) { Divider() }
+            .onAppear {
+                if let id = workspace.returnGroupID, rows.contains(where: { $0.id == id }) {
+                    focusedRow = id
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture { expanded.wrappedValue.toggle() }
+            }
+        }
+    }
 
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(Theme.format(group.totalBytes))
-                        .font(.subheadline.monospacedDigit().weight(.semibold))
-                    riskTag(group.risk)
-                }
+    private func groupRow(_ row: RescueGroupRow) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: row.symbol)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(row.kind == .managed ? Theme.mutedForeground : Theme.electricBlue)
+                .frame(width: 22)
+                .accessibilityHidden(true)
 
-                if group.risk != .protected {
-                    let staged = vm.isGroupStaged(group)
-                    Button(staged ? "Added" : "Add") {
-                        vm.toggleCleanupGroup(group)
-                    }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.title)
+                    .font(.subheadline.weight(.semibold))
+                Text(ownerLine(row))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(row.reason)
+                    .font(.callout)
+                    .foregroundStyle(Theme.mutedForeground)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("If removed: \(row.effect)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+
+            VStack(alignment: .trailing, spacing: 6) {
+                Text(Theme.format(row.bytes))
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .accessibilityLabel("\(Theme.format(row.bytes)) allocated")
+                Button(row.actionTitle) { workspace.openReview(row) }
                     .tesseraButtonStyle(.flat)
                     .controlSize(.small)
                     .fixedSize()
-                    .accessibilityLabel(staged ? "Remove \(group.category.title) from Cleanup List"
-                                               : "Add \(group.category.title) to Cleanup List")
-                } else {
-                    Text("Owner handoff")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .fixedSize()
-                }
-            }
-            .padding(.vertical, 11)
-            if expanded.wrappedValue {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(group.recommendations) { recommendation in
-                        recommendationRow(recommendation)
-                        if recommendation.id != group.recommendations.last?.id {
-                            Divider().padding(.leading, 34)
-                        }
-                    }
-                }
-                .padding(.top, 4)
-                // The items open at the bottom of the page; bring the first
-                // rows into sight.
-                .background { if revealedGroup == group.id { RevealOnAppear() } }
+                    .focused($focusedRow, equals: row.id)
+                    .disabled(workspace.isOpeningReview)
+                    .accessibilityLabel("\(row.actionTitle) in \(row.title)")
             }
         }
-        .padding(.vertical, 4)
-        .overlay(alignment: .bottom) { Divider() }
+        .padding(.vertical, 12)
+        .background {
+            if workspace.returnGroupID == row.id { RevealOnAppear(height: 120) }
+        }
     }
 
-    private func recommendationRow(_ recommendation: CleanupRecommendation) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .top, spacing: 10) {
-                Button {
-                    if vm.isCollected(recommendation.node) {
-                        vm.removeFromCollector(recommendation.node)
-                    } else {
-                        vm.addToCollector(recommendation.node)
-                    }
-                } label: {
-                    Image(systemName: vm.isCollected(recommendation.node)
-                          ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(vm.isCollected(recommendation.node)
-                                         ? Theme.electricBlue : Theme.mutedForeground)
-                }
-                .tesseraButtonStyle(.interactive)
-                .disabled(recommendation.risk == .protected || vm.isDeleting || vm.isScanning)
-                .help(vm.isCollected(recommendation.node)
-                      ? "Remove from the Cleanup List" : "Add to the Cleanup List")
-                .accessibilityLabel(vm.isCollected(recommendation.node)
-                                    ? "Remove \(recommendation.node.name) from Cleanup List"
-                                    : "Add \(recommendation.node.name) to Cleanup List")
+    private func ownerLine(_ row: RescueGroupRow) -> String {
+        var line = "\(row.owner) · \(Theme.itemCount(row.itemCount))"
+        if row.kind == .managed { line += " · managed by its app" }
+        if row.keptCount > 0 { line += " · \(row.keptCount) kept" }
+        return line
+    }
 
-                // Row: name, size, one reason line and a risk tag. Path, owner,
-                // side effect and proof sit in one disclosure.
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(recommendation.node.name)
+    @ViewBuilder
+    private var excludedLink: some View {
+        let kept = workspace.keptForCurrentSource.count
+        if kept > 0 {
+            Button("Show excluded (\(kept))") { workspace.showsExcluded = true }
+                .tesseraButtonStyle(.flat)
+                .controlSize(.small)
+                .accessibilityLabel("Show \(kept.formatted()) kept \(kept == 1 ? "item" : "items")")
+        }
+    }
+
+    // MARK: Excluded
+
+    private var excludedView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button { workspace.showsExcluded = false } label: {
+                Label("Back to Rescue", systemImage: "chevron.left")
+            }
+            .tesseraButtonStyle(.flat)
+            .controlSize(.small)
+            .keyboardShortcut("[", modifiers: .command)
+
+            Text("Kept items")
+                .font(.title2.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            Text("Rescue hides these on this Mac. A different item at the same path is not hidden.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            let kept = workspace.keptForCurrentSource
+            if kept.isEmpty {
+                Text("No kept items for this source.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(kept) { item in
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(URL(fileURLWithPath: item.path).lastPathComponent)
                             .font(.callout.weight(.semibold))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Text(recommendation.risk.title)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(riskTint(recommendation.risk))
-                            .padding(.horizontal, 6).padding(.vertical, 1)
-                            .overlay(Capsule().strokeBorder(riskTint(recommendation.risk).opacity(0.5), lineWidth: 1))
-                            .fixedSize()
-                        Spacer(minLength: 8)
-                        Text(Theme.format(recommendation.physicalBytes))
-                            .font(.callout.monospacedDigit().weight(.semibold))
-                            .fixedSize()
-                    }
-
-                    Text(recommendation.reason)
-                        .font(.callout)
-                        .foregroundStyle(Theme.mutedForeground)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .help(recommendation.reason)
-
-                    DisclosureGroup("Details") {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(recommendation.path)
-                                .font(.caption.monospaced())
-                                .textSelection(.enabled)
-                            Text(sizeSummary(for: recommendation))
-                                .font(.caption.monospacedDigit())
-                            Text([recommendation.owner, recommendation.confidence.title,
-                                  recommendation.action.title].joined(separator: " · "))
+                        Text(item.path)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !workspace.isResolved(item) {
+                            Text("Not in this scan. It may have moved, changed or been replaced. It does not hide a new item.")
                                 .font(.caption)
-                            Text("May change: \(recommendation.sideEffect)")
-                                .font(.caption)
-                            ForEach(recommendation.proof, id: \.self) { item in
-                                Text(item)
-                                    .font(.caption.monospaced())
-                                    .textSelection(.enabled)
-                            }
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .foregroundStyle(Theme.mutedForeground)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Restore suggestion") { workspace.restore(item) }
+                        .tesseraButtonStyle(.flat)
+                        .controlSize(.small)
+                        .fixedSize()
+                        .accessibilityLabel("Restore \(URL(fileURLWithPath: item.path).lastPathComponent) to Rescue")
                 }
-            }
-        }
-        .padding(.vertical, 6)
-        .contextMenu {
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([recommendation.node.url])
-            } label: {
-                Label("Reveal in Finder", systemImage: "magnifyingglass")
+                .padding(.vertical, 8)
+                .overlay(alignment: .bottom) { Divider() }
             }
         }
     }
 
-    private func riskTint(_ risk: CleanupRisk) -> Color {
-        switch risk {
-        case .safe: return Theme.electricBlue
-        case .review: return Theme.crossVolumeColor
-        case .protected: return Theme.danger
+    // MARK: Empty
+
+    private var emptyPlan: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FeatureSectionLabel("Rescue space")
+            if vm.isScanning {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Checking this source…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button("Cancel") { vm.cancelScan() }
+                        .tesseraButtonStyle(.flat)
+                        .controlSize(.small)
+                }
+            } else if let error = vm.lastRescueError ?? vm.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                if vm.canRetryLastScan {
+                    Button("Retry") { vm.retryLastScan() }
+                        .tesseraButtonStyle(.flatProminent)
+                        .controlSize(.regular)
+                }
+            } else if let source = vm.selectedSourceURL {
+                Text("Find what uses the most space on this source. Tessera reads files on this Mac and moves nothing while it checks.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Scan") { vm.startScan(volumeURL: source) }
+                    .tesseraButtonStyle(.flatProminent)
+                    .controlSize(.regular)
+                    .disabled(vm.isDeleting)
+                    .accessibilityLabel("Scan \(source.lastPathComponent)")
+            } else {
+                Text("Choose a drive or folder in the sidebar to scan.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
-    private func sizeSummary(for recommendation: CleanupRecommendation) -> String {
-        var summary = "\(Theme.format(recommendation.physicalBytes)) allocated"
-        if let logical = recommendation.logicalBytes {
-            summary += " · \(Theme.format(logical)) logical"
+    private func reviewFooter(_ moveToTrash: @escaping () -> Void) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Cleanup List")
+                    .font(.subheadline.weight(.semibold))
+                Text("\(Theme.itemCount(vm.collector.count)) · \(Theme.format(vm.collectorTotalSize)) staged. Nothing has moved yet.")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button { moveToTrash() } label: {
+                Label("Review Cleanup List…", systemImage: "checklist")
+            }
+            .tesseraButtonStyle(.flatProminent)
+            .controlSize(.regular)
         }
-        return summary
+        .padding(.vertical, 12)
+        .overlay(alignment: .top) { Divider() }
     }
 
     private func verificationCard(_ verification: RescueVerification) -> some View {
@@ -612,10 +542,11 @@ struct CleanupSuggestionsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if let requested = verification.requestedBytes {
-                Text("Requested usable space: \(Theme.format(requested))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if let onFinishTrash, verification.removalMethod != .permanent {
+                Button("Finish these Trash items…", action: onFinishTrash)
+                    .tesseraButtonStyle(.flat)
+                    .controlSize(.small)
+                    .help("Review only the items this move put in the Trash before removing them for good.")
             }
 
             pathDisclosure(title: verification.removalMethod == .permanent ? "Deleted paths" : "Moved paths", paths: verification.movedPaths)
@@ -712,122 +643,6 @@ struct CleanupSuggestionsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var emptyPlan: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            FeatureSectionLabel("Rescue space")
-            if vm.isScanning {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Building the rescue plan…")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            } else if let error = vm.lastRescueError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.subheadline)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Label("Scan a source to build a plan.", systemImage: "magnifyingglass")
-                    .font(.subheadline)
-                Text("Tessera reads local storage only. It does not move or upload files while it measures.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var emptyCandidates: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Nothing to suggest yet")
-                .font(.headline.weight(.semibold))
-            Text("The scan found no known cleanup candidates. The coverage and measurement above still describe the current volume.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    private func reviewFooter(_ moveToTrash: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "checklist")
-                    .font(.title3)
-                    .foregroundStyle(.tint)
-                    .frame(width: 32, height: 32)
-                    .background(Theme.selectionTint, in: Circle())
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Cleanup List ready")
-                        .font(.subheadline.weight(.semibold))
-                    Text("\(vm.collector.count) item\(vm.collector.count == 1 ? "" : "s") · \(Theme.format(vm.collectorTotalSize))")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Text("Review the exact paths before you confirm.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Button {
-                moveToTrash()
-            } label: {
-                Label("Review Cleanup List…", systemImage: "checklist")
-            }
-            .tesseraButtonStyle(.flatProminent)
-            .controlSize(.regular)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Divider() }
-    }
-
-    /// The headline figure is `primaryBytes`: macOS "available for important
-    /// usage" when known (it counts space macOS can reclaim from caches and
-    /// other purgeable files), else plain free space. The label follows the
-    /// value actually shown.
-    private func primaryLabel(_ measurement: RescueMeasurement) -> String {
-        measurement.availableBytes != nil ? "Available for use" : "Free now"
-    }
-
-    @ViewBuilder
-    private func capacityNotes(_ plan: RescuePlan) -> some View {
-        let notes = [
-            plan.measurement.availableBytes != nil
-                ? "Available for use counts space macOS can reclaim by removing caches and other purgeable files. Free now is the space macOS reports as free at this moment."
-                : nil,
-            // True for a volume root and for a folder alike, so it needs no
-            // path test. (`volumePath` is the selected source path, not the
-            // mount point, so comparing it with `sourcePath` cannot tell them
-            // apart.)
-            "Capacity figures cover the whole drive that holds this source. Logical and physical totals cover only the scanned source.",
-        ].compactMap { $0 }
-        if !notes.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(notes, id: \.self) { note in
-                    Text(note)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
-    /// Plain free space, shown beside the headline only when the headline is
-    /// the larger "available for use" figure.
-    @ViewBuilder
-    private func secondaryFreeMetric(_ measurement: RescueMeasurement) -> some View {
-        if measurement.availableBytes != nil {
-            metric("Free now", measurement.freeBytes.map(Theme.format) ?? "Unknown")
-        }
-    }
-
     private var savedCaseTitle: some View {
         HStack(spacing: 8) {
             Image(systemName: "bookmark.fill")
@@ -861,53 +676,5 @@ struct CleanupSuggestionsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private func riskTag(_ risk: CleanupRisk) -> some View {
-        Text(risk.title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(color(for: risk))
-    }
-
-    private func color(for risk: CleanupRisk) -> Color {
-        switch risk {
-        case .safe: return Theme.electricBlue
-        case .review: return .orange
-        case .protected: return .secondary
-        }
-    }
-
-    private func targetTitle(_ plan: RescuePlan) -> String {
-        guard let target = plan.targetSpace, let available = plan.measurement.primaryBytes else {
-            return "—"
-        }
-        return target > available ? Theme.format(target - available) : "On target"
-    }
-
-    private func targetLabel(_ plan: RescuePlan) -> String {
-        guard plan.targetSpace != nil else { return "capacity target unavailable" }
-        guard let target = plan.targetSpace, let available = plan.measurement.primaryBytes else {
-            return "capacity target unavailable"
-        }
-        return target > available
-            ? "more space needed to reach \(capacityGoalPercent)% used"
-            : "\(capacityGoalPercent)% used limit met"
-    }
-
-    private func targetColor(_ plan: RescuePlan) -> Color {
-        guard let target = plan.targetSpace, let available = plan.measurement.primaryBytes else {
-            return .secondary
-        }
-        return target > available ? .orange : Theme.electricBlue
-    }
-
-    private func capacityFraction(_ measurement: RescueMeasurement) -> Double? {
-        guard let total = measurement.totalBytes, total > 0,
-              let primary = measurement.primaryBytes else { return nil }
-        return min(1, max(0, Double(primary) / Double(total)))
-    }
-
-    private var capacityGoalPercent: Int {
-        Int((vm.rescueCapacityGoal * 100).rounded())
     }
 }

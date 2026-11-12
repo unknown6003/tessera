@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-struct ScanTreeRevision: Equatable {
+struct ScanTreeRevision: Equatable, Sendable {
     let rootID: ObjectIdentifier?
     let revision: UInt64
 }
@@ -23,6 +23,26 @@ final class ScanViewModel: ObservableObject {
         let failed: Int
         let permanently: Bool
     }
+    struct TrashFinishReview: Identifiable, Sendable {
+        var id: UUID { review.operationID }
+        let review: TrashOperation.Review
+        let source: URL
+        let rootID: ObjectIdentifier?
+        let revision: UInt64
+        let allocatedBytes: [UUID: Int64]
+    }
+    struct TrashFinishIssue: Identifiable {
+        let id: UUID
+        let trashURL: URL?
+        let message: String
+    }
+    @Published private(set) var trashFinishIssues: [TrashFinishIssue] = []
+    @Published private(set) var hasTrackedTrash = false
+    @Published private(set) var hasTrashMoveHistory = false
+    private var trashOperation: TrashOperation?
+    private var trashOperationSource: URL?
+    private var trashOperationBytes: [UUID: Int64] = [:]
+
     // MARK: - Published state
     @Published var rootNode: FileNode?
     @Published var currentRoot: FileNode?        // zoom target within the chart
@@ -40,6 +60,12 @@ final class ScanViewModel: ObservableObject {
     @Published var didRunDuplicates = false
     @Published var duplicateProgress = DuplicateProgress()
     @Published var isScanning = false
+    var hasRescueResultsForSelectedSource: Bool {
+        guard rootNode != nil, cleanupReport != nil, let plan = rescuePlan,
+              let source = selectedSourceURL, let scannedURL,
+              source.standardizedFileURL.path == scannedURL.standardizedFileURL.path else { return false }
+        return plan.sourcePath == source.standardizedFileURL.path
+    }
     @Published private(set) var isDeleting = false
     @Published private(set) var isReadingTree = false
     private var treeReaders = 0
@@ -138,9 +164,12 @@ final class ScanViewModel: ObservableObject {
     private(set) var scanTaskWasCancelled = false
 
     private let defaults: UserDefaults
+    private let makeTrashOperation: () -> TrashOperation
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         makeTrashOperation: @escaping () -> TrashOperation = { TrashOperation() }) {
         self.defaults = defaults
+        self.makeTrashOperation = makeTrashOperation
         savedRescueCase = nil
         do {
             savedRescueCase = try RescueCaseStore.load(defaults: defaults)
@@ -160,6 +189,11 @@ final class ScanViewModel: ObservableObject {
 
     func startScan(volumeURL: URL) {
         guard !isDeleting else { return }
+        if trashOperationSource?.standardizedFileURL == volumeURL.standardizedFileURL {
+            trashOperation?.revokeReview()
+        } else {
+            invalidateTrackedTrash()
+        }
         if isScanning, let activeScanTelemetry {
             Analytics.shared.capture(.scanCancelled, values: activeScanTelemetry.properties(outcome: "superseded"))
         }
@@ -425,6 +459,7 @@ final class ScanViewModel: ObservableObject {
             return true
         }
         guard url != scannedURL, let cached = scanCache[url] else { return false }
+        invalidateTrackedTrash()
         if isScanning {
             if let activeScanTelemetry {
                 Analytics.shared.capture(.scanCancelled, values: activeScanTelemetry.properties(outcome: "superseded"))
@@ -996,6 +1031,9 @@ final class ScanViewModel: ObservableObject {
             rescuePhase = .moving
         }
 
+        invalidateTrackedTrash()
+        let operation = permanently ? nil : makeTrashOperation()
+        var trackedBytes: [UUID: Int64] = [:]
         var attemptedTargets: [FileNode] = []
         var failures: [DeletionService.DeletionError] = []
         var heldTargets: [FileNode] = []
@@ -1010,11 +1048,25 @@ final class ScanViewModel: ObservableObject {
                 break
             }
             attemptedTargets.append(target)
-            let failure = try await Self.offMain {
-                DeletionService.perform(prepared, permanently: permanently)
+            if let operation {
+                let outcome = try await Self.offMain {
+                    DeletionService.performTracked(prepared, operation: operation)
+                }
+                if let failure = outcome.error { failures.append(failure) }
+                if let item = outcome.item { trackedBytes[item.id] = target.physicalSize }
+            } else {
+                let failure = try await Self.offMain {
+                    DeletionService.perform(prepared, permanently: permanently)
+                }
+                if let failure { failures.append(failure) }
             }
-            if let failure { failures.append(failure) }
             deletionProgress = index + 1
+        }
+        if let operation, !trackedBytes.isEmpty {
+            trashOperation = operation
+            trashOperationSource = source
+            trashOperationBytes = trackedBytes
+            hasTrackedTrash = true
         }
         let failedURLs = Set(failures.map { $0.url.standardizedFileURL })
         let movedBytes = attemptedTargets
@@ -1022,14 +1074,27 @@ final class ScanViewModel: ObservableObject {
             .reduce(Int64(0)) { $0 + $1.physicalSize }
         // The background pass is done. It cannot read the arrays as they are pruned.
         try? prune(attemptedTargets, failures: failures)
-        let after = try await Self.offMain { () -> RescueMeasurement? in
-            if let root, let source { return RescueMeasurement.capture(volumeURL: source, root: root) }
-            return nil as RescueMeasurement?
+        let remainingRoot = rootNode
+        let ownerAfterRemoval = CleanupOwnerState.current()
+        let coverageComplete = rescuePlan?.coverage.state == .complete
+        let updated = try await Self.offMain { () -> (RescueMeasurement?, CleanupReport?) in
+            guard let source else { return (nil, nil) }
+            guard let remainingRoot else {
+                return (RescueMeasurement.captureCapacity(volumeURL: source), CleanupReport(recommendations: []))
+            }
+            let report = CleanupClassifier.classify(root: remainingRoot, ownerState: ownerAfterRemoval,
+                                                    coverageComplete: coverageComplete)
+            return (RescueMeasurement.capture(volumeURL: source, root: remainingRoot), report)
         }
-        recordRescueResult(before: before, after: after, removalMethod: permanently ? .permanent : .trash, targets: attemptedTargets, failures: failures,
+        if let report = updated.1 {
+            cleanupReport = report
+            rescuePlan = rescuePlan?.updatingReport(report)
+        }
+        recordRescueResult(before: before, after: updated.0, removalMethod: permanently ? .permanent : .trash, targets: attemptedTargets, failures: failures,
                            measurementMismatchPaths: [], heldNodes: heldTargets,
                            errorMessage: heldError)
         let moved = max(0, attemptedTargets.count - failures.count)
+        if !permanently && moved > 0 { hasTrashMoveHistory = true }
         lastRemovalSummary = RemovalSummary(moved: moved, movedBytes: movedBytes, held: heldTargets.count,
                                              failed: failures.count, permanently: permanently)
         Analytics.shared.capture(.cleanupCompleted, values: [
@@ -1041,6 +1106,128 @@ final class ScanViewModel: ObservableObject {
         ])
         if let heldError { throw RescueActionError.ownerActive(heldError) }
         if let first = failures.first { throw first }
+    }
+
+    private func invalidateTrackedTrash() {
+        trashOperation?.invalidate()
+        trashOperation = nil
+        trashOperationSource = nil
+        trashOperationBytes = [:]
+        hasTrackedTrash = false
+        trashFinishIssues = []
+    }
+
+    func reviewTrackedTrash() async throws -> TrashFinishReview {
+        guard !isDeleting, !isScanning, treeReaders == 0,
+              let operation = trashOperation, let source = trashOperationSource,
+              source == scannedURL, selectedSourceURL == nil || selectedSourceURL == source else {
+            throw RemovalStateError.busy
+        }
+        isDeleting = true
+        defer { isDeleting = false }
+        trashFinishIssues = []
+        let owner = CleanupOwnerState.current()
+        let review = try await Self.offMain { operation.review(ownerState: owner) }
+        return TrashFinishReview(review: review, source: source, rootID: rootNode?.id,
+                                 revision: chartRevision, allocatedBytes: trashOperationBytes)
+    }
+
+    func finishTrackedTrash(_ snapshot: TrashFinishReview, selecting ids: Set<UUID>) async throws {
+        guard !isDeleting, !isScanning, treeReaders == 0,
+              let operation = trashOperation, snapshot.review.operationID == operation.id,
+              snapshot.source == scannedURL, snapshot.source == trashOperationSource,
+              selectedSourceURL == nil || selectedSourceURL == snapshot.source,
+              snapshot.rootID == rootNode?.id, snapshot.revision == chartRevision else {
+            throw RemovalStateError.busy
+        }
+        guard !ids.isEmpty else { return }
+        isDeleting = true
+        collectorNotice = nil
+        deletionTotal = ids.count
+        deletionProgress = 0
+        defer { isDeleting = false }
+        let owner = CleanupOwnerState.current()
+        let cancellation = TreeReadCancellation()
+        let results = try await withTaskCancellationHandler {
+            try await Self.offMain {
+                operation.finish(snapshot.review, selecting: ids, ownerState: owner, ownerProbe: {
+                    DispatchQueue.main.sync { MainActor.assumeIsolated { CleanupOwnerState.current() } }
+                }, isCancelled: { cancellation.isCancelled })
+            }
+        } onCancel: {
+            cancellation.cancel()
+        }
+        var removed = 0
+        var held = 0
+        var failed = 0
+        var bytes: Int64 = 0
+        var removedPaths: [String] = []
+        var heldPaths: [String] = []
+        var failedPaths: [String] = []
+        var heldBytes: Int64 = 0
+        var failedBytes: Int64 = 0
+        let before = rescuePlan?.measurement
+        for result in results {
+            switch result {
+            case .removed(let item):
+                removed += 1
+                bytes += snapshot.allocatedBytes[item.id] ?? 0
+                removedPaths.append(item.trashURL.path)
+                trashOperationBytes.removeValue(forKey: item.id)
+            case .held(let item, _):
+                held += 1
+                heldBytes += snapshot.allocatedBytes[item.id] ?? 0
+                heldPaths.append(item.trashURL.path)
+                trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: item.trashURL,
+                    message: "Held because this item could not be verified. Inspect it in Finder."))
+            case .rejected(let id, _):
+                held += 1
+                heldBytes += snapshot.allocatedBytes[id] ?? 0
+                if let item = snapshot.review.items.first(where: { $0.id == id })?.item {
+                    heldPaths.append(item.trashURL.path)
+                }
+                trashFinishIssues.append(TrashFinishIssue(id: id, trashURL: nil,
+                    message: "This selection could not be verified. Close the review and check this cleanup again."))
+            case .failed(let item, let error):
+                failed += 1
+                let recovery = error as? VerifiedTrashRemoval.Failure
+                let path = recovery?.recoveryURL ?? item.trashURL
+                failedBytes += snapshot.allocatedBytes[item.id] ?? 0
+                failedPaths.append(path.path)
+                let partial = (recovery?.removedEntryCount ?? 0) > 0
+                trashFinishIssues.append(TrashFinishIssue(id: item.id, trashURL: path,
+                    message: partial
+                        ? "Removal stopped after some contents were deleted. Inspect the remaining items and recovery map."
+                        : "Removal stopped. Inspect the held item in Finder before taking further action."))
+            }
+        }
+        deletionProgress = results.count
+        hasTrackedTrash = !trashOperationBytes.isEmpty
+        lastRemovalSummary = RemovalSummary(moved: removed, movedBytes: bytes,
+                                            held: held, failed: failed, permanently: true)
+        let root = rootNode
+        let source = snapshot.source
+        let measurement = try await Self.offMain {
+            if let root { return RescueMeasurement.capture(volumeURL: source, root: root) }
+            return RescueMeasurement.captureCapacity(volumeURL: source)
+        }
+        if scannedURL == source {
+            rescuePlan = rescuePlan?.updatingMeasurement(measurement)
+            rescueVerification = RescueVerification(requestedBytes: nil, movedBytes: bytes,
+                movedPaths: removedPaths, failedBytes: failedBytes, failedPaths: failedPaths,
+                heldBytes: heldBytes, heldPaths: heldPaths, measurementMismatchPaths: nil,
+                before: before, after: measurement, removalMethod: .permanent)
+            lastRescueError = trashFinishIssues.isEmpty ? nil : "Some Trash items could not be removed. Inspect the held and failed paths."
+            rescuePhase = .result
+            persistRescueCase(candidateIDs: stagedRescueCandidateIDs())
+        }
+        // Measured Free now, rather than deleted allocated bytes, updates goals.
+        Analytics.shared.capture(.cleanupCompleted, values: [
+            "items": .integer(ids.count), "moved": .integer(removed),
+            "held": .integer(held), "failed": .integer(failed),
+            "method": .text("permanent"),
+            "outcome": .text(held == 0 && failed == 0 ? "complete" : "partial")
+        ])
     }
 
     private enum RemovalStateError: LocalizedError {
@@ -1126,7 +1313,7 @@ final class ScanViewModel: ObservableObject {
         let heldRecommendationIDs = Set(heldRecommendations.map { $0.node.id })
         let unplannedHeldNodes = heldNodes.filter { !heldRecommendationIDs.contains($0.id) }
         rescueVerification = RescueVerification(
-            requestedBytes: rescuePlan?.targetSpace,
+            requestedBytes: nil,
             movedBytes: movedBytes,
             movedPaths: movedPaths.isEmpty ? nil : movedPaths,
             failedBytes: failedBytes,
@@ -1171,6 +1358,17 @@ final class ScanViewModel: ObservableObject {
 
         let removed = topLevel.filter { !failedURLs.contains($0.url.standardizedFileURL) }
         let removedIDs = Set(removed.map(\.id))
+        if let root = rootNode, removedIDs.contains(root.id) {
+            rootNode = nil
+            currentRoot = nil
+            duplicateGroups = []
+            didRunDuplicates = false
+            if let source = scannedURL {
+                scanCache.removeValue(forKey: source)
+                cacheLRU.removeAll { $0 == source }
+            }
+            previousScan = nil
+        }
         let byParent = Dictionary(grouping: removed.filter { $0.parent != nil }, by: { $0.parent!.id })
         for siblings in byParent.values {
             siblings.first?.parent?.removeChildren(withIDs: Set(siblings.map(\.id)))

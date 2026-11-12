@@ -1,0 +1,150 @@
+{
+  "title": "Choose the Rescue structure",
+  "eyebrow": "Rescue design \u00b7 Round 2",
+  "summary": "Your direction is set: biggest useful actions, an adaptive screen, and guidance for large stores managed by other apps. This round chooses the structure, default order, and group review behavior.",
+  "slug": "tessera-rescue-round2-nov11",
+  "sections": [
+    {
+      "title": "Compare two structures",
+      "blocks": [
+        {
+          "type": "media",
+          "intent": "compare",
+          "label": "Rescue structure concepts",
+          "caption": "Synthetic data at 1100 \u00d7 700. These are discussion sketches, not native builds. Sizes show storage used, not expected recovery. Open either image to zoom.",
+          "items": [
+            {
+              "kind": "image",
+              "src": "@./prototype/layout-A.webp",
+              "width": 1100,
+              "height": 700,
+              "alt": "A: one ranked list. Large stores and direct cleanup candidates share one view. Synthetic sizes, not a running Tessera build.",
+              "caption": "A: one ranked list. Large stores and direct cleanup candidates share one view."
+            },
+            {
+              "kind": "image",
+              "src": "@./prototype/layout-B.webp",
+              "width": 1100,
+              "height": 700,
+              "alt": "B: category overview. Open a category before reviewing its items. Synthetic sizes, not a running Tessera build.",
+              "caption": "B: category overview. Open a category before reviewing its items."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Choose the next branch",
+      "blocks": [
+        {
+          "type": "interaction",
+          "id": "rescue-structure",
+          "title": "Round 2: structure, order, and review",
+          "description": "Three independent choices. Recommendations are a starting point. Mix the ideas or write your own answer.",
+          "presentation": "focus",
+          "submitLabel": "Send this round",
+          "fields": [
+            {
+              "id": "layout",
+              "kind": "single",
+              "label": "Which structure should we take forward?",
+              "description": "Open either sketch above to inspect it. Both use the same made-up data.",
+              "context": "You chose the biggest useful actions first, an adaptive screen, and visible owner handoffs. My pick is one ranked list: Docker, photos, backups, and reviewable files remain visible together. Each row explains its owner and next step. A category overview makes the first page shorter and groups related tasks, but the actual large items sit one step deeper. This is a structure choice, not approval of the exact wording or spacing.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "ranked-list",
+                  "label": "A: one ranked list",
+                  "description": "See large stores and file candidates together, with filters for action type.",
+                  "recommended": true
+                },
+                {
+                  "id": "category-overview",
+                  "label": "B: category overview",
+                  "description": "Start with a few storage groups, then open one to see its actions."
+                }
+              ]
+            },
+            {
+              "id": "ranking",
+              "kind": "single",
+              "label": "Should a large managed store lead a smaller direct cleanup candidate?",
+              "description": "Example: a 64 GB Docker store beside 9 GB of Xcode build data. Neither size is a recovery promise.",
+              "context": "Current Rescue puts risk tiers before size, which can bury large storage consumers. My pick is largest storage used first, with owner and action labels kept visible. This helps explain where the space went, including stores whose recoverable amount is unknown. The alternative brings lower-effort file review first, which may produce a faster initial action while pushing large managed stores down. Either rule can apply to a list or to the order of categories. We should test it with people after the prototype.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "largest-footprint",
+                  "label": "Lead with the largest storage used",
+                  "description": "Keep large stores visible. Distinguish their footprint from any cleanup estimate.",
+                  "recommended": true
+                },
+                {
+                  "id": "direct-first",
+                  "label": "Lead with direct cleanup actions",
+                  "description": "Show reviewable file candidates first, then stores that need an owner action."
+                }
+              ]
+            },
+            {
+              "id": "group-review",
+              "kind": "single",
+              "label": "What should Review do for a group such as Downloads or build data?",
+              "description": "The final Cleanup List review and Trash default stay in both options.",
+              "context": "Current classification can turn a broad Downloads or Caches folder into one candidate. My pick is to open its items first, so users can choose a subset before adding anything. This avoids making a large container the unit of consent. Bulk selection can still exist inside that review, with nothing selected automatically. The alternative stages the whole group in one step, then relies on the final Cleanup List review. It saves a step but may leave too much detail to inspect at once.",
+              "allowCustom": true,
+              "options": [
+                {
+                  "id": "choose-items-first",
+                  "label": "Open items, then add the chosen ones",
+                  "description": "Review the group before staging. Keep bulk selection within that view.",
+                  "recommended": true
+                },
+                {
+                  "id": "stage-group-first",
+                  "label": "Stage the group, then review the list",
+                  "description": "Use one action to add the whole group. Inspect it in the final Cleanup List."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "What stays fixed",
+      "blocks": [
+        {
+          "type": "bullets",
+          "items": [
+            "Personal and uncertain items start unselected. The Cleanup List and final review remain. Trash stays the default for file removal.",
+            "Large app-managed stores stay visible. The action must explain whether it reviews files or opens the owning app. No owner command is authorized by this design discussion.",
+            "Storage used, estimated recovery, files moved to Trash, and observed capacity change remain different numbers. No fixed 75% capacity target is imposed."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Why the screen needs more than a visual update",
+      "blocks": [
+        {
+          "type": "text",
+          "text": "The source audit confirms that VM disk-file rules are missed during discovery, broad parent matches can hide detailed categories, and protected rows lack working handoffs. Those are implementation gaps to address after the design is agreed. A new layout alone will not fix them."
+        },
+        {
+          "type": "text",
+          "text": "Reference checks covered 12 claims and four public threads. We have not run recruited usability sessions. Current anonymous usage is too small to choose a layout: 12 allowed events from one anonymous ID in a fixed 30-day window, with no cleanup events. No conversion claim follows from that sample."
+        }
+      ]
+    },
+    {
+      "title": "The next round",
+      "blocks": [
+        {
+          "type": "text",
+          "text": "After these choices, we can pin down the row detail, filters, owner handoff flow, and how the review handles subsets and failures. Then we will confirm the full flow together before implementation."
+        }
+      ]
+    }
+  ]
+}

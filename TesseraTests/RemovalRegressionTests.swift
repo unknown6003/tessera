@@ -11,6 +11,59 @@ struct RemovalRegressionTests {
         return url
     }
 
+    @Test("Finishing tracked Trash replaces and saves the operation result", arguments: [false, true])
+    func finishPublishesResult(partial: Bool) async throws {
+        let fs = try TrashOperationTests.Fixture()
+        defer { fs.clean() }
+        for name in ["a.bin", "b.bin", "c.bin"] {
+            try Data(repeating: 1, count: 4096).write(to: fs.source.appendingPathComponent(name))
+        }
+        let sentinel = fs.trash.appendingPathComponent("unrelated.bin")
+        try Data([9]).write(to: sentinel)
+        let domain = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: domain))
+        defer { defaults.removePersistentDomain(forName: domain) }
+        let vm = ScanViewModel(defaults: defaults, makeTrashOperation: { TrashOperation(fileSystem: fs) })
+        vm.startScan(volumeURL: fs.source)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, .now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(!vm.isScanning)
+        let root = try #require(vm.rootNode)
+        try await vm.moveToTrash(root.children)
+        #expect(vm.rescueVerification?.removalMethod == .trash)
+        let snapshot = try await vm.reviewTrackedTrash()
+        try #require(snapshot.review.items.count == 3)
+        try #require(snapshot.review.items.allSatisfy { $0.hold == nil })
+        if partial {
+            try Data(repeating: 2, count: 8192).write(to: fs.trash.appendingPathComponent("b.bin"))
+            fs.removalFailureNames = ["c.bin"]
+        }
+        let before = vm.rescuePlan?.measurement
+        try await vm.finishTrackedTrash(snapshot, selecting: Set(snapshot.review.items.map(\.id)))
+        let result = try #require(vm.rescueVerification)
+        #expect(result.removalMethod == .permanent)
+        #expect(result.removalTitle == "Deleted permanently")
+        #expect(!result.recoveryNote.contains("empty it"))
+        #expect(result.before == before)
+        #expect(result.after == vm.rescuePlan?.measurement)
+        #expect(result.after?.measuredAt != before?.measuredAt)
+        #expect(result.movedPaths?.count == (partial ? 1 : 3))
+        #expect(result.heldPaths?.count == (partial ? 1 : 0))
+        #expect(result.failedPaths.count == (partial ? 1 : 0))
+        #expect(result.heldPaths?.allSatisfy { $0.hasSuffix("b.bin") } == true)
+        #expect(result.failedPaths.allSatisfy { $0.hasSuffix("c.bin") })
+        let removedIDs = snapshot.review.items.filter { !partial || $0.item.trashURL.lastPathComponent == "a.bin" }.map(\.id)
+        #expect(result.movedBytes == removedIDs.reduce(0) { $0 + (snapshot.allocatedBytes[$1] ?? 0) })
+        #expect(vm.savedRescueCase?.verification == result)
+        #expect(vm.savedRescueCase?.measurement == result.after)
+        #expect(try RescueCaseStore.load(defaults: defaults)?.verification == result)
+        #expect(vm.lastRemovalSummary?.permanently == true)
+        #expect(vm.lastRemovalSummary?.held == (partial ? 1 : 0))
+        #expect(vm.lastRemovalSummary?.failed == (partial ? 1 : 0))
+        #expect(vm.hasTrackedTrash == partial)
+        #expect(try Data(contentsOf: sentinel) == Data([9]))
+    }
+
     @Test("A coverage gap blocks overlapping targets and leaves known siblings usable")
     func scopedCoverage() async throws {
         let url = try fixture()
@@ -66,6 +119,20 @@ struct RemovalRegressionTests {
         #expect(result.recoveryNote.contains("empty it"))
     }
 
+    @Test("Legacy capacity targets do not grade a measured cleanup result")
+    func legacyTargetDoesNotGradeCleanup() {
+        let before = RescueMeasurement(volumePath: "/fixture", totalBytes: 1_000,
+            availableBytes: 100, freeBytes: 100, logicalBytes: 900, physicalBytes: 900,
+            measuredAt: Date(timeIntervalSince1970: 1))
+        let after = RescueMeasurement(volumePath: "/fixture", totalBytes: 1_000,
+            availableBytes: 130, freeBytes: 130, logicalBytes: 870, physicalBytes: 870,
+            measuredAt: Date(timeIntervalSince1970: 2))
+        let result = RescueVerification(requestedBytes: 250, movedBytes: 30,
+            movedPaths: nil, failedBytes: 0, failedPaths: [], heldBytes: nil, heldPaths: nil,
+            measurementMismatchPaths: nil, before: before, after: after)
+        #expect(result.status == "Verified after measurement")
+    }
+
     @Test("A resource fork uses the same logical size in scan and removal checks")
     func resourceForkIdentity() async throws {
         let url = try fixture()
@@ -115,7 +182,104 @@ struct RemovalRegressionTests {
         #expect(summary.held == 0 && summary.failed == 0)
         #expect(summary.permanently)
         #expect(vm.rescueVerification?.heldPaths?.contains(unrelated.url.path) == true)
+        #expect(vm.rescueVerification?.requestedBytes == nil)
+        #expect(vm.savedRescueCase?.verification?.requestedBytes == nil)
         #expect(FileManager.default.fileExists(atPath: unrelated.url.path))
+    }
+
+    @Test("Removing the scanned source clears its tree and recommendations")
+    func removalOfScanRoot() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(repeating: 1, count: 4096).write(to: url.appendingPathComponent("owned.dmg"))
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
+        vm.startScan(volumeURL: url)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(!vm.isScanning)
+        let root = try #require(vm.rootNode)
+        try #require(!root.children.isEmpty)
+        vm.addToCollector(root)
+
+        try await vm.deletePermanently([root])
+
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        #expect(vm.rootNode == nil)
+        #expect(vm.currentRoot == nil)
+        #expect(vm.collector.isEmpty)
+        #expect(vm.cleanupReport?.recommendations.isEmpty == true)
+        #expect(vm.rescuePlan?.recommendations.isEmpty == true)
+        #expect(vm.rescueVerification?.movedPaths == [url.standardizedFileURL.path])
+        #expect(vm.lastRemovalSummary?.moved == 1)
+        #expect(!vm.hasCachedScan(for: url))
+    }
+
+    @Test("Only a same-source refresh retains the displayed Rescue result")
+    func refreshKeepsSameSourceResults() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data([1]).write(to: url.appendingPathComponent("owned.dmg"))
+        let other = try fixture()
+        defer { try? FileManager.default.removeItem(at: other) }
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
+        vm.startScan(volumeURL: url)
+        #expect(!vm.hasRescueResultsForSelectedSource)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(!vm.isScanning)
+        let rootID = try #require(vm.rootNode?.id)
+        let checked = try #require(vm.rescuePlan?.measurement.measuredAt)
+
+        vm.startScan(volumeURL: url.standardizedFileURL)
+        #expect(vm.isScanning)
+        #expect(vm.hasRescueResultsForSelectedSource)
+        #expect(vm.rootNode?.id == rootID)
+        #expect(vm.rescuePlan?.measurement.measuredAt == checked)
+        vm.cancelScan()
+        #expect(vm.rootNode?.id == rootID)
+        #expect(vm.rescuePlan?.measurement.measuredAt == checked)
+
+        vm.startScan(volumeURL: other)
+        #expect(vm.isScanning)
+        #expect(!vm.hasRescueResultsForSelectedSource)
+        vm.cancelScan()
+    }
+
+    @Test("Successful removal refreshes Rescue rows from the pruned tree")
+    func removalRefreshesRescueReport() async throws {
+        let url = try fixture()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(repeating: 1, count: 4096).write(to: url.appendingPathComponent("first.dmg"))
+        try Data(repeating: 2, count: 8192).write(to: url.appendingPathComponent("second.dmg"))
+        let suiteName = TestPreferenceDomain.prefix + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let vm = ScanViewModel(defaults: defaults)
+        vm.startScan(volumeURL: url)
+        let deadline = ContinuousClock.now + .seconds(15)
+        while vm.isScanning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(!vm.isScanning)
+        let target = try #require(vm.rootNode?.children.first { $0.name == "first.dmg" })
+        let remaining = try #require(vm.rootNode?.children.first { $0.name == "second.dmg" })
+        try #require(vm.cleanupReport?.recommendations.count == 2)
+        let workspace = RescueWorkspaceModel(vm: vm, defaults: defaults)
+        try #require(workspace.rows.first?.itemCount == 2)
+
+        try await vm.deletePermanently([target])
+        workspace.hostDidChange()
+
+        #expect(vm.cleanupReport?.recommendations.map(\.node.id) == [remaining.id])
+        #expect(vm.rescuePlan?.recommendations.map(\.node.id) == [remaining.id])
+        #expect(workspace.rows.count == 1)
+        #expect(workspace.rows.first?.itemCount == 1)
+        #expect(workspace.rows.first?.bytes == remaining.physicalSize)
+        #expect(FileManager.default.fileExists(atPath: remaining.url.path))
     }
 
     @Test("A cancelled background tree read holds cleanup until the worker returns")

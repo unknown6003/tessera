@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 enum DeletionPreflight: Equatable, Sendable {
     case ready
@@ -76,27 +77,53 @@ enum DeletionService {
     /// The immutable target crosses back from validation before the final action.
     /// Callers can check owner state between these two steps.
     static func perform(_ target: PreparedRemoval, permanently: Bool) -> DeletionError? {
+        perform(target, permanently: permanently, moveToTrash: {
+            try FileManager.default.trashItem(at: $0, resultingItemURL: nil)
+        })
+    }
+
+    /// Success means the source moved, even when destination tracking is held.
+    /// Keep this operation alive until the separate review and confirmation end.
+    static func performTracked(_ target: PreparedRemoval, operation: TrashOperation,
+                               isCancelled: () -> Bool = { false }) -> TrashOperation.MoveOutcome {
+        operation.move(target, isCancelled: isCancelled)
+    }
+
+    static func perform(_ target: PreparedRemoval, permanently: Bool,
+                        moveToTrash: (URL) throws -> Void) -> DeletionError? {
         guard target.check == .ready else {
             return DeletionError(url: target.url, underlying: PreflightError(result: target.check))
         }
-        for ancestor in target.ancestors {
-            var stat = Darwin.stat()
-            guard Darwin.lstat(ancestor.path, &stat) == 0, stat.st_mode & S_IFMT == S_IFDIR,
-                  UInt32(bitPattern: stat.st_dev) == ancestor.device, UInt64(stat.st_ino) == ancestor.inode else {
-                return DeletionError(url: target.url, underlying: PreflightError(result: .identityChanged))
-            }
-        }
-        guard let expected = target.identity,
-              let current = ScanIdentity.current(at: target.url), expected.matches(current) else {
-            return DeletionError(url: target.url, underlying: PreflightError(result: .identityChanged))
+        let liveCheck = revalidate(target)
+        guard liveCheck == .ready else {
+            return DeletionError(url: target.url, underlying: PreflightError(result: liveCheck))
         }
         do {
             if permanently { try FileManager.default.removeItem(at: target.url) }
-            else { try FileManager.default.trashItem(at: target.url, resultingItemURL: nil) }
+            else { try moveToTrash(target.url) }
             return nil
         } catch {
             return DeletionError(url: target.url, underlying: error)
         }
+    }
+
+    static func revalidate(_ target: PreparedRemoval) -> DeletionPreflight {
+        guard target.check == .ready else { return target.check }
+        guard CleanupClassifier.protectedCategory(for: target.url.path) == nil else { return .protected }
+        for ancestor in target.ancestors {
+            var stat = Darwin.stat()
+            guard Darwin.lstat(ancestor.path, &stat) == 0, stat.st_mode & S_IFMT == S_IFDIR,
+                  UInt32(bitPattern: stat.st_dev) == ancestor.device, UInt64(stat.st_ino) == ancestor.inode else {
+                return .identityChanged
+            }
+        }
+        guard let expected = target.identity,
+              let current = ScanIdentity.current(at: target.url), expected.matches(current) else {
+            return .identityChanged
+        }
+        if current.resourceType.isDirectory,
+           let issue = inspectLiveDescendants(at: target.url, device: current.device) { return issue }
+        return .ready
     }
 
     @discardableResult

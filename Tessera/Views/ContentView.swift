@@ -50,7 +50,8 @@ struct ContentView: View {
     /// leaves the two-line pitch untouched. Presentation only.
     private static let compactRowHeight: CGFloat = 24
 
-    @StateObject private var vm = ScanViewModel(defaults: DebugAutomation.defaults)
+    @StateObject private var vm: ScanViewModel
+    @StateObject private var rescueWorkspaceModel: RescueWorkspaceModel
     @StateObject private var drag = CollectorDragController()
     @EnvironmentObject private var updater: UpdaterController
     @ObservedObject private var analytics = Analytics.shared
@@ -91,14 +92,23 @@ struct ContentView: View {
     @State private var sourceNames: [URL: String] = [:]
     @State private var queuedReviewAction: RemovalSnapshot?
     @State private var queuedReviewIsPermanent = false
+    @State private var trashFinishReview: ScanViewModel.TrashFinishReview?
     @State private var reviewSnapshot: RemovalSnapshot?
     @State private var removalRequested = false
     @State private var deleteErrorTitle = "Could not remove items"
     @State private var deleteError: String?
 
+    init() {
+        let model = ScanViewModel(defaults: DebugAutomation.defaults)
+        _vm = StateObject(wrappedValue: model)
+        _rescueWorkspaceModel = StateObject(wrappedValue: RescueWorkspaceModel(vm: model, defaults: DebugAutomation.defaults))
+    }
+
     private var removalBusy: Bool { vm.isDeleting || removalRequested }
     /// The Cleanup List dock is on screen.
-    private var dockIsVisible: Bool { vm.rootNode != nil || removalBusy }
+    private var dockIsVisible: Bool {
+        vm.rootNode != nil || removalBusy || vm.lastRemovalSummary != nil || vm.hasTrackedTrash
+    }
 
     // The body is split into stages so each modifier chain type-checks on
     // its own (Swift 6 timed out on one long chain). The stages nest in the
@@ -120,7 +130,7 @@ struct ContentView: View {
 
                 VStack(spacing: 0) {
                     sourceHeader
-                    if vm.isScanning {
+                    if vm.isScanning && !(appMode == .rescue && vm.hasRescueResultsForSelectedSource) {
                         ScanningView(vm: vm)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if appMode == .rescue && vm.errorMessage == nil && !vm.needsFullDiskAccess {
@@ -137,7 +147,7 @@ struct ContentView: View {
                     }
                     if dockIsVisible {
                         Divider()
-                        CollectorDock(vm: vm, drag: drag, onReview: openReview)
+                        CollectorDock(vm: vm, drag: drag, onReview: openReview, onFinishTrash: openTrashFinish)
                             .disabled(removalBusy)
                     }
                 }
@@ -291,9 +301,25 @@ struct ContentView: View {
                                            queueReviewAction(nodes, permanent: true)
                                        })
             }
+            .sheet(item: $trashFinishReview) { snapshot in
+                TrashFinishReviewView(vm: vm, snapshot: snapshot)
+            }
             .alert(deleteErrorTitle, isPresented: Binding(
                 get: { deleteError != nil }, set: { if !$0 { deleteError = nil } }
             )) { Button("OK") { deleteError = nil } } message: { Text(deleteError ?? "") }
+    }
+
+    private func openTrashFinish() {
+        guard !removalBusy, reviewSnapshot == nil, trashFinishReview == nil else { return }
+        removalRequested = true
+        Task {
+            defer { removalRequested = false }
+            do { trashFinishReview = try await vm.reviewTrackedTrash() }
+            catch {
+                deleteErrorTitle = "Could not review Trash items"
+                deleteError = error.localizedDescription
+            }
+        }
     }
 
     private func withLifecycle(_ content: some View) -> some View {
@@ -449,7 +475,7 @@ struct ContentView: View {
                 // The dock shows whenever a scan or removal is on screen and has
                 // the filled review button; the page's own button covers only
                 // the case without a dock.
-                CleanupSuggestionsView(vm: vm, onMoveToTrash: dockIsVisible ? nil : { openReview() })
+                CleanupSuggestionsView(vm: vm, workspace: rescueWorkspaceModel, onMoveToTrash: dockIsVisible ? nil : { openReview() })
             }
             .padding(24)
             .frame(maxWidth: 1000, alignment: .leading)
@@ -1183,7 +1209,7 @@ struct ContentView: View {
 /// creates rows that are not on screen. Uses `ScrollPosition`,
 /// `scrollPosition(_:anchor:)` and `onScrollGeometryChange(for:of:action:)`,
 /// all public SwiftUI API on macOS 15.0 and later.
-private struct WindowedRows<Row: View>: View {
+struct WindowedRows<Row: View>: View {
     private struct Item: Identifiable {
         let index: Int
         let node: FileNode

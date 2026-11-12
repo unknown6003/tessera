@@ -16,6 +16,8 @@ struct ScanRegressionTests {
                      "/volumes/archive/backups", "/users/sample/projects/" + String(repeating: "deep/", count: 300),
                      "/users/caf\u{e9}/library/caches", "/users/cafe\u{301}/library/caches",
                      "/users/sample/adobe\u{301}/cache", "/users/界/library/cloudstorage/provider",
+                     "/users/sample/\u{212a}/cache", "/users/sample/\u{212b}/cache",
+                     "/users/sample/caches\u{301}/nested", "/users/" + String(repeating: "界", count: 150),
                      "/users/sample\0/after-null"]
         let ruleParts = [
             "/library/application support/mobilesync/backup",
@@ -57,7 +59,7 @@ struct ScanRegressionTests {
             "/users/"
         ]
         let parts = ruleParts + ["", "/", "cache", "/library/caches", "chrome", "/volumes/", "deep/",
-                     "adobe", "adob\u{e9}", "cafe\u{301}", "界", "after-null", "\0/after", "missing"]
+                     "adobe", "adob\u{e9}", "cafe\u{301}", "界", "K", "A", "caches", "after-null", "\0/after", "missing"]
         for root in roots + parts.map({ "/users/sample" + $0 + "/nested" }) {
             let input = CleanupPath(root)
             for part in parts {
