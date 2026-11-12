@@ -396,3 +396,9 @@ The replacement uses Apple's documented [announcementRequested API](https://deve
 Actual narration is still required. A native probe must distinguish a skipped
 guard, a focus change overtaking the announcement and a posting-API difference.
 No delay, retry, synthetic speech or bypass of the own-window guard was added.
+
+Finishing a tracked operation now attempts a fresh capacity read even when the
+removed source was the scan root and no tree remains. A missing source keeps
+capacity unknown and the goal unverified. The root-removal native follow-up must
+exercise this branch through the VM and the real tracked operation, including
+continued access to Finish and the unrelated-item sentinel.

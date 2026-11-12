@@ -1187,11 +1187,13 @@ final class ScanViewModel: ObservableObject {
         hasTrackedTrash = !trashOperationBytes.isEmpty
         lastRemovalSummary = RemovalSummary(moved: removed, movedBytes: bytes,
                                             held: held, failed: failed, permanently: true)
-        if let root = rootNode {
-            let source = snapshot.source
-            let measurement = try await Self.offMain { RescueMeasurement.capture(volumeURL: source, root: root) }
-            if scannedURL == source { rescuePlan = rescuePlan?.updatingMeasurement(measurement) }
+        let root = rootNode
+        let source = snapshot.source
+        let measurement = try await Self.offMain {
+            if let root { return RescueMeasurement.capture(volumeURL: source, root: root) }
+            return RescueMeasurement.captureCapacity(volumeURL: source)
         }
+        if scannedURL == source { rescuePlan = rescuePlan?.updatingMeasurement(measurement) }
         // Measured Free now, rather than deleted allocated bytes, updates goals.
         Analytics.shared.capture(.cleanupCompleted, values: [
             "items": .integer(ids.count), "moved": .integer(removed),
