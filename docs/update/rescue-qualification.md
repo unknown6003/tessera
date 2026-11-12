@@ -2,24 +2,26 @@
 
 Current status: incomplete. No Rescue redesign release is published. The candidate is 0.2.3 build 15. The public release remains 0.2.2 build 14.
 
+Owner scope update, 12 November: VoiceOver testing and narration are no longer release gates. The confirmed specification records the change. Historical narration results below remain evidence only; no further VoiceOver work is required. The experimental staging announcement was removed. Ordinary keyboard and cleanup safety checks remain in scope.
+
 The full goal is the confirmed design in `docs/research/rescue-2026-11-11/design-spec.md`. A passing compiler, a source review or a mocked filesystem does not prove the whole flow. The release stays in 0.x.x.
 
 | Requirement | Evidence so far | Required before release |
 | --- | --- | --- |
-| Largest-first discovery and 12 consumer families | Full Debug passed 157 tests at 9450be1; native fixture ranking and managed rows passed at 84df90d and 921afad | Exact release commit CI and remaining owner handoff checks |
-| Group review, explicit selection, Back, exclusions | Native keyboard, explicit selection, filtered Select all, Keep/Restore and Back passed; staged-item regression passed at 9450be1 | Integrated focus recheck and native 100,000-item review |
-| Owner routes, Retry, return refresh | Coordinator tests and source review | Verify installed app IDs and supported routes; native one-return refresh, failed owner, source change and busy cases |
-| Additional-GB goal and capacity labels | Coordinator tests; old 75% confirmation text removed | Native same-volume capacity success/failure, negative change and post-action refresh |
+| Largest-first discovery and 12 consumer families | Core patch passed 160 native tests; native fixture ranking and managed rows passed at 84df90d and 921afad | Exact release commit CI |
+| Group review, explicit selection, Back, exclusions | Native keyboard, filtered Select all, Keep/Restore and Back passed. bfac606 exercised a 100,000-item review, search, End/Home, Select all/Clear and staging one item | Current row-button Tab/Space repair needs native proof. Large-review observations are not p99 or staging-all proof |
+| Owner routes, Retry, return refresh | Installed bundle IDs checked. Native bfac606 Finder handoff refreshed once; ordinary switching and missing UTM did not refresh. Native coordinator tests cover source changes and busy deferral | Current Checking again/Cancel rendering needs native proof |
+| Additional-GB goal and capacity labels | Native keyboard set a 1 GB goal; staged bytes did not advance it. Native coordinator tests cover negative, unknown and changed-volume readings | Exact release tests and post-action capacity check; no allocated-byte recovery claim |
 | Recoverable moves and actual Trash destinations | Three real home-volume Finder Trash runs passed at 4f74c94; actual destinations and identity recorded | Exact release build and existing unsupported-volume holds remain enforced |
-| Operation-scoped permanent finishing | Three public-adapter runs passed at 4f74c94; 31 Trash/helper tests passed; 921afad real UI removed only its owned item, sentinel preserved | Exact release gates; retain recovery fixtures and metadata-only limits |
+| Operation-scoped permanent finishing | Three public-adapter runs passed at 4f74c94; 921afad real UI removed only its owned item, sentinel preserved. Current private VM probe also passed root move, no-tree Finish and capacity reread with its unrelated sentinel intact | Final native preservation report and exact release gates; retain recovery fixtures and metadata-only limits |
 | Confirmations and held results | Both native confirmations focused Cancel and cancelled on Return/Escape; review and files stayed; explicit confirmations succeeded | Combined-candidate acceptance and exact release tests |
-| Window and appearance | 84df90d native captures and keyboard checks at 820x652, 1100x700 and 1600x900 passed; six focus/text repairs still under check | Captures at minimum, standard and wide sizes; sheets, long names and focus without overlap |
-| Accessibility | Source labels, keyboard handling and contrast tokens | Real VoiceOver narration; Increase Contrast and Reduce Motion with restored settings; fixed ten-area rubric with reference evidence |
+| Window and appearance | Native captures passed at 820x652, 1100x700 and 1600x900. dde90cb proved initial Back/goal focus and Settings-already-key guard | Current keyboard delta and exact release checks |
+| Keyboard and settings | Initial focus and Cancel checks passed. Contrast was enabled and restored with a cyan outline under accent 6. Motion settings were read back and restored; source disables press scaling when Reduce Motion is on | Current row-button Tab/Space repair needs its ordinary keyboard check. No VoiceOver or narration gate |
 | Privacy and analytics | No new path-bearing analytics in reviewed changes; production policy unchanged | Automated-run exclusion and allowed new-flow payload checks; no names, paths, search, exclusion identity or raw errors sent |
 | Release CI | Existing owned-hardware lanes and exact-head gates | Both signed reports for the final clean commit, full 400-trial campaign, unchanged limits and valid baseline comparison |
 | Publication and updater | Existing 0.2.2 release infrastructure | Next 0.x version/build, signing and smoke, matching symbols, verified Sparkle feed and DMG, public asset readback and update path |
 
-The latest completed Debug gate is abd0491: both Trash suites passed 30 tests and the full suite passed 154 tests in 12 suites. XcodeGen matched the committed project. The latest unsigned Release gate is 5e4c0f1, before the fresh-review policy and focus repairs. Real Finder Trash review passed at abd0491, but finishing stopped at a directory-open permission error. None of these results qualifies the final release commit.
+The completed core release-fix gate passed 160 Debug tests and unsigned universal Release. The current combined native run also reports 160 tests and universal Release passed, with the Theme actor warnings gone; its final report confirms preservation of production state and all nine Sample files. The final ordinary keyboard sequence and visible refresh/Cancel were not completed because the Mac was in use. Earlier abd0491/5e4c0f1 gates and their directory-open failure remain historical evidence below. No earlier source or mocked adapter qualifies the final release commit.
 
 The first attempted diagnosis after reconnecting read the earlier evidence but ran no loop and proved no cause. Later focused runs below established the path, metadata and directory-open failures. The initial read-only attempt is neither a successful diagnosis nor an external blocker.
 
@@ -315,9 +317,8 @@ Actual VoiceOver started through System Settings and its caption panel supplied
 spoken text for item, size, unselected and selected states, Add action, held
 reason and Cleanup List review. Owner text and the Added result were not captured
 as speech. The item label now includes its owner and allocated-size wording.
-The Add action posts its outcome as a high-priority accessibility announcement
-after any guarded focus restoration, only while the current review and owning
-key window remain valid. Native narration still must qualify these changes.
+An experimental staging announcement was added after this pass. It was later
+removed when Ammar ended VoiceOver testing and removed narration as a gate.
 
 Increase Contrast and Reduce Motion were enabled, read back and restored to the
 fresh baseline. A cyan row outline was captured with contrast on under accent 6.
@@ -361,9 +362,9 @@ The bfac606 native pass built unsigned universal Release and verified all 372
 source blobs. Actual VoiceOver spoke the new owner label, selected state and
 Add action. It did not speak the Added result in three attempts. The text was
 on screen, and focus returned to the rows. This does not prove whether the
-announcement was skipped or replaced. The candidate now uses AppKit's
-window-targeted announcement with the same existing focus and review guards.
-It is unverified. Evidence:
+announcement was skipped or replaced. A later candidate used AppKit's
+window-targeted announcement. That experiment was removed under the owner
+scope update above. Evidence:
 `/tmp/tessera-bfac-ui/REPORT.md`.
 
 The same run verified the owned 100,000-file group. End, Home, single-item
@@ -389,13 +390,8 @@ actor-isolation repair awaiting compilation. No warning fix is claimed yet.
 The Mac relay became unreachable after this report. A headless red/green job
 was already running on the earlier release-fix patch. Keep that task and its
 evidence separate from the later row-focus and warning changes. A new native
-announcement probe could not start. No final review or publication is justified
-until the missing native checks and both exact-head CI lanes pass.
-
-The replacement uses Apple's documented [announcementRequested API](https://developer.apple.com/documentation/appkit/nsaccessibility-swift.struct/notification/announcementrequested).
-Actual narration is still required. A native probe must distinguish a skipped
-guard, a focus change overtaking the announcement and a posting-API difference.
-No delay, retry, synthetic speech or bypass of the own-window guard was added.
+announcement probe could not start. That work is now cancelled. Remaining
+keyboard/refresh checks and both exact-head CI lanes still gate publication.
 
 Finishing a tracked operation now attempts a fresh capacity read even when the
 removed source was the scan root and no tree remains. A missing source keeps
@@ -420,3 +416,31 @@ and cleanup of only the job's own domains and build output. The report is
 These results do not cover the later row-button focus bindings, actor
 annotations, source-path normalization, AppKit announcement or no-tree Finish
 capacity read. They do not qualify the current commit for release.
+
+## Combined candidate gate and scope closure, 12 November
+
+Private evidence: `/tmp/tessera-c75d-test-20261112031222-60206/REPORT.md`.
+The 24,119-byte patch on bfac606 had SHA-256
+`7fd0aead027d99927908dc66bd7eb3591f2a625a2fc0eabdebdf5103ed5b59db`.
+All 372 base blobs matched. XcodeGen produced no project change. Debug passed
+160/160 tests, and unsigned universal Release succeeded. Theme actor warnings
+are gone. The retained binary and dSYM UUIDs match.
+
+The private public-VM probe moved the scanned root to actual Finder Trash,
+cleared the tree and recommendations, retained the tracked operation, and
+finished only that root and its child. Its unrelated sentinel stayed intact
+and was restored from its exact recorded destination. The checked time
+advanced without a tree. This does not prove reclaimed bytes.
+
+Tab then Space on the first row selected that row. The Mac then became busy,
+so the guard blocked later input. The post-stage second-row Space/Return and
+visible same-source Checking/Cancel paths remain unverified in this run.
+The view-model refresh regression and reviewed rendering guards are the
+available evidence for that change. No further interactive run is started
+while the Mac is in use.
+
+All nine Sample files, production PID and preferences stayed unchanged. The
+agent removed its own 13 preference files and build caches; no owned process
+remains. After this run, the owner removed narration from scope and the
+experimental announcement block was deleted. Version metadata is 0.2.3/15.
+Both external CI lanes must still qualify the final clean commit.

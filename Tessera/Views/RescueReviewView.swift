@@ -179,10 +179,6 @@ struct RescueReviewView: View {
                 if restoreFocus, (focus == .add || focus == nil), canMoveFocus {
                     focus = workspace.reviewItems.isEmpty ? .back : .rows
                 }
-                if canMoveFocus, let window = ownWindow.window, let notice = workspace.reviewNotice {
-                    NSAccessibility.post(element: window, notification: .announcementRequested,
-                        userInfo: [.announcement: notice, .priority: NSAccessibilityPriorityLevel.high.rawValue])
-                }
             }
         } label: {
             Text(count == 0

@@ -5,7 +5,7 @@ Base main: 65e272109ad906810ff3b8a3d01d217cd1fb1934, which contains the released
 This file records the agreed design. Product implementation and native qualification are tracked in docs/update/rescue-review-triage.md.
 
 Outcome: people can find the largest storage consumers, understand their next action, and recover usable space without guessing which files are disposable.
-Proof: native fixture flows, keyboard and VoiceOver checks, captured states, release CI, and direct comprehension checks. Agent scores and desk research are not user-study results.
+Proof: native fixture flows, keyboard checks, captured states, release CI, and direct comprehension checks. Agent scores and desk research are not user-study results.
 Constraints: keep Tessera's name, flat dark interface and cyan accent. Releases stay 0.x.x. Preserve privacy, current identity, owner, protected-path and busy checks. Healthy local scans continue past 120 seconds; p99 completion within that time is a goal, not a timeout.
 
 ## Owner decisions
@@ -121,7 +121,7 @@ Unknown or failed capacity reads keep the goal unverified. A later loss of free 
 
 Support 820x600 minimum content constraints and wide windows without overlapping sheets, clipped primary controls, or a large gap between related panels. Keep focus visible, selection stable and name paths readable on demand. Respect Increase Contrast and Reduce Motion.
 
-Verify the whole keyboard path, including group Back, explicit selection, Cleanup List review, both confirmations and Cancel. VoiceOver must expose item, size, owner, selected state, action, result and held reason. Test actual narration; AX labels alone are not proof.
+Verify the whole keyboard path, including group Back, explicit selection, Cleanup List review, both confirmations and Cancel. On 12 November 2026, Ammar removed VoiceOver testing and narration from the delivery requirements. Do not run more VoiceOver tests or block release on narration. Keep existing accessibility labels.
 
 Required regression fixtures include VM disk-file discovery, nested categories, non-overlapping totals, owner stores, absent owners, cloud-only data, gaps outside and inside a candidate, stale scans, replaced identities, changed Trash files and folders, wrong-operation Trash items, missing manifests and source changes. Test empty, scanning, cancelled, permission, partial, failure and post-action states.
 
